@@ -74,6 +74,21 @@ const visibleBounds = function visibleBounds(
 	return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 };
 
+export const scanAlphaBounds = function scanAlphaBounds(
+	frame: RgbaFrame,
+	alphaThreshold: number = 0
+): TrimResult<FrameBounds | undefined> {
+	if (!isValidFrame(frame)) {
+		return failure('RGBA frame dimensions do not match its pixel buffer.');
+	}
+
+	const threshold = normalizedThreshold(alphaThreshold);
+
+	return threshold === undefined
+		? failure('Alpha threshold must be a finite value from 0 through 255.')
+		: success(visibleBounds(frame, threshold));
+};
+
 const cropPixels = function cropPixels(
 	frame: RgbaFrame,
 	bounds: FrameBounds
@@ -95,17 +110,13 @@ export const trimRgbaFrame = function trimRgbaFrame(
 	frame: RgbaFrame,
 	alphaThreshold: number = 0
 ): TrimResult<TrimmedRgbaFrame> {
-	if (!isValidFrame(frame)) {
-		return failure('RGBA frame dimensions do not match its pixel buffer.');
+	const boundsResult = scanAlphaBounds(frame, alphaThreshold);
+
+	if (!boundsResult.ok) {
+		return boundsResult;
 	}
 
-	const threshold = normalizedThreshold(alphaThreshold);
-
-	if (threshold === undefined) {
-		return failure('Alpha threshold must be a finite value from 0 through 255.');
-	}
-
-	const bounds = visibleBounds(frame, threshold);
+	const bounds = boundsResult.value;
 
 	if (!bounds) {
 		return success({

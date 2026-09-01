@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { restoreTrimmedRgbaFrame, trimRgbaFrame } from '../../src/export/trim.ts';
+import { restoreTrimmedRgbaFrame, scanAlphaBounds, trimRgbaFrame } from '../../src/export/trim.ts';
 
 const frame = {
 	width: 4,
@@ -12,6 +12,12 @@ const frame = {
 };
 
 describe('alpha trimming', () => {
+	test('scans visible alpha bounds with an explicit threshold', () => {
+		expect(scanAlphaBounds(frame)).toEqual({ ok: true, value: { x: 1, y: 0, w: 2, h: 2 } });
+		expect(scanAlphaBounds(frame, 200)).toEqual({ ok: true, value: { x: 1, y: 0, w: 1, h: 1 } });
+		expect(scanAlphaBounds(frame, 256)).toMatchObject({ ok: false });
+	});
+
 	test('crops visible pixels and preserves Pixi source metadata', () => {
 		const trimmed = trimRgbaFrame(frame);
 

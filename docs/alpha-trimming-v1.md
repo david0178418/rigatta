@@ -1,8 +1,10 @@
 # Alpha trimming v1
 
 Packed export starts with RGBA pixels rendered at the complete logical canvas
-size. The trim step scans alpha values above the configured threshold and
-copies the smallest visible rectangle into a new buffer.
+size. `scanAlphaBounds` scans alpha values above the configured threshold and
+returns the smallest visible rectangle without copying pixels. `trimRgbaFrame`
+uses that same validated scan before copying the visible pixels into a new
+buffer.
 
 The result retains:
 
