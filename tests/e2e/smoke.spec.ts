@@ -56,22 +56,30 @@ test('supports viewport zoom controls and reset', async ({ page }) => {
 
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
 	await page.addInitScript(() => {
-		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), (character) => character.charCodeAt(0));
+		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAQMAAACQp+OdAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkBBxAXAvkWQwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0wMVQwNzoxNjoyMyswMDowMMxohAEAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMDFUMDc6MTY6MjMrMDA6MDC9NTy9AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTAxVDA3OjE2OjIzKzAwOjAw6iAdYgAAAA9JREFUKM9jYBgFo4B8AAACQAABjMWrdwAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));
+		type MockFileEntry = Readonly<{
+			kind: 'file';
+			name: string;
+			isSameEntry: (other: FileSystemHandle) => Promise<boolean>;
+			getFile: () => Promise<File>;
+		}>;
+		const sameEntry = async function sameEntry(): Promise<boolean> {
+			return false;
+		};
+		const getFile = async function getFile(): Promise<File> {
+			return new File([pngBytes], 'hero.png', { type: 'image/png' });
+		};
+		const values = async function* values(): AsyncGenerator<MockFileEntry> {
+			yield { kind: 'file', name: 'hero.png', isSameEntry: sameEntry, getFile };
+		};
 
 		Object.defineProperty(window, 'showDirectoryPicker', {
 			configurable: true,
 			value: async () => ({
 				kind: 'directory',
 				name: 'parts',
-				isSameEntry: async () => false,
-				values: async function* values() {
-					yield {
-						kind: 'file',
-						name: 'hero.png',
-						isSameEntry: async () => false,
-						getFile: async () => new File([pngBytes], 'hero.png', { type: 'image/png' })
-					};
-				}
+				isSameEntry: sameEntry,
+				values
 			})
 		});
 	});
@@ -83,4 +91,21 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 
 	await expect(page.getByText('root', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+	await page.getByRole('button', { name: 'root' }).click();
+	const viewport = page.locator('.pixi-viewport');
+	const bounds = await viewport.boundingBox();
+
+	if (!bounds) {
+		throw new Error('The viewport bounds are unavailable.');
+	}
+
+	await page.keyboard.down('Control');
+	await page.keyboard.down('Shift');
+	await page.mouse.move(bounds.x + bounds.width / 2 - 50, bounds.y + bounds.height / 2 - 50);
+	await page.mouse.down();
+	await page.mouse.move(bounds.x + bounds.width / 2 + 50, bounds.y + bounds.height / 2 + 50);
+	await page.mouse.up();
+	await page.keyboard.up('Shift');
+	await page.keyboard.up('Control');
+	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
 });

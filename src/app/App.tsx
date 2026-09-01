@@ -23,6 +23,8 @@ import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { ReadyStartup, StartupState } from './startup.ts';
 import { loadEditorStartup } from './startup.ts';
 import { buildAssetLibraryEntries } from './asset-library.ts';
+import { entitiesInBounds, hitTestProject } from './hit-testing.ts';
+import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 
@@ -117,6 +119,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [persistenceError, setPersistenceError] = useState<string | undefined>(undefined);
 	const [commandError, setCommandError] = useState<string | undefined>(undefined);
 	const [assetError, setAssetError] = useState<string | undefined>(undefined);
+	const [selection, setSelection] = useState<Selection>(createSelection);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
 	const [assetBlobs, setAssetBlobs] = useState<ProjectAssetBlobs>(startup.assets);
@@ -216,7 +219,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		event.preventDefault();
 	};
 
-	const dragAsset = function dragAsset(event: DragEvent<HTMLDivElement>, assetId: string): void {
+	const dragAsset = function dragAsset(event: DragEvent<HTMLElement>, assetId: string): void {
 		event.dataTransfer.effectAllowed = 'copy';
 		event.dataTransfer.setData('application/x-bone-animation-asset', assetId);
 	};
@@ -315,6 +318,35 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setAssetError(undefined);
 		applyCommandSequence(commands);
 	};
+
+	const updateSelection = function updateSelection(entity: SelectableEntity, additive: boolean): void {
+		setSelection((current) => selectEntity(current, entity, additive));
+	};
+
+	const selectCanvasPoint = function selectCanvasPoint(point: ViewportPoint, additive: boolean): void {
+		const hit = hitTestProject(project, point);
+
+		if (hit) {
+			updateSelection(hit, additive);
+			return;
+		}
+
+		if (!additive) {
+			setSelection(createSelection());
+		}
+	};
+
+	const selectCanvasMarquee = function selectCanvasMarquee(bounds: Readonly<{ x: number; y: number; w: number; h: number }>, additive: boolean): void {
+		setSelection((current) => selectEntities(current, entitiesInBounds(project, bounds), additive));
+	};
+
+	const selectedEntity = selection.at(-1);
+	const selectedName = selectedEntity
+		? project.assets.find((asset) => asset.id === selectedEntity.id)?.name
+			?? project.bones.find((bone) => bone.id === selectedEntity.id)?.name
+			?? project.slots.find((slot) => slot.id === selectedEntity.id)?.name
+			?? project.attachments.find((attachment) => attachment.id === selectedEntity.id)?.name
+		: undefined;
 	const statusMessage = commandError ?? persistenceError ?? assetError;
 
 	return (
@@ -336,9 +368,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							onClick={() => setMode(nextMode)}
 							aria-pressed={nextMode === mode}
 						>
-							{modeLabels[nextMode]}
-						</button>
-					))}
+								{modeLabels[nextMode]}
+							</button>
+							))}
 				</nav>
 				<div className="toolbar-actions">
 					<button className="quiet-button" type="button" disabled={!canUndo(history)} onClick={() => stepHistory(undo(history))}>Undo</button>
@@ -382,17 +414,20 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									<span>{entry.name}</span>
 								</div>
 							) : (
-								<div
+								<button
 									className="asset-row"
 									draggable
+									type="button"
 									key={entry.asset.id}
+									onClick={(event) => updateSelection({ kind: 'asset', id: entry.asset.id }, event.metaKey || event.ctrlKey)}
 									onDragStart={(event) => dragAsset(event, entry.asset.id)}
+									aria-pressed={isSelected(selection, { kind: 'asset', id: entry.asset.id })}
 									style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
 									title={`Drag ${entry.asset.relativePath} into the canvas`}
 								>
 									<span className="asset-glyph" aria-hidden="true">▧</span>
 									<span>{entry.asset.name}<small>{entry.asset.relativePath}</small></span>
-								</div>
+								</button>
 							))}
 						</div>
 					)}
@@ -404,7 +439,13 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
 					</div>
 					<div className="viewport-stage">
-						<ViewportCanvas project={project} assets={assetBlobs} onAssetDrop={dropAssetOnCanvas} />
+						<ViewportCanvas
+							project={project}
+							assets={assetBlobs}
+							onAssetDrop={dropAssetOnCanvas}
+							onCanvasSelect={selectCanvasPoint}
+							onCanvasMarquee={selectCanvasMarquee}
+						/>
 						{project.bones.length === 0 && project.assets.length === 0 && (
 							<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
 								<span>Drop image parts here</span>
@@ -430,14 +471,46 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							</div>
 						) : (
 							<div className="bone-tree" aria-label="Bone hierarchy">
-								{orderedBones.map((bone) => <div className="bone-row" key={bone.id}><span className="bone-dot" aria-hidden="true" />{bone.name}</div>)}
+								{orderedBones.flatMap((bone) => [
+									<button
+										className={isSelected(selection, { kind: 'bone', id: bone.id }) ? 'bone-row is-selected' : 'bone-row'}
+										key={bone.id}
+										type="button"
+										onClick={(event) => updateSelection({ kind: 'bone', id: bone.id }, event.metaKey || event.ctrlKey)}
+										aria-pressed={isSelected(selection, { kind: 'bone', id: bone.id })}
+									>
+										<span className="bone-dot" aria-hidden="true" />{bone.name}
+									</button>,
+									...project.slots.filter((slot) => slot.boneId === bone.id).flatMap((slot) => [
+										<button
+											className={isSelected(selection, { kind: 'slot', id: slot.id }) ? 'slot-row is-selected' : 'slot-row'}
+											key={slot.id}
+											type="button"
+											onClick={(event) => updateSelection({ kind: 'slot', id: slot.id }, event.metaKey || event.ctrlKey)}
+											aria-pressed={isSelected(selection, { kind: 'slot', id: slot.id })}
+										>
+											<span aria-hidden="true">↳</span>{slot.name}
+										</button>,
+										...project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === slot.id).map((attachment) => (
+											<button
+												className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'attachment-row is-selected' : 'attachment-row'}
+												key={attachment.id}
+												type="button"
+												onClick={(event) => updateSelection({ kind: 'attachment', id: attachment.id }, event.metaKey || event.ctrlKey)}
+												aria-pressed={isSelected(selection, { kind: 'attachment', id: attachment.id })}
+											>
+												<span aria-hidden="true">•</span>{attachment.name}
+										</button>
+										))
+										])
+									])}
 							</div>
-						)}
+							)}
 					</section>
 					<section className="panel-section inspector-section">
 						<p className="eyebrow">Inspector</p>
-						<h2>Nothing selected</h2>
-						<p className="muted-copy">Select a bone, slot, or attachment to edit its properties.</p>
+						<h2>{selectedName ?? 'Nothing selected'}</h2>
+						<p className="muted-copy">{selectedName ? `${selection.length} item${selection.length === 1 ? '' : 's'} selected.` : 'Select a bone, slot, attachment, or image to edit its properties.'}</p>
 					</section>
 				</aside>
 			</main>

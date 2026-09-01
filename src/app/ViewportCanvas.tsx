@@ -1,31 +1,48 @@
-import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react';
 import type { Project } from '../domain/model.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
-import { createViewportState, formatViewportZoom, panViewport, resetViewport, screenToLogicalPoint, zoomViewport, type ViewportPoint, type ViewportState } from './viewport.ts';
+import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
 
 type PointerSession = Readonly<{
 	id: number;
 	x: number;
 	y: number;
+	startX: number;
+	startY: number;
+	mode: 'pan' | 'marquee';
 }>;
 
 export const ViewportCanvas = function ViewportCanvas({
 	project,
 	assets,
-	onAssetDrop
+	onAssetDrop,
+	onCanvasSelect,
+	onCanvasMarquee
 }: Readonly<{
 	project: Project;
 	assets: ProjectAssetBlobs;
 	onAssetDrop?: (assetId: string, point: ViewportPoint) => void;
+	onCanvasSelect?: (point: ViewportPoint, additive: boolean) => void;
+	onCanvasMarquee?: (bounds: LogicalBounds, additive: boolean) => void;
 }>): ReactElement {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const pointerSessionRef = useRef<PointerSession | undefined>(undefined);
+	const didPanRef = useRef(false);
 	const [error, setError] = useState<string | undefined>(undefined);
 	const [viewport, setViewport] = useState<ViewportState>(createViewportState);
 	const [isPanning, setIsPanning] = useState(false);
+	const [marquee, setMarquee] = useState<ViewportRectangle | undefined>(undefined);
+	const viewportStateRef = useRef(viewport);
+	const projectRef = useRef(project);
+	const canvasSelectRef = useRef(onCanvasSelect);
+	const canvasMarqueeRef = useRef(onCanvasMarquee);
+	viewportStateRef.current = viewport;
+	projectRef.current = project;
+	canvasSelectRef.current = onCanvasSelect;
+	canvasMarqueeRef.current = onCanvasMarquee;
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -74,40 +91,114 @@ export const ViewportCanvas = function ViewportCanvas({
 		};
 	}, [assets, project]);
 
-	const beginPan = function beginPan(event: ReactPointerEvent<HTMLDivElement>): void {
+	const beginPan = function beginPan(event: PointerEvent): void {
 		if (event.button !== 0) {
 			return;
 		}
 
-		pointerSessionRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
-		event.currentTarget.setPointerCapture(event.pointerId);
+		didPanRef.current = false;
+		pointerSessionRef.current = {
+			id: event.pointerId,
+			x: event.clientX,
+			y: event.clientY,
+			startX: event.clientX,
+			startY: event.clientY,
+			mode: event.shiftKey ? 'marquee' : 'pan'
+		};
+		setMarquee(undefined);
+		hostRef.current?.setPointerCapture(event.pointerId);
 		setIsPanning(true);
 	};
 
-	const movePan = function movePan(event: ReactPointerEvent<HTMLDivElement>): void {
+	const movePan = function movePan(event: PointerEvent): void {
 		const session = pointerSessionRef.current;
 
 		if (!session || session.id !== event.pointerId) {
 			return;
 		}
+		const deltaX = event.clientX - session.x;
+		const deltaY = event.clientY - session.y;
 
-		setViewport((current) => panViewport(current, {
-			x: event.clientX - session.x,
-			y: event.clientY - session.y
-		}));
-		pointerSessionRef.current = { id: session.id, x: event.clientX, y: event.clientY };
+		if (deltaX !== 0 || deltaY !== 0) {
+			didPanRef.current = true;
+		}
+
+		if (session.mode === 'marquee') {
+			const stage = viewportRef.current?.getBoundingClientRect();
+
+			if (stage) {
+				setMarquee(normalizeViewportRectangle(
+					{ x: session.startX - stage.left, y: session.startY - stage.top },
+					{ x: event.clientX - stage.left, y: event.clientY - stage.top }
+				));
+			}
+		} else {
+			setViewport((current) => panViewport(current, { x: deltaX, y: deltaY }));
+		}
+		pointerSessionRef.current = { ...session, x: event.clientX, y: event.clientY };
 	};
 
-	const endPan = function endPan(event: ReactPointerEvent<HTMLDivElement>): void {
+	const endPan = function endPan(event: PointerEvent, select: boolean): void {
 		const session = pointerSessionRef.current;
 
 		if (!session || session.id !== event.pointerId) {
 			return;
 		}
+		const stage = viewportRef.current?.getBoundingClientRect();
+		const onSelect = canvasSelectRef.current;
+		const onMarquee = canvasMarqueeRef.current;
 
+		if (select && session.mode === 'marquee' && didPanRef.current && stage && onMarquee) {
+			onMarquee(screenRectangleToLogicalBounds(
+				{ x: session.startX, y: session.startY },
+				{ x: event.clientX, y: event.clientY },
+				stage,
+				viewportStateRef.current,
+				projectRef.current.logicalCanvas
+			), event.metaKey || event.ctrlKey);
+		} else if (select && !didPanRef.current && stage && onSelect) {
+			onSelect(screenToLogicalPoint(
+				{ x: event.clientX, y: event.clientY },
+				stage,
+				viewportStateRef.current,
+				projectRef.current.logicalCanvas
+			), event.metaKey || event.ctrlKey);
+		}
+		setMarquee(undefined);
+
+		if (hostRef.current?.hasPointerCapture(event.pointerId)) {
+			hostRef.current.releasePointerCapture(event.pointerId);
+		}
 		pointerSessionRef.current = undefined;
 		setIsPanning(false);
 	};
+
+	useEffect(() => {
+		const host = hostRef.current;
+
+		if (!host) {
+			return function cleanup(): void {};
+		}
+
+		const releaseWithSelection = function releaseWithSelection(event: PointerEvent): void {
+			endPan(event, true);
+		};
+		const releaseWithoutSelection = function releaseWithoutSelection(event: PointerEvent): void {
+			endPan(event, false);
+		};
+
+		host.addEventListener('pointerdown', beginPan, true);
+		host.addEventListener('pointermove', movePan, true);
+		host.addEventListener('pointerup', releaseWithSelection, true);
+		host.addEventListener('pointercancel', releaseWithoutSelection, true);
+
+		return function cleanup(): void {
+			host.removeEventListener('pointerdown', beginPan, true);
+			host.removeEventListener('pointermove', movePan, true);
+			host.removeEventListener('pointerup', releaseWithSelection, true);
+			host.removeEventListener('pointercancel', releaseWithoutSelection, true);
+		};
+	}, [assets, project]);
 
 	const zoomAtCenter = function zoomAtCenter(wheelDelta: number): void {
 		setViewport((current) => zoomViewport(current, wheelDelta, { x: 0, y: 0 }));
@@ -162,11 +253,8 @@ export const ViewportCanvas = function ViewportCanvas({
 				className={isPanning ? 'pixi-host is-panning' : 'pixi-host'}
 				ref={hostRef}
 				style={{ transform: `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.zoom})` }}
-				onPointerDown={beginPan}
-				onPointerMove={movePan}
-				onPointerUp={endPan}
-				onPointerCancel={endPan}
 			/>
+			{marquee && <div className="viewport-marquee" style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }} />}
 			<div className="viewport-controls" aria-label="Viewport controls">
 				<button type="button" aria-label="Zoom out" onClick={() => zoomAtCenter(1)}>−</button>
 				<button type="button" aria-label="Reset viewport">{formatViewportZoom(viewport.zoom)}</button>

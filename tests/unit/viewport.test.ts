@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createViewportState, formatViewportZoom, panViewport, resetViewport, screenToLogicalPoint, zoomViewport, type ViewportState } from '../../src/app/viewport.ts';
+import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type ViewportState } from '../../src/app/viewport.ts';
 
 describe('viewport navigation state', () => {
 	test('pans without changing zoom', () => {
@@ -36,5 +36,16 @@ describe('viewport navigation state', () => {
 		);
 
 		expect(point).toEqual({ x: 627, y: 236 });
+	});
+
+	test('normalizes screen marquees and maps their corners to logical bounds', () => {
+		expect(normalizeViewportRectangle({ x: 80, y: 90 }, { x: 20, y: 30 })).toEqual({ left: 20, top: 30, width: 60, height: 60 });
+		expect(screenRectangleToLogicalBounds(
+		{ x: 150, y: 150 },
+		{ x: 350, y: 350 },
+		{ left: 100, top: 100, width: 400, height: 400 },
+		createViewportState(),
+		{ width: 400, height: 400 }
+		)).toEqual({ x: 50, y: 50, w: 200, h: 200 });
 	});
 });

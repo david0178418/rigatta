@@ -417,6 +417,13 @@ h2 {
 	background: rgba(11, 14, 19, 0.82);
 }
 
+.viewport-marquee {
+	position: absolute;
+	border: 1px solid var(--accent-strong);
+	background: rgba(111, 212, 189, 0.12);
+	pointer-events: none;
+}
+
 .viewport-controls button {
 	min-width: 27px;
 	padding: 4px 6px;
@@ -492,6 +499,9 @@ h2 {
 .asset-row {
 	color: var(--muted);
 	cursor: grab;
+	border: 0;
+	background: transparent;
+	text-align: left;
 }
 
 .asset-row span:last-child {
@@ -517,6 +527,40 @@ h2 {
 .asset-folder-row {
 	color: var(--text);
 	font-weight: 620;
+}
+
+.bone-row,
+.slot-row,
+.attachment-row {
+	width: 100%;
+	border: 0;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+}
+
+.slot-row {
+	padding-left: 24px;
+	color: var(--muted);
+	font-size: 10px;
+}
+
+.attachment-row {
+	padding-left: 40px;
+	color: var(--muted);
+	font-size: 10px;
+}
+
+.bone-row:hover,
+.slot-row:hover,
+.attachment-row:hover,
+.asset-row:hover,
+.bone-row.is-selected,
+.slot-row.is-selected,
+.attachment-row.is-selected,
+.asset-row[aria-pressed="true"] {
+	background: rgba(111, 212, 189, 0.14);
+	color: var(--text);
 }
 
 .asset-glyph {
