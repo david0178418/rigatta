@@ -176,11 +176,13 @@ export interface JsonObject {
 	readonly [key: string]: JsonValue;
 }
 
+export type EventPayload = Readonly<Record<string, JsonValue>>;
+
 export type EventKey = Readonly<{
 	id: EntityId;
 	timeSeconds: number;
 	name: string;
-	payload: Readonly<Record<string, JsonValue>>;
+	payload: EventPayload;
 }>;
 
 export type Clip = Readonly<{

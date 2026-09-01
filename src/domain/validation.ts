@@ -1,5 +1,6 @@
 import { isFiniteLocalTransform } from './coordinates.ts';
 import { isEntityId, type EntityId } from './ids.ts';
+import { isEventPayload, normalizeEventName } from './events.ts';
 import type {
 	Attachment,
 	Bone,
@@ -29,7 +30,8 @@ export type ValidationCode =
 	| 'invalid-clip-settings'
 	| 'invalid-key'
 	| 'invalid-track-target'
-	| 'duplicate-track';
+	| 'duplicate-track'
+	| 'invalid-event';
 
 export type ValidationDiagnostic = Readonly<{
 	code: ValidationCode;
@@ -413,6 +415,19 @@ const validateClips = function validateClips(
 			`clips[${clipIndex}].tracks`,
 			`Duplicate track definition: ${signature}`
 		));
+		const eventDiagnostics = clip.events.flatMap((event, eventIndex) => {
+			const timeIsValid = Number.isFinite(event.timeSeconds)
+				&& event.timeSeconds >= 0
+				&& event.timeSeconds <= clip.durationSeconds;
+			const nameIsValid = normalizeEventName(event.name) !== undefined;
+			const payloadIsValid = isEventPayload(event.payload);
+
+			return [
+				...(timeIsValid ? [] : [diagnostic('invalid-event', `clips[${clipIndex}].events[${eventIndex}].timeSeconds`, 'Event times must be finite and inside the clip duration.')]),
+				...(nameIsValid ? [] : [diagnostic('invalid-event', `clips[${clipIndex}].events[${eventIndex}].name`, 'Event names must be non-empty and no longer than 64 characters.')]),
+				...(payloadIsValid ? [] : [diagnostic('invalid-event', `clips[${clipIndex}].events[${eventIndex}].payload`, 'Event payloads must contain only bounded JSON values.')])
+			];
+		});
 		const trackDiagnostics = clip.tracks.flatMap((track, trackIndex) => {
 			const path = `clips[${clipIndex}].tracks[${trackIndex}]`;
 
@@ -423,7 +438,7 @@ const validateClips = function validateClips(
 			];
 		});
 
-		return [...settingsDiagnostics, ...duplicateDiagnostics, ...trackDiagnostics];
+		return [...settingsDiagnostics, ...duplicateDiagnostics, ...eventDiagnostics, ...trackDiagnostics];
 	});
 };
 

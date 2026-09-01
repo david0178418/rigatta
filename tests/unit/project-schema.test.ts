@@ -46,5 +46,13 @@ describe('runtime project schema', () => {
 			...withEvent,
 			clips: [{ ...withEvent.clips[0], events: [{ ...withEvent.clips[0].events[0], payload: { invalid: undefined } }] }]
 		}).success).toBe(false);
+		expect(parseProject({
+			...withEvent,
+			clips: [{ ...withEvent.clips[0], events: [{ ...withEvent.clips[0].events[0], name: '   ' }] }]
+		}).success).toBe(false);
+		expect(parseProject({
+			...withEvent,
+			clips: [{ ...withEvent.clips[0], events: [{ ...withEvent.clips[0].events[0], payload: { invalid: Number.NaN } }] }]
+		}).success).toBe(false);
 	});
 });

@@ -23,7 +23,7 @@ const cubicBezierSchema = v.object({
 
 const jsonValueSchema: v.GenericSchema<JsonValue> = v.lazy(() => v.union([
 	v.string(),
-	v.number(),
+	finiteNumberSchema,
 	v.boolean(),
 	v.null_(),
 	v.array(jsonValueSchema),
