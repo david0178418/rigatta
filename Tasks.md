@@ -78,10 +78,10 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P4-12** Build numeric transform and opacity inspectors.
 - [x] **P4-13** Implement fixed pivot editing.
 - [x] **P4-14** Implement slot attachment assignment and setup image swapping.
-- [ ] **P4-15** Implement setup draw-order editing.
-- [ ] **P4-16** Implement grid spacing, visibility, and snapping controls.
-- [ ] **P4-17** Connect all setup mutations to history transactions.
-- [ ] **P4-18** Add Setup-mode browser tests.
+- [x] **P4-15** Implement setup draw-order editing.
+- [x] **P4-16** Implement grid spacing, visibility, and snapping controls.
+- [x] **P4-17** Connect all setup mutations to history transactions.
+- [x] **P4-18** Add Setup-mode browser tests.
 
 ## Phase 5: Animate mode
 
