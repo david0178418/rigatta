@@ -128,6 +128,33 @@ export const localTransformToMatrix = function localTransformToMatrix(
 	]);
 };
 
+export const matrixToLocalTransform = function matrixToLocalTransform(
+	matrix: AffineMatrix
+): LocalTransform | undefined {
+	const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
+	const scaleX = Math.hypot(matrix.a, matrix.b);
+
+	if (!Number.isFinite(determinant) || Math.abs(determinant) <= TRANSFORM_EPSILON || scaleX <= TRANSFORM_EPSILON) {
+		return undefined;
+	}
+
+	const rotation = Math.atan2(matrix.b, matrix.a);
+	const cosine = Math.cos(rotation);
+	const sine = Math.sin(rotation);
+	const scaleY = determinant / scaleX;
+	const rotatedC = cosine * matrix.c + sine * matrix.d;
+
+	return {
+		x: matrix.tx,
+		y: matrix.ty,
+		rotation,
+		scaleX,
+		scaleY,
+		shearX: Math.atan(rotatedC / scaleY),
+		shearY: 0
+	};
+};
+
 export const invertAffine = function invertAffine(
 	matrix: AffineMatrix
 ): AffineMatrix | undefined {

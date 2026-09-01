@@ -37,8 +37,10 @@ type ProjectV1 = {
   };
   assets: ImageAsset[];
   bones: Bone[];
+  boneOrder: EntityId[];
   slots: Slot[];
   attachments: Attachment[];
+  setupDrawOrder: EntityId[];
   clips: Clip[];
   exportSettings: ExportSettings;
 };

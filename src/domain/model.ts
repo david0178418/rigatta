@@ -154,7 +154,7 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
 	| JsonPrimitive
 	| readonly JsonValue[]
- 	| JsonObject;
+	| JsonObject;
 
 export interface JsonObject {
 	readonly [key: string]: JsonValue;
@@ -191,6 +191,7 @@ export type Project = Readonly<{
 	logicalCanvas: CanvasSize;
 	assets: readonly ImageAsset[];
 	bones: readonly Bone[];
+	boneOrder: readonly EntityId[];
 	slots: readonly Slot[];
 	attachments: readonly Attachment[];
 	setupDrawOrder: readonly EntityId[];
@@ -227,6 +228,7 @@ export const createEmptyProject = function createEmptyProject(
 		logicalCanvas: seed.logicalCanvas ?? DEFAULT_CANVAS_SIZE,
 		assets: [],
 		bones: [],
+		boneOrder: [],
 		slots: [],
 		attachments: [],
 		setupDrawOrder: [],

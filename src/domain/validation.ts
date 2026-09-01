@@ -19,6 +19,7 @@ export type ValidationCode =
 	| 'missing-reference'
 	| 'multiple-roots'
 	| 'bone-cycle'
+	| 'invalid-bone-order'
 	| 'invalid-setup-draw-order'
 	| 'invalid-attachment'
 	| 'invalid-asset';
@@ -219,11 +220,23 @@ const validateReferences = function validateReferences(
 	const setupDrawOrderDiagnostics = setupDrawOrderIsValid
 		? []
 		: [diagnostic('invalid-setup-draw-order', 'setupDrawOrder', 'Setup draw order must contain every slot exactly once.')];
+	const boneOrderIsValid = project.boneOrder.length === project.bones.length
+		&& !hasDuplicateValues(project.boneOrder)
+		&& project.boneOrder.every((boneId) => boneIds.has(boneId));
+	const boneOrderDiagnostics = boneOrderIsValid
+		? []
+		: [diagnostic('invalid-bone-order', 'boneOrder', 'Bone order must contain every bone exactly once.')];
 	const unusedAttachmentIds = attachmentIds.size < project.attachments.length
 		? [diagnostic('duplicate-id', 'attachments', 'Attachment IDs must be unique.')]
 		: [];
 
-	return [...slotDiagnostics, ...attachmentDiagnostics, ...setupDrawOrderDiagnostics, ...unusedAttachmentIds];
+	return [
+		...slotDiagnostics,
+		...attachmentDiagnostics,
+		...setupDrawOrderDiagnostics,
+		...boneOrderDiagnostics,
+		...unusedAttachmentIds
+	];
 };
 
 export const validateProject = function validateProject(

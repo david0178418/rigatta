@@ -31,12 +31,12 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 ## Phase 2: domain model and history
 
 - [x] **P2-01** Implement opaque IDs and immutable project constructors. Depends on P0-02.
-- [ ] **P2-02** Implement bones, slots, image attachments, point attachments, and rectangle attachments.
+- [x] **P2-02** Implement bones, slots, image attachments, point attachments, and rectangle attachments.
 - [x] **P2-03** Implement hierarchy and reference validation.
-- [ ] **P2-04** Implement immutable create, rename, delete, reorder, and reparent operations. Depends on P2-03.
+- [x] **P2-04** Implement immutable create, rename, delete, reorder, and reparent operations. Depends on P2-03.
 - [x] **P2-05** Implement local affine transform construction. Depends on P0-01.
-- [ ] **P2-06** Implement local-to-world and world-to-local transforms. Depends on P2-05.
-- [ ] **P2-07** Implement world-pose-preserving reparenting. Depends on P2-04 and P2-06.
+- [x] **P2-06** Implement local-to-world and world-to-local transforms. Depends on P2-05.
+- [x] **P2-07** Implement world-pose-preserving reparenting. Depends on P2-04 and P2-06.
 - [ ] **P2-08** Implement clips, typed property tracks, and keys.
 - [ ] **P2-09** Implement stepped and linear interpolation.
 - [ ] **P2-10** Implement cubic Bezier evaluation and segment metadata.
