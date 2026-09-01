@@ -136,7 +136,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 ## Phase 8: hardening and release gate
 
 - [x] **P8-01** Add keyboard shortcuts and a discoverable shortcut reference.
-- [ ] **P8-02** Add missing-asset, duplicate-name, and invalid-reference diagnostics.
+- [x] **P8-02** Add missing-asset, duplicate-name, and invalid-reference diagnostics.
 - [ ] **P8-03** Add logical-canvas clipping and overflow warnings.
 - [ ] **P8-04** Add atlas-size, storage-quota, and export-memory diagnostics.
 - [ ] **P8-05** Add destructive-operation confirmation where history cannot recover data.

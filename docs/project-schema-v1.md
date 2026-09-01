@@ -139,7 +139,8 @@ Runtime validation must reject a project when any of these are false:
 - Names are non-empty strings after trimming.
 - Every ID is valid and unique.
 - Every parent, bone, slot, asset, attachment, and track reference resolves.
-- The bone parent graph has exactly one root and contains no cycles.
+- The bone parent graph has exactly one root and contains no cycles once bones
+  exist. An empty project may have no bones yet.
 - A slot references a bone and its setup attachment is either null or an image
   attachment belonging to that slot.
 - Image opacity and normalized pivots are in `[0, 1]`.

@@ -55,6 +55,10 @@ const validProject = function validProject(): Project {
 };
 
 describe('project validation', () => {
+	test('accepts an empty project before a rig is authored', () => {
+		expect(validateProject(createEmptyProject({ id: projectId }))).toEqual([]);
+	});
+
 	test('accepts a complete one-root project', () => {
 		const project = validProject();
 
@@ -69,7 +73,35 @@ describe('project validation', () => {
 			bones: [{ ...project.bones[0], parentId: '123e4567-e89b-42d3-a456-426614174099' }]
 		};
 
-		expect(validateProject(invalidProject).some(({ code }) => code === 'missing-reference')).toBe(true);
+		expect(validateProject(invalidProject).some(({ code }) => code === 'invalid-reference')).toBe(true);
+	});
+
+	test('reports missing image assets', () => {
+		const project = validProject();
+		const invalidProject = {
+			...project,
+			attachments: [{ ...project.attachments[0], assetId: '123e4567-e89b-42d3-a456-426614174099' }]
+		};
+		const diagnostic = validateProject(invalidProject).find(({ code }) => code === 'missing-asset');
+
+		expect(diagnostic).toMatchObject({
+			path: 'attachments[0].assetId'
+		});
+	});
+
+	test('reports duplicate names within entity collections', () => {
+		const project = validProject();
+		const invalidProject = {
+			...project,
+			clips: [
+				{ id: clipId, name: 'walk', durationSeconds: 1, fps: 12, loop: true, tracks: [], events: [] },
+				{ id: trackId, name: ' walk ', durationSeconds: 1, fps: 12, loop: true, tracks: [], events: [] }
+			]
+		};
+		const diagnostics = validateProject(invalidProject).filter(({ code }) => code === 'duplicate-name');
+
+		expect(diagnostics).toHaveLength(1);
+		expect(diagnostics[0]).toMatchObject({ path: 'clips[1].name' });
 	});
 
 	test('reports cycles and multiple roots', () => {
@@ -105,7 +137,7 @@ describe('project validation', () => {
 		const codes = validateProject(invalidProject).map(({ code }) => code);
 
 		expect(codes).toContain('duplicate-id');
-		expect(codes).toContain('invalid-attachment');
+		expect(codes).toContain('invalid-reference');
 	});
 
 	test('validates track targets, key order, and duplicate track definitions', () => {

@@ -20,7 +20,9 @@ export type ValidationCode =
 	| 'invalid-name'
 	| 'invalid-canvas'
 	| 'invalid-transform'
-	| 'missing-reference'
+	| 'missing-asset'
+	| 'duplicate-name'
+	| 'invalid-reference'
 	| 'multiple-roots'
 	| 'bone-cycle'
 	| 'invalid-bone-order'
@@ -64,6 +66,34 @@ const findAttachment = function findAttachment(
 
 const hasDuplicateValues = function hasDuplicateValues<TValue>(values: readonly TValue[]): boolean {
 	return values.some((value, index) => values.indexOf(value) !== index);
+};
+
+const duplicateNameDiagnosticsFor = function duplicateNameDiagnosticsFor(
+	collection: string,
+	entries: readonly Readonly<{ name: string }>[]
+): readonly ValidationDiagnostic[] {
+	return entries.flatMap((entry, index) => {
+		const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+		const firstIndex = name.length === 0
+			? index
+			: entries.findIndex((candidate) => candidate.name.trim() === name);
+
+		return firstIndex === index
+			? []
+			: [diagnostic('duplicate-name', `${collection}[${index}].name`, `Duplicate ${collection.slice(0, -1)} name: ${name}.`)];
+	});
+};
+
+const validateDuplicateNames = function validateDuplicateNames(
+	project: Project
+): readonly ValidationDiagnostic[] {
+	return [
+		...duplicateNameDiagnosticsFor('assets', project.assets),
+		...duplicateNameDiagnosticsFor('bones', project.bones),
+		...duplicateNameDiagnosticsFor('slots', project.slots),
+		...duplicateNameDiagnosticsFor('attachments', project.attachments),
+		...duplicateNameDiagnosticsFor('clips', project.clips)
+	];
 };
 
 const validateIds = function validateIds(project: Project): readonly ValidationDiagnostic[] {
@@ -111,6 +141,7 @@ const validateBasicFields = function validateBasicFields(
 		...(project.schemaVersion !== PROJECT_SCHEMA_VERSION
 			? [diagnostic('invalid-schema-version', 'schemaVersion', 'Unsupported project schema version.')]
 			: []),
+		...validateDuplicateNames(project),
 		...(canvasIsValid ? [] : [diagnostic('invalid-canvas', 'logicalCanvas', 'Canvas dimensions must be positive finite numbers.')]),
 		...names.flatMap((name, index) => typeof name === 'string' && name.trim().length > 0
 			? []
@@ -149,7 +180,7 @@ const validateBoneHierarchy = function validateBoneHierarchy(
 	project: Project
 ): readonly ValidationDiagnostic[] {
 	const roots = project.bones.filter((bone) => bone.parentId === null);
-	const rootDiagnostic = roots.length === 1
+	const rootDiagnostic = project.bones.length === 0 || roots.length === 1
 		? []
 		: [diagnostic('multiple-roots', 'bones', 'A rig must contain exactly one root bone.')];
 	const missingParents = project.bones.flatMap((bone, index) => {
@@ -157,7 +188,7 @@ const validateBoneHierarchy = function validateBoneHierarchy(
 			return [];
 		}
 
-		return [diagnostic('missing-reference', `bones[${index}].parentId`, 'Bone parent does not exist.')];
+		return [diagnostic('invalid-reference', `bones[${index}].parentId`, 'Bone parent does not exist.')];
 	});
 const hasCycleFrom = function hasCycleFrom(
 	bone: Bone,
@@ -190,7 +221,7 @@ const validateReferences = function validateReferences(
 	const slotDiagnostics = project.slots.flatMap((slot, index) => {
 		const boneReference = boneIds.has(slot.boneId)
 			? []
-			: [diagnostic('missing-reference', `slots[${index}].boneId`, 'Slot bone does not exist.')];
+			: [diagnostic('invalid-reference', `slots[${index}].boneId`, 'Slot bone does not exist.')];
 		const setupAttachment = slot.setupAttachmentId === null
 			? undefined
 			: findAttachment(project, slot.setupAttachmentId);
@@ -198,7 +229,7 @@ const validateReferences = function validateReferences(
 			setupAttachment?.kind === 'image' && setupAttachment.slotId === slot.id
 		)
 			? []
-			: [diagnostic('invalid-attachment', `slots[${index}].setupAttachmentId`, 'Setup attachment must be an image attachment belonging to the slot.')];
+			: [diagnostic('invalid-reference', `slots[${index}].setupAttachmentId`, 'Setup attachment must be an image attachment belonging to the slot.')];
 
 		return [...boneReference, ...setupReference];
 	});
@@ -206,23 +237,23 @@ const validateReferences = function validateReferences(
 		if (attachment.kind === 'image') {
 			const assetReference = assetIds.has(attachment.assetId)
 				? []
-				: [diagnostic('missing-reference', `attachments[${index}].assetId`, 'Image asset does not exist.')];
+				: [diagnostic('missing-asset', `attachments[${index}].assetId`, 'Image attachment references an asset that does not exist.')];
 			const slot = findSlot(project, attachment.slotId);
 			const slotReference = slot && slotIds.has(attachment.slotId)
 				? []
-				: [diagnostic('missing-reference', `attachments[${index}].slotId`, 'Image attachment slot does not exist.')];
-			const ownershipReference = slot && slot.id === attachment.slotId ? [] : [
-				diagnostic('invalid-attachment', `attachments[${index}].slotId`, 'Image attachment slot reference is invalid.')
-			];
+				: [diagnostic('invalid-reference', `attachments[${index}].slotId`, 'Image attachment slot does not exist.')];
 
-			return [...assetReference, ...slotReference, ...ownershipReference];
+			return [...assetReference, ...slotReference];
 		}
 
 		const boneReference = boneIds.has(attachment.boneId)
 			? []
-			: [diagnostic('missing-reference', `attachments[${index}].boneId`, 'Gameplay attachment bone does not exist.')];
+			: [diagnostic('invalid-reference', `attachments[${index}].boneId`, 'Gameplay attachment bone does not exist.')];
 		return boneReference;
 	});
+	const setupDrawOrderReferences = project.setupDrawOrder.flatMap((slotId, index) => slotIds.has(slotId)
+		? []
+		: [diagnostic('invalid-reference', `setupDrawOrder[${index}]`, 'Setup draw order references a slot that does not exist.')]);
 	const setupDrawOrderIsValid = project.setupDrawOrder.length === project.slots.length
 		&& !hasDuplicateValues(project.setupDrawOrder)
 		&& project.setupDrawOrder.every((slotId) => slotIds.has(slotId));
@@ -235,6 +266,9 @@ const validateReferences = function validateReferences(
 	const boneOrderDiagnostics = boneOrderIsValid
 		? []
 		: [diagnostic('invalid-bone-order', 'boneOrder', 'Bone order must contain every bone exactly once.')];
+	const boneOrderReferences = project.boneOrder.flatMap((boneId, index) => boneIds.has(boneId)
+		? []
+		: [diagnostic('invalid-reference', `boneOrder[${index}]`, 'Bone order references a bone that does not exist.')]);
 	const unusedAttachmentIds = attachmentIds.size < project.attachments.length
 		? [diagnostic('duplicate-id', 'attachments', 'Attachment IDs must be unique.')]
 		: [];
@@ -242,7 +276,9 @@ const validateReferences = function validateReferences(
 	return [
 		...slotDiagnostics,
 		...attachmentDiagnostics,
+		...setupDrawOrderReferences,
 		...setupDrawOrderDiagnostics,
+		...boneOrderReferences,
 		...boneOrderDiagnostics,
 		...unusedAttachmentIds
 	];
