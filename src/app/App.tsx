@@ -25,6 +25,7 @@ import type { ReadyStartup, StartupState } from './startup.ts';
 import { loadEditorStartup } from './startup.ts';
 import { buildAssetLibraryEntries } from './asset-library.ts';
 import { entitiesInBounds, hitTestProject } from './hit-testing.ts';
+import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hierarchy-dnd.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommand, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
@@ -38,6 +39,8 @@ const transformToolLabels: Record<TransformTool, string> = {
 	scale: 'Scale',
 	shear: 'Shear'
 };
+
+const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
 
 const modeLabels: Record<EditorMode, string> = {
 	setup: 'Setup',
@@ -190,6 +193,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [assetError, setAssetError] = useState<string | undefined>(undefined);
 	const [selection, setSelection] = useState<Selection>(createSelection);
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
+	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
@@ -411,6 +415,47 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 	const selectCanvasMarquee = function selectCanvasMarquee(bounds: Readonly<{ x: number; y: number; w: number; h: number }>, additive: boolean): void {
 		setSelection((current) => selectEntities(current, entitiesInBounds(project, bounds), additive));
+	};
+
+	const dragBone = function dragBone(event: DragEvent<HTMLElement>, boneId: EntityId): void {
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData(BONE_DRAG_MIME, boneId);
+	};
+
+	const dragOverBone = function dragOverBone(event: DragEvent<HTMLElement>, boneId: EntityId): void {
+		if (!event.dataTransfer.types.includes(BONE_DRAG_MIME)) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'move';
+		const bounds = event.currentTarget.getBoundingClientRect();
+
+		setBoneDropPreview({
+			boneId,
+			zone: dropZoneForClientY(bounds.top, bounds.height, event.clientY)
+		});
+	};
+
+	const dropBone = function dropBone(event: DragEvent<HTMLElement>, targetId: EntityId): void {
+		event.preventDefault();
+		setBoneDropPreview(undefined);
+		const sourceId = event.dataTransfer.getData(BONE_DRAG_MIME);
+
+		if (!sourceId) {
+			return;
+		}
+
+		const bounds = event.currentTarget.getBoundingClientRect();
+		const zone = dropZoneForClientY(bounds.top, bounds.height, event.clientY);
+		const commands = boneDropCommands(project, sourceId, targetId, zone);
+
+		if (!commands) {
+			setCommandError('That bone drop would create an invalid hierarchy.');
+			return;
+		}
+
+		applyCommandSequence(commands);
 	};
 
 	const selectedEntity = selection.at(-1);
@@ -788,10 +833,20 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							<div className="bone-tree" aria-label="Bone hierarchy">
 								{orderedBones.flatMap((bone) => [
 									<button
-										className={isSelected(selection, { kind: 'bone', id: bone.id }) ? 'bone-row is-selected' : 'bone-row'}
+										className={[
+											isSelected(selection, { kind: 'bone', id: bone.id }) ? 'bone-row is-selected' : 'bone-row',
+											boneDropPreview?.boneId === bone.id ? `drop-${boneDropPreview.zone}` : ''
+										].filter(Boolean).join(' ')}
+										draggable
 										key={bone.id}
 										type="button"
+										data-bone-id={bone.id}
+										data-parent-id={bone.parentId ?? 'root'}
 										onClick={(event) => updateSelection({ kind: 'bone', id: bone.id }, event.metaKey || event.ctrlKey)}
+										onDragStart={(event) => dragBone(event, bone.id)}
+										onDragEnd={() => setBoneDropPreview(undefined)}
+										onDragOver={(event) => dragOverBone(event, bone.id)}
+										onDrop={(event) => dropBone(event, bone.id)}
 										aria-pressed={isSelected(selection, { kind: 'bone', id: bone.id })}
 									>
 										<span className="bone-dot" aria-hidden="true" />{bone.name}

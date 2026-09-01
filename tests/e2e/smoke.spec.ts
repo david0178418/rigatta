@@ -148,3 +148,24 @@ test('builds and edits a hierarchy through the inspector', async ({ page }) => {
 	await page.getByRole('button', { name: 'Delete' }).click();
 	await expect(page.getByRole('button', { name: 'point', exact: true })).toHaveCount(0);
 });
+
+test('reparents a bone through hierarchy drag and drop', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add child bone' }).click();
+
+	const bones = page.locator('.bone-row');
+	await expect(bones).toHaveCount(3);
+	const targetId = await bones.nth(1).getAttribute('data-bone-id');
+
+	if (!targetId) {
+		throw new Error('The target bone ID is unavailable.');
+	}
+
+	await bones.nth(2).dragTo(bones.nth(1));
+	await expect(bones.nth(2)).toHaveAttribute('data-parent-id', targetId);
+});
