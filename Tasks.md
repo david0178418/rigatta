@@ -7,8 +7,8 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P0-01** Define the coordinate system, canvas origin, angle units, and affine transform order.
 - [x] **P0-02** Define project schema version 1 and stable entity ID rules. Depends on P0-01.
 - [x] **P0-03** Define the `.boneanim` manifest and archive layout. Depends on P0-02.
-- [ ] **P0-04** Define standard PixiJS atlas output and companion gameplay metadata schemas. Depends on P0-01.
-- [ ] **P0-05** Prototype PixiJS fixed-canvas rendering and PNG extraction. Depends on P0-01.
+- [x] **P0-04** Define standard PixiJS atlas output and companion gameplay metadata schemas. Depends on P0-01.
+- [x] **P0-05** Prototype PixiJS fixed-canvas rendering and PNG extraction. Depends on P0-01.
 - [ ] **P0-06** Prototype alpha trimming and verify `sourceSize` and `spriteSourceSize` alignment by reloading the atlas in PixiJS. Depends on P0-04 and P0-05.
 - [x] **P0-07** Prototype Chrome directory picker and recursive directory drop traversal.
 - [x] **P0-08** Prototype IndexedDB image blob persistence and reload.
@@ -65,8 +65,8 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 ## Phase 4: Setup mode
 
 - [ ] **P4-01** Implement the folder-based searchable image library.
-- [ ] **P4-02** Create the PixiJS renderer adapter and lifecycle boundary.
-- [ ] **P4-03** Render the fixed canvas, grid, setup pose, bones, and attachments.
+- [x] **P4-02** Create the PixiJS renderer adapter and lifecycle boundary.
+- [x] **P4-03** Render the fixed canvas, grid, setup pose, bones, and attachments.
 - [ ] **P4-04** Implement viewport pan and zoom.
 - [ ] **P4-05** Implement viewport, tree, and library selection synchronization.
 - [ ] **P4-06** Implement click, additive, and marquee multi-selection.
