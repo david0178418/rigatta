@@ -17,15 +17,15 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 
 ## Phase 1: project foundation
 
-- [ ] **P1-01** Create Bun package metadata and lockfile.
-- [ ] **P1-02** Add the HTML, TypeScript, React, and CSS application entry points.
-- [ ] **P1-03** Configure strict TypeScript based on `../math-game`.
-- [ ] **P1-04** Configure ESLint, including explicit `any` rejection.
-- [ ] **P1-05** Add Bun development and production build scripts.
-- [ ] **P1-06** Configure Bun Test and baseline unit test fixtures.
-- [ ] **P1-07** Configure Playwright and a Chrome smoke test.
-- [ ] **P1-08** Add `typecheck`, `lint`, `test`, `test:e2e`, `build`, and `check` scripts.
-- [ ] **P1-09** Build the CSS-token foundation and desktop editor shell.
+- [x] **P1-01** Create Bun package metadata and lockfile.
+- [x] **P1-02** Add the HTML, TypeScript, React, and CSS application entry points.
+- [x] **P1-03** Configure strict TypeScript based on `../math-game`.
+- [x] **P1-04** Configure ESLint, including explicit `any` rejection.
+- [x] **P1-05** Add Bun development and production build scripts.
+- [x] **P1-06** Configure Bun Test and baseline unit test fixtures.
+- [x] **P1-07** Configure Playwright and a Chrome smoke test.
+- [x] **P1-08** Add `typecheck`, `lint`, `test`, `test:e2e`, `build`, and `check` scripts.
+- [x] **P1-09** Build the CSS-token foundation and desktop editor shell.
 - [ ] **P1-10** Add startup loading, fatal error, and unsupported-browser states.
 
 ## Phase 2: domain model and history
