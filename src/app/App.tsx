@@ -17,6 +17,7 @@ import { createAutosaveScheduler } from '../persistence/autosave.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { ReadyStartup, StartupState } from './startup.ts';
 import { loadEditorStartup } from './startup.ts';
+import { ViewportCanvas } from './ViewportCanvas.tsx';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -312,10 +313,13 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
 					</div>
 					<div className="viewport-stage">
-						<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
-							<span>Drop image parts here</span>
-							<small>Fixed logical canvas · {project.logicalCanvas.width} × {project.logicalCanvas.height}</small>
-						</div>
+						<ViewportCanvas project={project} assets={assetBlobs} />
+						{project.bones.length === 0 && project.assets.length === 0 && (
+							<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
+								<span>Drop image parts here</span>
+								<small>Fixed logical canvas · {project.logicalCanvas.width} × {project.logicalCanvas.height}</small>
+							</div>
+						)}
 					</div>
 				</section>
 

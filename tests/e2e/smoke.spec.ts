@@ -21,3 +21,24 @@ test('recovers a committed root edit after reload', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Untitled project' })).toBeVisible();
 	await expect(page.getByText('root', { exact: true })).toBeVisible();
 });
+
+test('renders a fixed logical canvas and exposes PNG extraction', async ({ page }) => {
+	await page.goto('/');
+
+	const canvas = page.locator('canvas.pixi-canvas');
+	await expect(canvas).toBeVisible();
+	expect(await canvas.getAttribute('width')).toBe('1024');
+	expect(await canvas.getAttribute('height')).toBe('1024');
+
+	const dataUrlPrefix = await page.evaluate(() => {
+		const renderedCanvas = document.querySelector<HTMLCanvasElement>('canvas.pixi-canvas');
+
+		if (!renderedCanvas) {
+			throw new Error('The Pixi canvas was not mounted.');
+		}
+
+		return renderedCanvas.toDataURL('image/png').slice(0, 22);
+	});
+
+	expect(dataUrlPrefix).toBe('data:image/png;base64,');
+});
