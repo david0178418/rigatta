@@ -31,4 +31,19 @@ describe('built-in example project', () => {
 		expect(sampled.frames).toHaveLength(12);
 		expect(sampled.frames[6]?.gameplay.points[0]?.id).toBe('123e4567-e89b-42d3-a456-426614174106');
 	});
+
+	test('returns the animated arm to its starting rotation at the loop boundary', () => {
+		const clip = exampleExportFixture.project.clips[0];
+		const track = clip?.tracks[0];
+
+		if (!track || track.kind !== 'bone-transform') {
+			throw new Error('The example project is missing its arm transform track.');
+		}
+
+		expect(track.keys.map((key) => [key.timeSeconds, key.value])).toEqual([
+			[0, -0.15],
+			[0.5, 0.15],
+			[1, -0.15]
+		]);
+	});
 });

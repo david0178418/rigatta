@@ -17,6 +17,7 @@ export const EXAMPLE_CLIP_ID = '123e4567-e89b-42d3-a456-426614174108';
 export const EXAMPLE_TRACK_ID = '123e4567-e89b-42d3-a456-426614174109';
 export const EXAMPLE_KEY_START_ID = '123e4567-e89b-42d3-a456-42661417410a';
 export const EXAMPLE_KEY_END_ID = '123e4567-e89b-42d3-a456-42661417410b';
+export const EXAMPLE_KEY_LOOP_ID = '123e4567-e89b-42d3-a456-42661417410d';
 export const EXAMPLE_EVENT_ID = '123e4567-e89b-42d3-a456-42661417410c';
 
 const EXAMPLE_IMAGE_SIZE = 32;
@@ -122,7 +123,8 @@ export const exampleProject: Project = {
 			property: 'rotation',
 			keys: [
 				{ id: EXAMPLE_KEY_START_ID, timeSeconds: 0, value: -0.15, interpolation: 'linear', curve: null },
-				{ id: EXAMPLE_KEY_END_ID, timeSeconds: 0.5, value: 0.15, interpolation: 'linear', curve: null }
+				{ id: EXAMPLE_KEY_END_ID, timeSeconds: 0.5, value: 0.15, interpolation: 'linear', curve: null },
+				{ id: EXAMPLE_KEY_LOOP_ID, timeSeconds: 1, value: -0.15, interpolation: 'linear', curve: null }
 			]
 		}],
 		events: [{
