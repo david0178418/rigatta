@@ -107,7 +107,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 
 - [x] **P6-01** Define and validate event names and structured payload values.
 - [x] **P6-02** Build event-track creation, editing, movement, and deletion.
-- [ ] **P6-03** Implement point attachment editor visualization and selection.
+- [x] **P6-03** Implement point attachment editor visualization and selection.
 - [ ] **P6-04** Implement keyable point transform and enabled state.
 - [ ] **P6-05** Implement rectangle attachment editor visualization and handles.
 - [ ] **P6-06** Implement keyable rectangle transform, size, rotation, and enabled state.

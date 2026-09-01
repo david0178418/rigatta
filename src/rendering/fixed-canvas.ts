@@ -227,19 +227,21 @@ const addGameplayAttachments = function addGameplayAttachments(
 			const boneId = attachment.boneId;
 			const boneMatrix = matrixByBone.get(boneId);
 
-			if (!boneMatrix || !attachment.enabled) {
+			if (!boneMatrix) {
 				return;
 			}
 
 			const worldMatrix = multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform));
 			const graphics = new Graphics();
+			const alpha = attachment.enabled ? 0.85 : 0.3;
 
 			if (attachment.kind === 'point') {
-				graphics.circle(0, 0, 6).fill({ color: 0xf0b86d, alpha: 0.85 });
+				graphics.moveTo(-8, 0).lineTo(8, 0).moveTo(0, -8).lineTo(0, 8).circle(0, 0, 5)
+					.stroke({ width: 2, color: 0xf0b86d, alpha });
 			} else {
 				graphics.rect(-attachment.width / 2, -attachment.height / 2, attachment.width, attachment.height)
-					.fill({ color: 0xf0b86d, alpha: 0.18 })
-					.stroke({ width: 2, color: 0xf0b86d, alpha: 0.9 });
+					.fill({ color: 0xf0b86d, alpha: attachment.enabled ? 0.18 : 0.06 })
+					.stroke({ width: 2, color: 0xf0b86d, alpha });
 			}
 
 			graphics.setFromMatrix(pixiMatrix(worldMatrix));
@@ -278,7 +280,7 @@ const addSelectionGuides = function addSelectionGuides(
 			: attachment.boneId;
 		const boneMatrix = boneId ? matrixByBone.get(boneId) : undefined;
 
-		if (!boneMatrix || (attachment.kind !== 'image' && !attachment.enabled)) {
+		if (!boneMatrix) {
 			return;
 		}
 
@@ -294,7 +296,7 @@ const addSelectionGuides = function addSelectionGuides(
 
 			guide.rect(-attachment.pivotX * asset.width, -attachment.pivotY * asset.height, asset.width, asset.height);
 		} else if (attachment.kind === 'point') {
-			guide.circle(0, 0, 9);
+			guide.moveTo(-11, 0).lineTo(11, 0).moveTo(0, -11).lineTo(0, 11).circle(0, 0, 9);
 		} else {
 			guide.rect(-attachment.width / 2, -attachment.height / 2, attachment.width, attachment.height);
 		}

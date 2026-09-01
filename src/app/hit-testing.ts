@@ -76,7 +76,7 @@ const pointInAttachment = function pointInAttachment(
 		? invertAffine(multiplyAffine(worldMatrix, localTransformToMatrix(attachment.transform)))
 		: undefined;
 
-	if (!inverse || !attachment.enabled) {
+	if (!inverse) {
 		return false;
 	}
 
@@ -220,7 +220,7 @@ export const entitiesInBounds = function entitiesInBounds(
 	const evaluation = evaluateBoneWorldMatrices(project);
 	const activeImageIds = new Set(project.slots.flatMap((slot) => slot.setupAttachmentId ? [slot.setupAttachmentId] : []));
 	const attachmentEntities = project.attachments.flatMap((attachment) => {
-		const isVisible = attachment.kind === 'image' ? activeImageIds.has(attachment.id) : attachment.enabled;
+		const isVisible = attachment.kind === 'image' ? activeImageIds.has(attachment.id) : true;
 		const attachmentBoundsValue = isVisible ? attachmentBounds(project, attachment, evaluation.matrices) : undefined;
 
 		return attachmentBoundsValue && intersects(bounds, attachmentBoundsValue)

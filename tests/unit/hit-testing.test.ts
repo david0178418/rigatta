@@ -28,4 +28,24 @@ describe('logical canvas hit testing', () => {
 		expect(entities).toContainEqual({ kind: 'attachment', id: fixtureIds.image });
 		expect(entities).toContainEqual({ kind: 'bone', id: fixtureIds.child });
 	});
+
+	test('keeps disabled gameplay attachments visible to editor selection', () => {
+		const source = createRigProject();
+		const project = {
+			...source,
+			attachments: source.attachments.map((attachment) => attachment.kind === 'point'
+				? { ...attachment, enabled: false }
+				: attachment)
+		};
+		const matrix = evaluateBoneWorldMatrices(project).matrices.get(fixtureIds.child);
+
+		if (!matrix) {
+			throw new Error('Fixture child matrix is unavailable.');
+		}
+
+		const point = transformPoint(matrix, { x: 32, y: 0 });
+
+		expect(hitTestProject(project, point)).toEqual({ kind: 'attachment', id: fixtureIds.point });
+		expect(entitiesInBounds(project, { x: point.x - 4, y: point.y - 4, w: 8, h: 8 })).toContainEqual({ kind: 'attachment', id: fixtureIds.point });
+	});
 });
