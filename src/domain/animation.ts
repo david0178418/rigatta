@@ -94,6 +94,12 @@ export type BooleanKeyInput = Readonly<{
 	value: boolean;
 }>;
 
+export type KeyTimeChange = Readonly<{
+	trackId: EntityId;
+	keyId: EntityId;
+	timeSeconds: number;
+}>;
+
 const success = function success<TValue>(value: TValue): OperationResult<TValue> {
 	return { ok: true, value };
 };
@@ -432,44 +438,52 @@ const cloneTrack = function cloneTrack(
 	return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
 };
 
-const movedKeys = function movedKeys<TKey extends TimedKey>(
+const retimedKeys = function retimedKeys<TKey extends TimedKey>(
 	keys: readonly TKey[],
-	keyId: EntityId,
-	timeSeconds: number
+	changes: readonly KeyTimeChange[]
 ): readonly TKey[] {
+	const changeByKey = new Map(changes.map((change) => [change.keyId, change] as const));
+
 	return keys
-		.map((key) => key.id === keyId ? { ...key, timeSeconds } : key)
+		.map((key) => {
+			const change = changeByKey.get(key.id);
+
+			return change ? { ...key, timeSeconds: change.timeSeconds } : key;
+		})
 		.sort((left, right) => left.timeSeconds - right.timeSeconds);
 };
 
-const movedTrack = function movedTrack(
+const retimedTrack = function retimedTrack(
 	track: Track,
-	keyId: EntityId,
-	timeSeconds: number
+	changes: readonly KeyTimeChange[]
 ): Track {
-	if (track.kind === 'bone-transform') {
-		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
-	}
-	if (track.kind === 'attachment-transform') {
-		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
-	}
-	if (track.kind === 'attachment-opacity') {
-		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
-	}
-	if (track.kind === 'slot-attachment') {
-		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
-	}
-	if (track.kind === 'slot-draw-order') {
-		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
-	}
-	if (track.kind === 'point-enabled') {
-		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
-	}
-	if (track.kind === 'rectangle-size') {
-		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	if (changes.length === 0) {
+		return track;
 	}
 
-	return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	if (track.kind === 'bone-transform') {
+		return { ...track, keys: retimedKeys(track.keys, changes) };
+	}
+	if (track.kind === 'attachment-transform') {
+		return { ...track, keys: retimedKeys(track.keys, changes) };
+	}
+	if (track.kind === 'attachment-opacity') {
+		return { ...track, keys: retimedKeys(track.keys, changes) };
+	}
+	if (track.kind === 'slot-attachment') {
+		return { ...track, keys: retimedKeys(track.keys, changes) };
+	}
+	if (track.kind === 'slot-draw-order') {
+		return { ...track, keys: retimedKeys(track.keys, changes) };
+	}
+	if (track.kind === 'point-enabled') {
+		return { ...track, keys: retimedKeys(track.keys, changes) };
+	}
+	if (track.kind === 'rectangle-size') {
+		return { ...track, keys: retimedKeys(track.keys, changes) };
+	}
+
+	return { ...track, keys: retimedKeys(track.keys, changes) };
 };
 
 const copiedKeys = function copiedKeys<TKey extends TimedKey>(
@@ -593,20 +607,47 @@ export const moveKey = function moveKey(
 	keyId: EntityId,
 	timeSeconds: number
 ): OperationResult<Project> {
+	return retimeKeys(project, clipId, [{ trackId, keyId, timeSeconds }]);
+};
+
+export const retimeKeys = function retimeKeys(
+	project: Project,
+	clipId: EntityId,
+	changes: readonly KeyTimeChange[]
+): OperationResult<Project> {
 	const clip = findClip(project, clipId);
-	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
 
-	if (!clip || !track || !track.keys.some((key) => key.id === keyId)) {
-		return failure('not-found', 'Animation key does not exist.');
+	if (!clip || changes.length === 0) {
+		return failure('not-found', 'Animation clip or keys do not exist.');
 	}
-	if (!isValidKeyTime(clip, timeSeconds)) {
-		return failure('invalid-value', 'Key time must be inside the clip duration.');
-	}
-	if (track.keys.some((key) => key.id !== keyId && key.timeSeconds === timeSeconds)) {
-		return failure('invalid-value', 'A track may contain only one key at a given time.');
+	if (new Set(changes.map((change) => change.keyId)).size !== changes.length) {
+		return failure('invalid-value', 'Each animation key may be retimed only once.');
 	}
 
-	return updateTrack(project, clipId, trackId, (currentTrack) => movedTrack(currentTrack, keyId, timeSeconds));
+	const changesByTrack = new Map<EntityId, readonly KeyTimeChange[]>();
+	changes.forEach((change) => {
+		const current = changesByTrack.get(change.trackId) ?? [];
+
+		changesByTrack.set(change.trackId, [...current, change]);
+	});
+
+	for (const [trackId, trackChanges] of changesByTrack) {
+		const track = clip.tracks.find((candidate) => candidate.id === trackId);
+		const changedKeyIds = new Set(trackChanges.map((change) => change.keyId));
+		const targetTimes = trackChanges.map((change) => change.timeSeconds);
+
+		if (!track || trackChanges.some((change) => !track.keys.some((key) => key.id === change.keyId) || !isValidKeyTime(clip, change.timeSeconds))) {
+			return failure('invalid-value', 'Retimed keys must belong to the clip and stay inside its duration.');
+		}
+		if (new Set(targetTimes).size !== targetTimes.length || track.keys.some((key) => !changedKeyIds.has(key.id) && targetTimes.includes(key.timeSeconds))) {
+			return failure('invalid-value', 'Retimed keys may not overlap another key on the same track.');
+		}
+	}
+
+	return updateClip(project, clipId, (currentClip) => ({
+		...currentClip,
+		tracks: currentClip.tracks.map((track) => retimedTrack(track, changesByTrack.get(track.id) ?? []))
+	}));
 };
 
 export const copyKey = function copyKey(

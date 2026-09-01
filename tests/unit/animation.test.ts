@@ -11,6 +11,7 @@ import {
 	deleteTrack,
 	duplicateClip,
 	moveKey,
+	retimeKeys,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
@@ -204,5 +205,34 @@ describe('typed animation tracks', () => {
 		expect(track?.keys.map((key) => [key.id, key.timeSeconds])).toEqual([[duplicateKeyId, 0.5], [keyIds[2], 1]]);
 		expect(deleteKey(copied, clipId, duplicateTrackId, keyIds[2]).ok).toBe(true);
 		expect(withKey.clips[0]?.tracks[0]?.keys[0]?.timeSeconds).toBe(0);
+	});
+
+	test('retimes multiple keys atomically and rejects collisions', () => {
+		const project = withClip();
+		const withTrack = unwrap(createTrack(project, clipId, {
+			kind: 'bone-transform',
+			targetId: fixtureIds.root,
+			property: 'x'
+		}, () => duplicateTrackId));
+		const withFirstKey = unwrap(addNumberKey(withTrack, clipId, duplicateTrackId, {
+			timeSeconds: 0,
+			value: 12
+		}, () => duplicateKeyId));
+		const withSecondKey = unwrap(addNumberKey(withFirstKey, clipId, duplicateTrackId, {
+			timeSeconds: 0.25,
+			value: 24
+		}, () => keyIds[2]));
+		const retimed = retimeKeys(withSecondKey, clipId, [
+			{ trackId: duplicateTrackId, keyId: duplicateKeyId, timeSeconds: 0.5 },
+			{ trackId: duplicateTrackId, keyId: keyIds[2], timeSeconds: 0.75 }
+		]);
+		const collision = retimeKeys(withSecondKey, clipId, [{ trackId: duplicateTrackId, keyId: duplicateKeyId, timeSeconds: 0.25 }]);
+
+		expect(retimed.ok).toBe(true);
+		if (retimed.ok) {
+			expect(retimed.value.clips[0]?.tracks[0]?.keys.map((key) => key.timeSeconds)).toEqual([0.5, 0.75]);
+		}
+		expect(collision).toMatchObject({ ok: false, error: { code: 'invalid-value' } });
+		expect(withSecondKey.clips[0]?.tracks[0]?.keys.map((key) => key.timeSeconds)).toEqual([0, 0.25]);
 	});
 });

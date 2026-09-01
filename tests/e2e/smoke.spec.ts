@@ -147,6 +147,26 @@ test('creates, moves, copies, and deletes typed animation keys', async ({ page }
 	await expect(page.getByRole('button', { name: 'Key frame 4' })).toHaveCount(0);
 });
 
+test('retimes multiple selected animation keys together', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'root · Bone · y' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	const keys = page.getByRole('button', { name: 'Key frame 1' });
+	await keys.nth(0).click();
+	await keys.nth(1).click({ modifiers: ['Control'] });
+	await expect(page.getByText('2 keys selected', { exact: true })).toBeVisible();
+	await page.getByRole('spinbutton', { name: 'Offset frames', exact: true }).fill('2');
+	await page.getByRole('button', { name: 'Retime selected keys', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Key frame 3' })).toHaveCount(2);
+});
+
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
 	await page.addInitScript(() => {
 		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAQMAAACQp+OdAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkBBxAXAvkWQwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0wMVQwNzoxNjoyMyswMDowMMxohAEAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMDFUMDc6MTY6MjMrMDA6MDC9NTy9AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTAxVDA3OjE2OjIzKzAwOjAw6iAdYgAAAA9JREFUKM9jYBgFo4B8AAACQAABjMWrdwAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));

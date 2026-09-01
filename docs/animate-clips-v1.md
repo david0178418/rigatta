@@ -32,3 +32,7 @@ Available typed properties can be added as tracks. The selected track accepts
 keys at the current playhead frame, and selected key markers can be moved,
 copied to another frame, or deleted. Numeric, boolean, slot-attachment, and
 draw-order key inputs use the corresponding typed domain command.
+
+Key markers support additive selection with Ctrl or Command. A multi-selection
+can be retimed by an integer frame offset in one validated command; collisions,
+duplicate target frames, and out-of-range results are rejected atomically.

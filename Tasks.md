@@ -92,7 +92,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P5-05** Build timeline pan, zoom, and row filtering.
 - [x] **P5-06** Build dopesheet rows from typed tracks.
 - [x] **P5-07** Implement key creation, deletion, copying, and movement.
-- [ ] **P5-08** Implement multi-key selection and retiming.
+- [x] **P5-08** Implement multi-key selection and retiming.
 - [ ] **P5-09** Implement Auto Key, enabled by default.
 - [ ] **P5-10** Implement edited-but-unkeyed state and explicit key-edited action.
 - [ ] **P5-11** Add unkeyed, edited, and keyed visual states.

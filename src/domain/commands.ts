@@ -13,6 +13,7 @@ import {
 	copyKey,
 	duplicateClip,
 	moveKey,
+	retimeKeys,
 	renameClip,
 	updateClipPlayback
 } from './animation.ts';
@@ -21,6 +22,7 @@ import type {
 	BooleanKeyInput,
 	DrawOrderKeyInput,
 	NumberKeyInput,
+	KeyTimeChange,
 	TrackDefinition
 } from './animation.ts';
 import type { DuplicateClipIds } from './animation.ts';
@@ -95,6 +97,7 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'add-boolean-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: BooleanKeyInput }>
 	| Readonly<{ kind: 'move-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'copy-key'; id: EntityId; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
+	| Readonly<{ kind: 'retime-keys'; clipId: EntityId; changes: readonly KeyTimeChange[] }>
 	| Readonly<{ kind: 'delete-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId }>;
 
 const invalidCommand = function invalidCommand(message: string): OperationResult<never> {
@@ -209,6 +212,9 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'copy-key') {
 		return copyKey(project, command.clipId, command.trackId, command.keyId, command.id, command.timeSeconds);
+	}
+	if (command.kind === 'retime-keys') {
+		return retimeKeys(project, command.clipId, command.changes);
 	}
 	if (command.kind === 'delete-key') {
 		return deleteKey(project, command.clipId, command.trackId, command.keyId);

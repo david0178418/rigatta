@@ -17,7 +17,7 @@ import {
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { Project } from '../domain/model.ts';
 import type { Clip } from '../domain/model.ts';
-import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, NumberKeyInput, TrackDefinition } from '../domain/animation.ts';
+import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, KeyTimeChange, NumberKeyInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
@@ -233,6 +233,7 @@ type AnimateTimelineProps = Readonly<{
 	onMoveKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => void;
 	onCopyKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => EntityId | undefined;
 	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
+	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 }>;
 
 const AnimateTimeline = function AnimateTimeline({
@@ -253,12 +254,13 @@ const AnimateTimeline = function AnimateTimeline({
 	onAddKey,
 	onMoveKey,
 	onCopyKey,
-	onDeleteKey
+	onDeleteKey,
+	onRetimeKeys
 }: AnimateTimelineProps): ReactElement {
 	const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>(createTimelineViewport);
 	const [trackFilter, setTrackFilter] = useState('');
 	const [selectedTrackId, setSelectedTrackId] = useState<EntityId | undefined>(undefined);
-	const [selectedKey, setSelectedKey] = useState<Readonly<{ trackId: EntityId; keyId: EntityId }> | undefined>(undefined);
+	const [selectedKeys, setSelectedKeys] = useState<readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[]>([]);
 	const [trackDefinitionValue, setTrackDefinitionValue] = useState('');
 	const submitClipName = function submitClipName(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
@@ -288,9 +290,13 @@ const AnimateTimeline = function AnimateTimeline({
 	const selectedTrackOption = trackOptions.find((candidate) => candidate.value === trackDefinitionValue) ?? trackOptions[0];
 	const selectedRow = trackRows.find((row) => row.track.id === selectedTrackId) ?? trackRows[0];
 	const selectedTrack = selectedRow?.track;
-	const selectedKeyMarker = selectedRow && selectedKey?.trackId === selectedRow.track.id
-		? selectedRow.keys.find((key) => key.id === selectedKey?.keyId)
-		: undefined;
+	const selectedKeyMarkers = selectedKeys.flatMap((reference) => {
+		const row = trackRows.find((candidate) => candidate.track.id === reference.trackId);
+		const key = row?.keys.find((candidate) => candidate.id === reference.keyId);
+
+		return key ? [{ ...reference, frameIndex: key.frameIndex }] : [];
+	});
+	const selectedKeyMarker = selectedKeyMarkers.length === 1 ? selectedKeyMarkers[0] : undefined;
 	const submitCreateTrack = function submitCreateTrack(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 
@@ -302,7 +308,7 @@ const AnimateTimeline = function AnimateTimeline({
 
 		if (id) {
 			setSelectedTrackId(id);
-			setSelectedKey(undefined);
+			setSelectedKeys([]);
 		}
 	};
 	const submitAddKey = function submitAddKey(event: FormEvent<HTMLFormElement>): void {
@@ -340,7 +346,7 @@ const AnimateTimeline = function AnimateTimeline({
 					: onAddKey(track.id, { kind: 'boolean', input: { timeSeconds, value: data.get('enabled') === 'on' } });
 
 		if (added) {
-			setSelectedKey({ trackId: track.id, keyId: added });
+			setSelectedKeys([{ trackId: track.id, keyId: added }]);
 			setSelectedTrackId(track.id);
 		}
 	};
@@ -354,20 +360,45 @@ const AnimateTimeline = function AnimateTimeline({
 		const frame = formNumber(new FormData(event.currentTarget), 'frame');
 
 		if (frame !== undefined) {
-			onMoveKey(selectedRow.track.id, selectedKeyMarker.id, Math.round(frame) - 1);
+			onMoveKey(selectedRow.track.id, selectedKeyMarker.keyId, Math.round(frame) - 1);
 		}
 	};
-	const deleteSelectedKey = function deleteSelectedKey(): void {
-		if (selectedRow && selectedKeyMarker) {
-			onDeleteKey(selectedRow.track.id, selectedKeyMarker.id);
-			setSelectedKey(undefined);
+	const submitRetimeKeys = function submitRetimeKeys(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+		const offsetFrames = formNumber(new FormData(event.currentTarget), 'offsetFrames');
+
+		if (offsetFrames !== undefined && selectedKeys.length > 1) {
+			onRetimeKeys(selectedKeys, Math.round(offsetFrames));
 		}
+	};
+	const selectAnimationKey = function selectAnimationKey(
+		trackId: EntityId,
+		keyId: EntityId,
+		additive: boolean
+	): void {
+		setSelectedTrackId(trackId);
+		setSelectedKeys((current) => {
+			const selected = current.some((key) => key.trackId === trackId && key.keyId === keyId);
+
+			if (!additive) {
+				return [{ trackId, keyId }];
+			}
+			if (selected) {
+				return current.filter((key) => key.trackId !== trackId || key.keyId !== keyId);
+			}
+
+			return [...current, { trackId, keyId }];
+		});
+	};
+	const deleteSelectedKeys = function deleteSelectedKeys(): void {
+		selectedKeys.forEach((key) => onDeleteKey(key.trackId, key.keyId));
+		setSelectedKeys([]);
 	};
 	const deleteSelectedTrack = function deleteSelectedTrack(): void {
 		if (selectedRow) {
 			onDeleteTrack(selectedRow.track.id);
 			setSelectedTrackId(undefined);
-			setSelectedKey(undefined);
+			setSelectedKeys([]);
 		}
 	};
 
@@ -480,15 +511,15 @@ const AnimateTimeline = function AnimateTimeline({
 								{trackRows.length === 0 ? (
 									<div className="dopesheet-empty">No typed tracks match this filter.</div>
 								) : trackRows.map((row) => (
-									<div className={selectedRow?.track.id === row.track.id ? 'track-row is-selected' : 'track-row'} data-track-id={row.track.id} key={row.track.id} onClick={() => { setSelectedTrackId(row.track.id); setSelectedKey(undefined); }}>
+									<div className={selectedRow?.track.id === row.track.id ? 'track-row is-selected' : 'track-row'} data-track-id={row.track.id} key={row.track.id} onClick={() => { setSelectedTrackId(row.track.id); setSelectedKeys([]); }}>
 										<div className="track-row-label"><span>{row.label}</span><small>{row.track.kind}</small></div>
 										<div className="track-key-lane">
 											{row.keys.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame).map((key) => (
 													<button
 														aria-label={`Key frame ${key.frameIndex + 1}`}
-														className={selectedKey?.keyId === key.id && selectedKey.trackId === row.track.id ? 'track-key is-selected' : 'track-key'}
+														className={selectedKeys.some((selected) => selected.keyId === key.id && selected.trackId === row.track.id) ? 'track-key is-selected' : 'track-key'}
 														key={key.id}
-														onClick={(event) => { event.stopPropagation(); setSelectedTrackId(row.track.id); setSelectedKey({ trackId: row.track.id, keyId: key.id }); }}
+														onClick={(event) => { event.stopPropagation(); selectAnimationKey(row.track.id, key.id, event.metaKey || event.ctrlKey); }}
 														type="button"
 														style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
 														title={`Frame ${key.frameIndex + 1}`}
@@ -498,8 +529,16 @@ const AnimateTimeline = function AnimateTimeline({
 									</div>
 								))}
 							</div>
+							{selectedKeyMarkers.length > 1 && (
+								<form className="key-editor" onSubmit={submitRetimeKeys}>
+									<span className="muted-copy">{selectedKeyMarkers.length} keys selected</span>
+									<label><span className="field-label">Offset frames</span><input name="offsetFrames" type="number" step="1" defaultValue="0" /></label>
+									<button className="secondary-button" type="submit">Retime selected keys</button>
+									<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete selected keys</button>
+								</form>
+							)}
 							{selectedKeyMarker && selectedRow && (
-								<form className="key-editor" key={`${selectedKeyMarker.id}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
+								<form className="key-editor" key={`${selectedKeyMarker.keyId}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
 									<span className="muted-copy">Key frame {selectedKeyMarker.frameIndex + 1}</span>
 									<label><span className="field-label">Frame</span><input name="frame" type="number" min="1" max={frameCount} step="1" defaultValue={selectedKeyMarker.frameIndex + 1} /></label>
 									<button className="secondary-button" type="submit">Move key</button>
@@ -508,14 +547,14 @@ const AnimateTimeline = function AnimateTimeline({
 										const frame = form ? form.elements.namedItem('frame') : undefined;
 
 										if (frame instanceof HTMLInputElement) {
-											const copiedId = onCopyKey(selectedRow.track.id, selectedKeyMarker.id, Math.round(Number(frame.value)) - 1);
+											const copiedId = onCopyKey(selectedRow.track.id, selectedKeyMarker.keyId, Math.round(Number(frame.value)) - 1);
 
 											if (copiedId) {
-												setSelectedKey({ trackId: selectedRow.track.id, keyId: copiedId });
+														setSelectedKeys([{ trackId: selectedRow.track.id, keyId: copiedId }]);
 											}
 										}
 									}}>Copy key</button>
-									<button className="danger-button" type="button" onClick={deleteSelectedKey}>Delete key</button>
+									<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete key</button>
 								</form>
 							)}
 							<label className="playhead-field">
@@ -753,6 +792,30 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const deleteAnimationKey = function deleteAnimationKey(trackId: EntityId, keyId: EntityId): void {
 		if (activeClip) {
 			applyCommand({ kind: 'delete-key', clipId: activeClip.id, trackId, keyId });
+		}
+	};
+
+	const retimeAnimationKeys = function retimeAnimationKeys(
+		keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[],
+		deltaFrames: number
+	): void {
+		if (!activeClip) {
+			return;
+		}
+
+		const changes = keys.flatMap((selected): readonly KeyTimeChange[] => {
+			const track = activeClip.tracks.find((candidate) => candidate.id === selected.trackId);
+			const key = track?.keys.find((candidate) => candidate.id === selected.keyId);
+
+			return key ? [{
+				trackId: selected.trackId,
+				keyId: selected.keyId,
+				timeSeconds: key.timeSeconds + deltaFrames / activeClip.fps
+			}] : [];
+		});
+
+		if (changes.length === keys.length) {
+			applyCommand({ kind: 'retime-keys', clipId: activeClip.id, changes });
 		}
 	};
 
@@ -1715,6 +1778,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onMoveKey={moveAnimationKey}
 						onCopyKey={copyAnimationKey}
 						onDeleteKey={deleteAnimationKey}
+						onRetimeKeys={retimeAnimationKeys}
 					/>
 				) : (
 					<>
