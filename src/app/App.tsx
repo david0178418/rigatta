@@ -155,6 +155,13 @@ const animationProperties: readonly BoneTransformProperty[] = [
 	'shearY'
 ];
 
+type PendingAnimationProperty = BoneTransformProperty | 'opacity' | 'width' | 'height';
+
+type PendingAnimationEdit = Readonly<{
+	targetId: EntityId;
+	property: PendingAnimationProperty;
+}>;
+
 const trackMatchesDefinition = function trackMatchesDefinition(
 	track: Track,
 	definition: TrackDefinition
@@ -255,6 +262,7 @@ type AnimateTimelineProps = Readonly<{
 	activeClip: Clip | undefined;
 	playback: PlaybackState;
 	autoKey: boolean;
+	pendingEditCount: number;
 	onSelectClip: (clipId: EntityId) => void;
 	onCreateClip: () => void;
 	onDuplicateClip: () => void;
@@ -272,6 +280,7 @@ type AnimateTimelineProps = Readonly<{
 	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 	onAutoKeyChange: (enabled: boolean) => void;
+	onKeyPendingEdits: () => void;
 }>;
 
 const AnimateTimeline = function AnimateTimeline({
@@ -279,6 +288,7 @@ const AnimateTimeline = function AnimateTimeline({
 	activeClip,
 	playback,
 	autoKey,
+	pendingEditCount,
 	onSelectClip,
 	onCreateClip,
 	onDuplicateClip,
@@ -295,7 +305,8 @@ const AnimateTimeline = function AnimateTimeline({
 	onCopyKey,
 	onDeleteKey,
 	onRetimeKeys,
-	onAutoKeyChange
+	onAutoKeyChange,
+	onKeyPendingEdits
 }: AnimateTimelineProps): ReactElement {
 	const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>(createTimelineViewport);
 	const [trackFilter, setTrackFilter] = useState('');
@@ -488,6 +499,7 @@ const AnimateTimeline = function AnimateTimeline({
 								<button className="quiet-button" type="button" aria-label="Step forward" onClick={() => onStepPlayback(1)}>▶</button>
 								<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
 								<label className="auto-key-field"><input type="checkbox" aria-label="Auto Key" checked={autoKey} onChange={(event) => onAutoKeyChange(event.target.checked)} /><span>Auto Key</span></label>
+								<button className="quiet-button" type="button" onClick={onKeyPendingEdits} disabled={pendingEditCount === 0}>Key edited properties{pendingEditCount > 0 ? ` (${pendingEditCount})` : ''}</button>
 							</div>
 							<div className="timeline-navigation">
 								<div className="timeline-navigation-actions" aria-label="Timeline navigation">
@@ -640,6 +652,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
 	const [activeClipId, setActiveClipId] = useState<EntityId | undefined>(undefined);
 	const [autoKey, setAutoKey] = useState(true);
+	const [pendingAnimationEdits, setPendingAnimationEdits] = useState<readonly PendingAnimationEdit[]>([]);
 	const [playback, setPlayback] = useState<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
@@ -1449,10 +1462,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const rectangleCommand: ProjectCommand | undefined = rectangleSize
 			? { kind: 'update-rectangle-size', attachmentId: entity.id, ...rectangleSize }
 			: undefined;
-		const animationClip = mode === 'animate' && autoKey ? activeClip : undefined;
-		const transformAutoKeys = animationClip
-			? animationProperties
-				.filter((property) => transform[property] !== currentTransform[property])
+		const animationClip = mode === 'animate' ? activeClip : undefined;
+		const changedTransformProperties = animationProperties.filter((property) => transform[property] !== currentTransform[property]);
+		const changedImageOpacity = selectedAttachment?.kind === 'image' && imageProperties && selectedAttachment.opacity !== imageProperties.opacity;
+		const changedRectangleProperties = selectedAttachment?.kind === 'rectangle' && rectangleSize
+			? (['width', 'height'] as const).filter((property) => rectangleSize[property] !== selectedAttachment[property])
+			: [];
+		const editedProperties: readonly PendingAnimationEdit[] = [
+			...changedTransformProperties.map((property) => ({ targetId: entity.id, property })),
+			...(changedImageOpacity ? [{ targetId: entity.id, property: 'opacity' as const }] : []),
+			...changedRectangleProperties.map((property) => ({ targetId: entity.id, property }))
+		];
+		const transformAutoKeys = animationClip && autoKey
+			? changedTransformProperties
 				.flatMap((property) => autoKeyCommandsForNumber(
 					animationClip,
 					entity.kind === 'bone'
@@ -1462,7 +1484,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					activePlayback.frameIndex / animationClip.fps
 				))
 			: [];
-		const imageAutoKeys = animationClip && selectedAttachment?.kind === 'image' && imageProperties && selectedAttachment.opacity !== imageProperties.opacity
+		const imageAutoKeys = animationClip && autoKey && changedImageOpacity && selectedAttachment?.kind === 'image' && imageProperties
 			? autoKeyCommandsForNumber(
 				animationClip,
 				{ kind: 'attachment-opacity', targetId: selectedAttachment.id },
@@ -1470,9 +1492,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				activePlayback.frameIndex / animationClip.fps
 			)
 			: [];
-		const rectangleAutoKeys = animationClip && selectedAttachment?.kind === 'rectangle' && rectangleSize
-			? (['width', 'height'] as const)
-				.filter((property) => rectangleSize[property] !== selectedAttachment[property])
+		const rectangleAutoKeys = animationClip && autoKey && selectedAttachment?.kind === 'rectangle' && rectangleSize
+			? changedRectangleProperties
 				.flatMap((property) => autoKeyCommandsForNumber(
 					animationClip,
 					{ kind: 'rectangle-size', targetId: selectedAttachment.id, property },
@@ -1489,7 +1510,51 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			...rectangleAutoKeys
 		];
 
-		applyCommandSequence(commands);
+		const committed = applyCommandSequence(commands);
+
+		if (animationClip && committed && editedProperties.length > 0) {
+			setPendingAnimationEdits((current) => {
+				const retained = current.filter((pending) => !editedProperties.some((edited) => edited.targetId === pending.targetId && edited.property === pending.property));
+
+				return autoKey ? retained : [...retained, ...editedProperties];
+			});
+		}
+	};
+	const keyPendingAnimationEdits = function keyPendingAnimationEdits(): void {
+		if (!activeClip || pendingAnimationEdits.length === 0) {
+			return;
+		}
+
+		const timeSeconds = activePlayback.frameIndex / activeClip.fps;
+		const commands = pendingAnimationEdits.flatMap((pending) => {
+			const transformProperty = animationProperties.find((property) => property === pending.property);
+			const bone = project.bones.find((candidate) => candidate.id === pending.targetId);
+
+			if (bone && transformProperty) {
+				return autoKeyCommandsForNumber(activeClip, { kind: 'bone-transform', targetId: bone.id, property: transformProperty }, bone.transform[transformProperty], timeSeconds);
+			}
+
+			const attachment = project.attachments.find((candidate) => candidate.id === pending.targetId);
+
+			if (!attachment) {
+				return [];
+			}
+			if (transformProperty) {
+				return autoKeyCommandsForNumber(activeClip, { kind: 'attachment-transform', targetId: attachment.id, property: transformProperty }, attachment.transform[transformProperty], timeSeconds);
+			}
+			if (attachment.kind === 'image' && pending.property === 'opacity') {
+				return autoKeyCommandsForNumber(activeClip, { kind: 'attachment-opacity', targetId: attachment.id }, attachment.opacity, timeSeconds);
+			}
+		if (attachment.kind === 'rectangle' && (pending.property === 'width' || pending.property === 'height')) {
+				return autoKeyCommandsForNumber(activeClip, { kind: 'rectangle-size', targetId: attachment.id, property: pending.property }, attachment[pending.property], timeSeconds);
+			}
+
+			return [];
+		});
+
+		if (commands.length > 0 && applyCommandSequence(commands)) {
+			setPendingAnimationEdits([]);
+		}
 	};
 	const statusMessage = commandError ?? persistenceError ?? assetError;
 
@@ -1840,6 +1905,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						activeClip={activeClip}
 						playback={activePlayback}
 						autoKey={autoKey}
+						pendingEditCount={pendingAnimationEdits.length}
 						onSelectClip={setActiveClipId}
 						onCreateClip={createAnimationClip}
 						onDuplicateClip={duplicateActiveClip}
@@ -1857,6 +1923,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onDeleteKey={deleteAnimationKey}
 						onRetimeKeys={retimeAnimationKeys}
 						onAutoKeyChange={setAutoKey}
+						onKeyPendingEdits={keyPendingAnimationEdits}
 					/>
 				) : (
 					<>

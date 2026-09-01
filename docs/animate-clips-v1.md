@@ -41,3 +41,8 @@ Auto Key is enabled by default for the editor session. Editing a changed bone
 or attachment transform in Animate mode updates setup data and creates or
 upserts the corresponding numeric key at the current frame in the same
 history transaction. Opacity and rectangle-size changes use the same path.
+
+With Auto Key disabled, changed numeric properties are retained as pending
+edited-but-unkeyed state. The Animate panel exposes an explicit Key edited
+properties action that commits all pending values at the current frame in one
+transaction; the pending state is cleared only after a successful commit.

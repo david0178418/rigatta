@@ -184,6 +184,23 @@ test('auto-keys changed transform properties by default', async ({ page }) => {
 	await expect(page.getByLabel('Auto Key')).not.toBeChecked();
 });
 
+test('queues edited properties when Auto Key is disabled', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByLabel('Auto Key').uncheck();
+	await page.getByRole('spinbutton', { name: 'X', exact: true }).fill('48');
+	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
+	await expect(page.getByText('Bone transform · x · root', { exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Key edited properties (1)', exact: true })).toBeEnabled();
+	await page.getByRole('button', { name: 'Key edited properties (1)', exact: true }).click();
+	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Key frame 1' })).toBeVisible();
+});
+
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
 	await page.addInitScript(() => {
 		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAQMAAACQp+OdAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkBBxAXAvkWQwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0wMVQwNzoxNjoyMyswMDowMMxohAEAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMDFUMDc6MTY6MjMrMDA6MDC9NTy9AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTAxVDA3OjE2OjIzKzAwOjAw6iAdYgAAAA9JREFUKM9jYBgFo4B8AAACQAABjMWrdwAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));
