@@ -627,6 +627,6 @@ test('reorders setup slots through hierarchy drag and drop', async ({ page }) =>
 	const keyedSlots = page.locator('.draw-order-key-editor li');
 	await expect(keyedSlots).toHaveCount(2);
 	await expect(keyedSlots.nth(0)).toHaveAttribute('data-slot-id', secondSlotId);
-	await keyedSlots.nth(0).getByRole('button', { name: 'Move slot later' }).click();
+	await keyedSlots.nth(0).getByRole('button', { name: /Move .* later/ }).click();
 	await expect(keyedSlots.nth(0)).toHaveAttribute('data-slot-id', firstSlotId);
 });
