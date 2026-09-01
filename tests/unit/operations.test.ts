@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
 	createBone,
+	createImageAsset,
+	createImageAssets,
 	createImageAttachment,
 	createPointAttachment,
 	createRectangleAttachment,
@@ -28,6 +30,43 @@ const unwrap = function unwrap<TValue>(result: OperationResult<TValue>): TValue 
 };
 
 describe('immutable project operations', () => {
+	test('adds image assets with safe unique paths', () => {
+		const project = createEmptyProject({ id: fixtureIds.project });
+		const input = {
+			name: 'hero.png',
+			relativePath: 'characters/hero.png',
+			mimeType: 'image/png' as const,
+			width: 64,
+			height: 32
+		};
+		const added = createImageAsset(project, input, () => fixtureIds.asset);
+
+		expect(added.ok).toBe(true);
+		if (!added.ok) {
+			return;
+		}
+
+		expect(added.value.assets[0]).toMatchObject({ id: fixtureIds.asset, relativePath: input.relativePath });
+		expect(createImageAsset(added.value, input, () => fixtureIds.image)).toMatchObject({
+			ok: false,
+			error: { code: 'duplicate-asset-path' }
+		});
+		expect(createImageAsset(project, { ...input, relativePath: '../hero.png' }, () => fixtureIds.image)).toMatchObject({
+			ok: false,
+			error: { code: 'invalid-value' }
+		});
+
+		const bulk = createImageAssets(project, [
+			{ id: fixtureIds.asset, asset: input },
+			{ id: fixtureIds.image, asset: { ...input, name: 'face.png', relativePath: 'characters/face.png' } }
+		]);
+
+		expect(bulk.ok).toBe(true);
+		if (bulk.ok) {
+			expect(bulk.value.assets).toHaveLength(2);
+		}
+	});
+
 	test('creates a root, child, slot, and three attachment kinds', () => {
 		const empty = createEmptyProject({ id: fixtureIds.project });
 		const root = createBone(empty, { name: ' root ', parentId: null }, () => fixtureIds.root);

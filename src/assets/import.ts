@@ -213,9 +213,16 @@ export const importDroppedItems = async function importDroppedItems(
 		return failed;
 	}
 
+	const imported = itemResults.flatMap((result) => result.ok ? result.value : []);
+	const paths = imported.map((image) => image.relativePath);
+
+	if (new Set(paths).size !== paths.length) {
+		return invalidImage('The import contains duplicate relative paths.');
+	}
+
 	return {
 		ok: true,
-		value: itemResults.flatMap((result) => result.ok ? result.value : [])
+		value: imported
 	};
 };
 

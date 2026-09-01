@@ -66,7 +66,12 @@ describe('recursive asset import', () => {
 			fileHandle('hero.png', file('hero.png')),
 			fileHandle('hero.png', file('hero.png'))
 		]));
+		const duplicateDroppedFiles = await importDroppedItems([
+			{ getAsFile: function getAsFile(): File { return file('hero.png'); } },
+			{ getAsFile: function getAsFile(): File { return file('hero.png'); } }
+		]);
 
 		expect(duplicate).toMatchObject({ ok: false });
+		expect(duplicateDroppedFiles).toMatchObject({ ok: false });
 	});
 });

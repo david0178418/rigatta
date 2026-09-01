@@ -22,6 +22,7 @@ import type {
 } from './animation.ts';
 import {
 	createBone,
+	createImageAssets,
 	createImageAttachment,
 	createPointAttachment,
 	createRectangleAttachment,
@@ -40,6 +41,7 @@ import {
 } from './operations.ts';
 import type {
 	CreateBoneInput,
+	CreateImageAssetCommandInput,
 	CreateImageAttachmentInput,
 	CreatePointAttachmentInput,
 	CreateRectangleAttachmentInput,
@@ -51,6 +53,7 @@ import { preserveWorldPoseOnReparent } from './transforms.ts';
 
 export type ProjectCommand =
 	| Readonly<{ kind: 'rename-project'; name: string }>
+	| Readonly<{ kind: 'add-image-assets'; assets: readonly CreateImageAssetCommandInput[] }>
 	| Readonly<{ kind: 'create-bone'; id: EntityId; input: CreateBoneInput }>
 	| Readonly<{ kind: 'rename-bone'; boneId: EntityId; name: string }>
 	| Readonly<{ kind: 'delete-bone'; boneId: EntityId }>
@@ -89,6 +92,9 @@ export const reduceProject = function reduceProject(
 ): OperationResult<Project> {
 	if (command.kind === 'rename-project') {
 		return renameProject(project, command.name);
+	}
+	if (command.kind === 'add-image-assets') {
+		return createImageAssets(project, command.assets);
 	}
 	if (command.kind === 'create-bone') {
 		return createBone(project, command.input, () => command.id);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type DragEvent, type ReactElement } from 'react';
 import { createEntityId } from '../domain/ids.ts';
 import {
 	canRedo,
@@ -11,7 +11,10 @@ import {
 	type HistoryState
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
+import type { Project } from '../domain/model.ts';
+import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
 import { createAutosaveScheduler } from '../persistence/autosave.ts';
+import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { ReadyStartup, StartupState } from './startup.ts';
 import { loadEditorStartup } from './startup.ts';
 
@@ -24,6 +27,24 @@ const modeLabels: Record<EditorMode, string> = {
 
 const errorMessage = function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'The editor could not start.';
+};
+
+const blobForImage = function blobForImage(image: ImportedImage): Blob {
+	const buffer = new ArrayBuffer(image.bytes.byteLength);
+	new Uint8Array(buffer).set(image.bytes);
+
+	return new Blob([buffer], { type: image.mimeType });
+};
+
+const blobsForProject = function blobsForProject(
+	project: Project,
+	blobs: ProjectAssetBlobs
+): ProjectAssetBlobs {
+	return new Map(project.assets.flatMap((asset) => {
+		const blob = blobs.get(asset.id);
+
+		return blob ? [[asset.id, blob] as const] : [];
+	}));
 };
 
 export const App = function App(): ReactElement {
@@ -87,28 +108,35 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
 	const [persistenceError, setPersistenceError] = useState<string | undefined>(undefined);
 	const [commandError, setCommandError] = useState<string | undefined>(undefined);
+	const [assetError, setAssetError] = useState<string | undefined>(undefined);
+	const [isImporting, setIsImporting] = useState(false);
+	const [assetQuery, setAssetQuery] = useState('');
+	const [assetBlobs, setAssetBlobs] = useState<ProjectAssetBlobs>(startup.assets);
 	const autosave = useMemo(() => createAutosaveScheduler(startup.repository, {
 		onError: (error) => setPersistenceError(error.message)
 	}), [startup.repository]);
 	const project = currentProject(history);
-	const assets = startup.assets;
 	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
+	const normalizedQuery = assetQuery.trim().toLowerCase();
+	const visibleAssets = project.assets.filter((asset) => asset.relativePath.toLowerCase().includes(normalizedQuery));
 
 	useEffect(() => {
 		return function cleanup(): void {
 			autosave.cancel();
-			startup.repository.close();
 		};
-	}, [autosave, startup.repository]);
+	}, [autosave]);
 
-	const commitHistory = function commitHistory(nextHistory: HistoryState): void {
+	const commitHistory = function commitHistory(
+		nextHistory: HistoryState,
+		nextAssets: ProjectAssetBlobs = assetBlobs
+	): void {
 		setHistory(nextHistory);
 		setCommandError(undefined);
 		const nextProject = currentProject(nextHistory);
 
 		if (nextProject !== project && !nextHistory.transaction) {
 			setPersistenceError(undefined);
-			autosave.schedule(nextProject, assets);
+			autosave.schedule(nextProject, blobsForProject(nextProject, nextAssets));
 		}
 	};
 
@@ -123,6 +151,84 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		commitHistory(result.value);
 	};
 
+	const addImportedImages = function addImportedImages(result: AssetImportResult): void {
+		if (!result.ok) {
+			setAssetError(result.error);
+			return;
+		}
+
+		const candidates = result.value.map((image) => {
+			const id = createEntityId();
+
+			return {
+				id,
+				asset: {
+					name: image.name,
+					relativePath: image.relativePath,
+					mimeType: image.mimeType,
+					width: image.width,
+					height: image.height
+				},
+				blob: blobForImage(image)
+			};
+		});
+		const nextProject = dispatchCommand(history, {
+			kind: 'add-image-assets',
+			assets: candidates.map(({ id, asset }) => ({ id, asset }))
+		});
+
+		if (!nextProject.ok) {
+			setCommandError(nextProject.error.message);
+			return;
+		}
+
+		const nextAssets = new Map([
+			...assetBlobs,
+			...candidates.map(({ id, blob }) => [id, blob] as const)
+		]);
+
+		setAssetBlobs(nextAssets);
+		setAssetError(undefined);
+		commitHistory(nextProject.value, nextAssets);
+	};
+
+	const importDirectory = async function importDirectory(): Promise<void> {
+		setIsImporting(true);
+		setAssetError(undefined);
+
+		try {
+			addImportedImages(await pickImageDirectory());
+		} catch (error: unknown) {
+			setAssetError(errorMessage(error));
+		} finally {
+			setIsImporting(false);
+		}
+	};
+
+	const dragOverLibrary = function dragOverLibrary(event: DragEvent<HTMLElement>): void {
+		event.preventDefault();
+	};
+
+	const dropOnLibrary = function dropOnLibrary(event: DragEvent<HTMLElement>): void {
+		event.preventDefault();
+
+		if (isImporting) {
+			return;
+		}
+
+		const items: readonly AssetDropItem[] = Array.from(event.dataTransfer.items).map((item) => ({
+			getAsFile: () => item.getAsFile(),
+			getAsFileSystemHandle: () => item.getAsFileSystemHandle?.() ?? Promise.resolve(null)
+		}));
+
+		setIsImporting(true);
+		setAssetError(undefined);
+		void importDroppedItems(items)
+			.then(addImportedImages)
+			.catch((error: unknown) => setAssetError(errorMessage(error)))
+			.finally(() => setIsImporting(false));
+	};
+
 	const createRootBone = function createRootBone(): void {
 		applyCommand({
 			kind: 'create-bone',
@@ -134,6 +240,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const stepHistory = function stepHistory(nextHistory: HistoryState): void {
 		commitHistory(nextHistory);
 	};
+	const statusMessage = commandError ?? persistenceError ?? assetError;
 
 	return (
 		<div className="app-shell">
@@ -166,17 +273,23 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			</header>
 
 			<main className="workspace" data-mode={mode}>
-				<aside className="panel library-panel" aria-label="Image library">
+				<aside className="panel library-panel" aria-label="Image library" onDragOver={dragOverLibrary} onDrop={dropOnLibrary}>
 					<div className="panel-heading">
 						<div>
 							<p className="eyebrow">Assets</p>
 							<h2>Image library</h2>
 						</div>
-						<button className="icon-button" type="button" aria-label="Import image directory" disabled>+</button>
+						<button className="icon-button" type="button" aria-label="Import image directory" onClick={() => void importDirectory()} disabled={isImporting}>+</button>
 					</div>
 					<label className="search-field">
 						<span className="sr-only">Search images</span>
-						<input type="search" placeholder="Search images" disabled />
+						<input
+							type="search"
+							placeholder="Search images"
+							value={assetQuery}
+							onChange={(event) => setAssetQuery(event.target.value)}
+							disabled={project.assets.length === 0}
+						/>
 					</label>
 					{project.assets.length === 0 ? (
 						<div className="empty-state compact-state">
@@ -184,9 +297,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							<p>No images imported</p>
 							<span>Drop a folder here to begin.</span>
 						</div>
+					) : visibleAssets.length === 0 ? (
+						<div className="tree-empty">No images match “{assetQuery}”.</div>
 					) : (
 						<div className="asset-list" aria-label="Imported images">
-							{project.assets.map((asset) => <div className="asset-row" key={asset.id}><span className="asset-glyph" aria-hidden="true">▧</span><span>{asset.relativePath}</span></div>)}
+							{visibleAssets.map((asset) => <div className="asset-row" key={asset.id}><span className="asset-glyph" aria-hidden="true">▧</span><span>{asset.relativePath}</span></div>)}
 						</div>
 					)}
 				</aside>
@@ -241,7 +356,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<span className="muted-copy">{project.clips.length === 0 ? 'No clips yet' : `${project.clips.length} clip${project.clips.length === 1 ? '' : 's'}`}</span>
 				</div>
 				<div className="timeline-empty">Create an animation clip when the rig is ready.</div>
-				{(commandError || persistenceError) && <div className="status-strip" role="status">{commandError ?? persistenceError}</div>}
+				{statusMessage && <div className="status-strip" role="status">{statusMessage}</div>}
 			</footer>
 		</div>
 	);

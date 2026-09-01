@@ -4,10 +4,12 @@ import {
 	type LocalTransform
 } from './coordinates.ts';
 import { createEntityId, isEntityId, type EntityId } from './ids.ts';
+import { isSupportedImageMimeType } from './schema.ts';
 import type {
 	Attachment,
 	Bone,
 	ImageAttachment,
+	ImageAsset,
 	PointAttachment,
 	Project,
 	RectangleAttachment,
@@ -21,6 +23,7 @@ export type OperationCode =
 	| 'duplicate-id'
 	| 'invalid-id'
 	| 'invalid-value'
+	| 'duplicate-asset-path'
 	| 'has-dependents'
 	| 'cannot-delete-root'
 	| 'hierarchy-cycle'
@@ -45,6 +48,13 @@ export type CreateBoneInput = Readonly<{
 export type CreateSlotInput = Readonly<{
 	name: string;
 	boneId: EntityId;
+}>;
+
+export type CreateImageAssetInput = Readonly<Omit<ImageAsset, 'id'>>;
+
+export type CreateImageAssetCommandInput = Readonly<{
+	id: EntityId;
+	asset: CreateImageAssetInput;
 }>;
 
 export type CreateImageAttachmentInput = Readonly<{
@@ -161,6 +171,16 @@ const isUnitInterval = function isUnitInterval(value: number): boolean {
 
 const isPositiveFinite = function isPositiveFinite(value: number): boolean {
 	return Number.isFinite(value) && value > 0;
+};
+
+const isSafeRelativePath = function isSafeRelativePath(path: string): boolean {
+	const normalizedPath = path.replaceAll('\\', '/');
+	const segments = normalizedPath.split('/');
+
+	return normalizedPath.length > 0
+		&& !normalizedPath.startsWith('/')
+		&& !segments.some((segment) => segment === '..')
+		&& segments.every((segment) => segment.length > 0 && segment !== '.');
 };
 
 const updateBone = function updateBone(
@@ -302,6 +322,53 @@ export const renameProject = function renameProject(
 	}
 
 	return success({ ...project, name: normalizedName.value });
+};
+
+export const createImageAsset = function createImageAsset(
+	project: Project,
+	input: CreateImageAssetInput,
+	idFactory: () => EntityId = createEntityId
+): OperationResult<Project> {
+	const name = invalidName(input.name);
+
+	if (!name.ok) {
+		return name;
+	}
+	if (!isSafeRelativePath(input.relativePath)) {
+		return failure('invalid-value', 'Asset paths must be safe, non-empty relative paths.');
+	}
+	if (!isSupportedImageMimeType(input.mimeType)) {
+		return failure('invalid-value', 'Asset MIME type is not supported.');
+	}
+	if (!Number.isInteger(input.width) || !Number.isInteger(input.height) || !isPositiveFinite(input.width) || !isPositiveFinite(input.height)) {
+		return failure('invalid-value', 'Asset dimensions must be positive integers.');
+	}
+	if (project.assets.some((asset) => asset.relativePath === input.relativePath)) {
+		return failure('duplicate-asset-path', 'An asset with this relative path already exists.');
+	}
+
+	const id = allocateId(project, idFactory);
+
+	if (!id.ok) {
+		return id;
+	}
+
+	const asset: ImageAsset = { ...input, id: id.value, name: name.value };
+
+	return success({ ...project, assets: [...project.assets, asset] });
+};
+
+export const createImageAssets = function createImageAssets(
+	project: Project,
+	inputs: readonly CreateImageAssetCommandInput[]
+): OperationResult<Project> {
+	return inputs.reduce<OperationResult<Project>>((current, input) => {
+		if (!current.ok) {
+			return current;
+		}
+
+		return createImageAsset(current.value, input.asset, () => input.id);
+	}, success(project));
 };
 
 export const createSlot = function createSlot(
