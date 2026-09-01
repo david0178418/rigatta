@@ -12,6 +12,7 @@ import {
 	duplicateClip,
 	moveKey,
 	retimeKeys,
+	upsertNumberKey,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
@@ -158,6 +159,26 @@ describe('typed animation tracks', () => {
 			expect(updated.value.clips[0]?.fps).toBe(24);
 			expect(updated.value.clips[0]?.loop).toBe(false);
 		}
+	});
+
+	test('upserts a numeric key at an existing frame without changing its ID', () => {
+		const project = withClip();
+		const withTrack = unwrap(createTrack(project, clipId, {
+			kind: 'bone-transform',
+			targetId: fixtureIds.root,
+			property: 'x'
+		}, () => duplicateTrackId));
+		const withKey = unwrap(addNumberKey(withTrack, clipId, duplicateTrackId, {
+			timeSeconds: 0,
+			value: 12
+		}, () => duplicateKeyId));
+		const updated = unwrap(upsertNumberKey(withKey, clipId, duplicateTrackId, {
+			timeSeconds: 0,
+			value: 30
+		}, () => keyIds[2]));
+
+		expect(updated.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: duplicateKeyId, value: 30 }]);
+		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: duplicateKeyId, value: 12 }]);
 	});
 
 	test('duplicates a clip with fresh nested IDs and retained content', () => {

@@ -15,8 +15,7 @@ import {
 	type HistoryState
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
-import type { Project } from '../domain/model.ts';
-import type { Clip } from '../domain/model.ts';
+import type { BoneTransformProperty, Clip, Project, Track } from '../domain/model.ts';
 import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, KeyTimeChange, NumberKeyInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
@@ -146,6 +145,43 @@ const duplicateIdsForClip = function duplicateIdsForClip(clip: Clip): DuplicateC
 	};
 };
 
+const animationProperties: readonly BoneTransformProperty[] = [
+	'x',
+	'y',
+	'rotation',
+	'scaleX',
+	'scaleY',
+	'shearX',
+	'shearY'
+];
+
+const trackMatchesDefinition = function trackMatchesDefinition(
+	track: Track,
+	definition: TrackDefinition
+): boolean {
+	if (track.kind !== definition.kind) {
+		return false;
+	}
+
+	return (!('targetId' in definition) || ('targetId' in track && track.targetId === definition.targetId))
+		&& (!('property' in definition) || ('property' in track && track.property === definition.property));
+};
+
+const autoKeyCommandsForNumber = function autoKeyCommandsForNumber(
+	clip: Clip,
+	definition: TrackDefinition,
+	value: number,
+	timeSeconds: number
+): readonly ProjectCommand[] {
+	const existingTrack = clip.tracks.find((track) => trackMatchesDefinition(track, definition));
+	const trackId = existingTrack?.id ?? createEntityId();
+
+	return [
+		...(existingTrack ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: clip.id, definition }]),
+		{ kind: 'set-number-key' as const, id: createEntityId(), clipId: clip.id, trackId, input: { timeSeconds, value, interpolation: 'linear' as const, curve: null } }
+	];
+};
+
 export const App = function App(): ReactElement {
 	const [startup, setStartup] = useState<StartupState>({ status: 'loading' });
 
@@ -218,6 +254,7 @@ type AnimateTimelineProps = Readonly<{
 	project: Project;
 	activeClip: Clip | undefined;
 	playback: PlaybackState;
+	autoKey: boolean;
 	onSelectClip: (clipId: EntityId) => void;
 	onCreateClip: () => void;
 	onDuplicateClip: () => void;
@@ -234,12 +271,14 @@ type AnimateTimelineProps = Readonly<{
 	onCopyKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => EntityId | undefined;
 	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
+	onAutoKeyChange: (enabled: boolean) => void;
 }>;
 
 const AnimateTimeline = function AnimateTimeline({
 	project,
 	activeClip,
 	playback,
+	autoKey,
 	onSelectClip,
 	onCreateClip,
 	onDuplicateClip,
@@ -255,7 +294,8 @@ const AnimateTimeline = function AnimateTimeline({
 	onMoveKey,
 	onCopyKey,
 	onDeleteKey,
-	onRetimeKeys
+	onRetimeKeys,
+	onAutoKeyChange
 }: AnimateTimelineProps): ReactElement {
 	const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>(createTimelineViewport);
 	const [trackFilter, setTrackFilter] = useState('');
@@ -447,6 +487,7 @@ const AnimateTimeline = function AnimateTimeline({
 								</button>
 								<button className="quiet-button" type="button" aria-label="Step forward" onClick={() => onStepPlayback(1)}>▶</button>
 								<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
+								<label className="auto-key-field"><input type="checkbox" aria-label="Auto Key" checked={autoKey} onChange={(event) => onAutoKeyChange(event.target.checked)} /><span>Auto Key</span></label>
 							</div>
 							<div className="timeline-navigation">
 								<div className="timeline-navigation-actions" aria-label="Timeline navigation">
@@ -598,6 +639,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [gridSettings, setGridSettings] = useState<GridSettings>(() => ({ ...DEFAULT_GRID_SETTINGS }));
 	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
 	const [activeClipId, setActiveClipId] = useState<EntityId | undefined>(undefined);
+	const [autoKey, setAutoKey] = useState(true);
 	const [playback, setPlayback] = useState<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
@@ -1407,10 +1449,44 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const rectangleCommand: ProjectCommand | undefined = rectangleSize
 			? { kind: 'update-rectangle-size', attachmentId: entity.id, ...rectangleSize }
 			: undefined;
+		const animationClip = mode === 'animate' && autoKey ? activeClip : undefined;
+		const transformAutoKeys = animationClip
+			? animationProperties
+				.filter((property) => transform[property] !== currentTransform[property])
+				.flatMap((property) => autoKeyCommandsForNumber(
+					animationClip,
+					entity.kind === 'bone'
+						? { kind: 'bone-transform', targetId: entity.id, property }
+						: { kind: 'attachment-transform', targetId: entity.id, property },
+					transform[property],
+					activePlayback.frameIndex / animationClip.fps
+				))
+			: [];
+		const imageAutoKeys = animationClip && selectedAttachment?.kind === 'image' && imageProperties && selectedAttachment.opacity !== imageProperties.opacity
+			? autoKeyCommandsForNumber(
+				animationClip,
+				{ kind: 'attachment-opacity', targetId: selectedAttachment.id },
+				imageProperties.opacity,
+				activePlayback.frameIndex / animationClip.fps
+			)
+			: [];
+		const rectangleAutoKeys = animationClip && selectedAttachment?.kind === 'rectangle' && rectangleSize
+			? (['width', 'height'] as const)
+				.filter((property) => rectangleSize[property] !== selectedAttachment[property])
+				.flatMap((property) => autoKeyCommandsForNumber(
+					animationClip,
+					{ kind: 'rectangle-size', targetId: selectedAttachment.id, property },
+					rectangleSize[property],
+					activePlayback.frameIndex / animationClip.fps
+				))
+			: [];
 		const commands: readonly ProjectCommand[] = [
 			transformCommand,
 			...(imageCommand ? [imageCommand] : []),
-			...(rectangleCommand ? [rectangleCommand] : [])
+			...(rectangleCommand ? [rectangleCommand] : []),
+			...transformAutoKeys,
+			...imageAutoKeys,
+			...rectangleAutoKeys
 		];
 
 		applyCommandSequence(commands);
@@ -1763,6 +1839,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						project={project}
 						activeClip={activeClip}
 						playback={activePlayback}
+						autoKey={autoKey}
 						onSelectClip={setActiveClipId}
 						onCreateClip={createAnimationClip}
 						onDuplicateClip={duplicateActiveClip}
@@ -1779,6 +1856,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onCopyKey={copyAnimationKey}
 						onDeleteKey={deleteAnimationKey}
 						onRetimeKeys={retimeAnimationKeys}
+						onAutoKeyChange={setAutoKey}
 					/>
 				) : (
 					<>

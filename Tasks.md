@@ -93,7 +93,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P5-06** Build dopesheet rows from typed tracks.
 - [x] **P5-07** Implement key creation, deletion, copying, and movement.
 - [x] **P5-08** Implement multi-key selection and retiming.
-- [ ] **P5-09** Implement Auto Key, enabled by default.
+- [x] **P5-09** Implement Auto Key, enabled by default.
 - [ ] **P5-10** Implement edited-but-unkeyed state and explicit key-edited action.
 - [ ] **P5-11** Add unkeyed, edited, and keyed visual states.
 - [ ] **P5-12** Implement interpolation selection per segment.

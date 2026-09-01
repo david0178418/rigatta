@@ -36,3 +36,8 @@ draw-order key inputs use the corresponding typed domain command.
 Key markers support additive selection with Ctrl or Command. A multi-selection
 can be retimed by an integer frame offset in one validated command; collisions,
 duplicate target frames, and out-of-range results are rejected atomically.
+
+Auto Key is enabled by default for the editor session. Editing a changed bone
+or attachment transform in Animate mode updates setup data and creates or
+upserts the corresponding numeric key at the current frame in the same
+history transaction. Opacity and rectangle-size changes use the same path.

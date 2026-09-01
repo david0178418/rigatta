@@ -777,6 +777,51 @@ export const addNumberKey = function addNumberKey(
 	));
 };
 
+export const upsertNumberKey = function upsertNumberKey(
+	project: Project,
+	clipId: EntityId,
+	trackId: EntityId,
+	input: NumberKeyInput,
+	idFactory: () => EntityId = createEntityId
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+
+	if (!clip || !track) {
+		return failure('not-found', 'Animation track does not exist.');
+	}
+	if (!isNumberTrack(track)) {
+		return failure('invalid-value', 'This track does not accept numeric keys.');
+	}
+	if (track.kind === 'attachment-opacity' && (input.value < 0 || input.value > 1)) {
+		return failure('invalid-value', 'Opacity keys must be within [0, 1].');
+	}
+	if (track.kind === 'rectangle-size' && input.value <= 0) {
+		return failure('invalid-value', 'Rectangle size keys must be positive.');
+	}
+	if (!isValidKeyTime(clip, input.timeSeconds)) {
+		return failure('invalid-value', 'Key time must be inside the clip duration.');
+	}
+
+	const existing = track.keys.find((key) => key.timeSeconds === input.timeSeconds);
+
+	if (!existing) {
+		return addNumberKey(project, clipId, trackId, input, idFactory);
+	}
+
+	const key = createNumberKey(existing.id, input);
+
+	if (!key.ok) {
+		return key;
+	}
+
+	return updateTrack(project, clipId, trackId, (currentTrack) => (
+		isNumberTrack(currentTrack)
+			? { ...currentTrack, keys: currentTrack.keys.map((candidate) => candidate.id === existing.id ? key.value : candidate) }
+			: currentTrack
+	));
+};
+
 export const addAttachmentKey = function addAttachmentKey(
 	project: Project,
 	clipId: EntityId,

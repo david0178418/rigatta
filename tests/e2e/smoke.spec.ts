@@ -130,6 +130,7 @@ test('creates, moves, copies, and deletes typed animation keys', async ({ page }
 	await page.goto('/');
 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await page.getByRole('button', { name: 'Add track' }).click();
@@ -165,6 +166,22 @@ test('retimes multiple selected animation keys together', async ({ page }) => {
 	await page.getByRole('spinbutton', { name: 'Offset frames', exact: true }).fill('2');
 	await page.getByRole('button', { name: 'Retime selected keys', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Key frame 3' })).toHaveCount(2);
+});
+
+test('auto-keys changed transform properties by default', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await expect(page.getByLabel('Auto Key')).toBeChecked();
+	await page.getByRole('spinbutton', { name: 'X', exact: true }).fill('48');
+	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
+	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Key frame 1' })).toBeVisible();
+	await page.getByLabel('Auto Key').uncheck();
+	await expect(page.getByLabel('Auto Key')).not.toBeChecked();
 });
 
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
