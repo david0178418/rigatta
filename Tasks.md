@@ -71,7 +71,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P4-05** Implement viewport, tree, and library selection synchronization.
 - [x] **P4-06** Implement click, additive, and marquee multi-selection.
 - [x] **P4-07** Implement drag from the library to create image attachments.
-- [ ] **P4-08** Build bone, slot, and attachment hierarchy editing.
+- [x] **P4-08** Build bone, slot, and attachment hierarchy editing.
 - [ ] **P4-09** Implement safe hierarchy drag/reparent and reorder. Depends on P2-07.
 - [ ] **P4-10** Build translate, rotate, nonuniform scale, and shear handles.
 - [ ] **P4-11** Implement multi-selection transform deltas.
