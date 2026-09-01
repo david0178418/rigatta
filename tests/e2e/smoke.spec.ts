@@ -54,6 +54,23 @@ test('supports viewport zoom controls and reset', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Reset viewport' })).toHaveText('100%');
 });
 
+test('configures setup grid visibility, spacing, and snapping', async ({ page }) => {
+	await page.goto('/');
+
+	const showGrid = page.getByLabel('Show grid');
+	const gridSpacing = page.getByLabel('Grid spacing');
+	const snapToGrid = page.getByLabel('Snap to grid');
+
+	await expect(showGrid).toBeChecked();
+	await showGrid.uncheck();
+	await expect(showGrid).not.toBeChecked();
+	await gridSpacing.fill('16');
+	await gridSpacing.press('Tab');
+	await expect(gridSpacing).toHaveValue('16');
+	await snapToGrid.check();
+	await expect(snapToGrid).toBeChecked();
+});
+
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
 	await page.addInitScript(() => {
 		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAQMAAACQp+OdAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkBBxAXAvkWQwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0wMVQwNzoxNjoyMyswMDowMMxohAEAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMDFUMDc6MTY6MjMrMDA6MDC9NTy9AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTAxVDA3OjE2OjIzKzAwOjAw6iAdYgAAAA9JREFUKM9jYBgFo4B8AAACQAABjMWrdwAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));

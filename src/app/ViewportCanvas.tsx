@@ -4,6 +4,7 @@ import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
+import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from './grid.ts';
 import type { Selection } from './selection.ts';
 import type { TransformPhase, TransformTool } from './transform-gesture.ts';
 
@@ -25,7 +26,10 @@ export const ViewportCanvas = function ViewportCanvas({
 	selection,
 	transformTool,
 	onCanvasTransformStart,
-	onCanvasTransform
+	onCanvasTransform,
+	gridVisible,
+	gridSpacing,
+	snapToGrid
 }: Readonly<{
 	project: Project;
 	assets: ProjectAssetBlobs;
@@ -36,6 +40,9 @@ export const ViewportCanvas = function ViewportCanvas({
 	transformTool?: TransformTool;
 	onCanvasTransformStart?: (point: ViewportPoint, tool: TransformTool) => boolean;
 	onCanvasTransform?: (point: ViewportPoint, phase: TransformPhase) => void;
+	gridVisible?: boolean;
+	gridSpacing?: number;
+	snapToGrid?: boolean;
 }>): ReactElement {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
@@ -52,6 +59,8 @@ export const ViewportCanvas = function ViewportCanvas({
 	const transformStartRef = useRef(onCanvasTransformStart);
 	const transformRef = useRef(onCanvasTransform);
 	const transformToolRef = useRef<TransformTool>(transformTool ?? 'translate');
+	const gridSpacingRef = useRef(gridSpacing ?? DEFAULT_GRID_SETTINGS.spacing);
+	const snapToGridRef = useRef(snapToGrid ?? DEFAULT_GRID_SETTINGS.snap);
 	viewportStateRef.current = viewport;
 	projectRef.current = project;
 	canvasSelectRef.current = onCanvasSelect;
@@ -59,6 +68,8 @@ export const ViewportCanvas = function ViewportCanvas({
 	transformStartRef.current = onCanvasTransformStart;
 	transformRef.current = onCanvasTransform;
 	transformToolRef.current = transformTool ?? 'translate';
+	gridSpacingRef.current = gridSpacing ?? DEFAULT_GRID_SETTINGS.spacing;
+	snapToGridRef.current = snapToGrid ?? DEFAULT_GRID_SETTINGS.snap;
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -91,7 +102,9 @@ export const ViewportCanvas = function ViewportCanvas({
 				lifecycle.renderer = renderer;
 				const rendered = await renderer.renderSetup(project, assets, {
 					selectedIds: selection?.map((entity) => entity.id),
-					transformTool
+					transformTool,
+					gridVisible,
+					gridSpacing
 				});
 
 				if (!rendered.ok && !lifecycle.cancelled) {
@@ -108,7 +121,22 @@ export const ViewportCanvas = function ViewportCanvas({
 			lifecycle.cancelled = true;
 			lifecycle.renderer?.destroy();
 		};
-	}, [assets, project, selection, transformTool]);
+	}, [assets, project, selection, transformTool, gridVisible, gridSpacing]);
+
+	const logicalPointAt = function logicalPointAt(
+		screenPoint: ViewportPoint,
+		stage: DOMRect,
+		snap: boolean
+	): ViewportPoint {
+		const point = screenToLogicalPoint(
+			screenPoint,
+			stage,
+			viewportStateRef.current,
+			projectRef.current.logicalCanvas
+		);
+
+		return snap ? snapPointToGrid(point, gridSpacingRef.current) : point;
+	};
 
 	const beginPan = function beginPan(event: PointerEvent): void {
 		if (event.button !== 0) {
@@ -118,12 +146,7 @@ export const ViewportCanvas = function ViewportCanvas({
 		didPanRef.current = false;
 		const stage = viewportRef.current?.getBoundingClientRect();
 		const startPoint = stage
-			? screenToLogicalPoint(
-				{ x: event.clientX, y: event.clientY },
-				stage,
-				viewportStateRef.current,
-				projectRef.current.logicalCanvas
-			)
+			? logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current)
 			: undefined;
 		const transformStart = transformStartRef.current;
 		const transformClaimed = !event.shiftKey
@@ -162,12 +185,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			const onTransform = transformRef.current;
 
 			if (stage && onTransform) {
-				onTransform(screenToLogicalPoint(
-					{ x: event.clientX, y: event.clientY },
-					stage,
-					viewportStateRef.current,
-					projectRef.current.logicalCanvas
-				), 'update');
+				onTransform(logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current), 'update');
 			}
 		} else if (session.mode === 'marquee') {
 			const stage = viewportRef.current?.getBoundingClientRect();
@@ -195,12 +213,7 @@ export const ViewportCanvas = function ViewportCanvas({
 		const onMarquee = canvasMarqueeRef.current;
 		const onTransform = transformRef.current;
 		const currentPoint = stage
-			? screenToLogicalPoint(
-				{ x: event.clientX, y: event.clientY },
-				stage,
-				viewportStateRef.current,
-				projectRef.current.logicalCanvas
-			)
+			? logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current)
 			: undefined;
 
 		if (session.mode === 'transform' && onTransform && currentPoint) {
@@ -289,11 +302,10 @@ export const ViewportCanvas = function ViewportCanvas({
 			return;
 		}
 
-		onAssetDrop(assetId, screenToLogicalPoint(
+		onAssetDrop(assetId, logicalPointAt(
 			{ x: event.clientX, y: event.clientY },
 			stage,
-			viewport,
-			project.logicalCanvas
+			snapToGrid ?? DEFAULT_GRID_SETTINGS.snap
 		));
 	};
 

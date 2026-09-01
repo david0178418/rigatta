@@ -26,6 +26,7 @@ import { loadEditorStartup } from './startup.ts';
 import { buildAssetLibraryEntries } from './asset-library.ts';
 import { entitiesInBounds, hitTestProject } from './hit-testing.ts';
 import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hierarchy-dnd.ts';
+import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommand, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
@@ -196,6 +197,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [assetError, setAssetError] = useState<string | undefined>(undefined);
 	const [selection, setSelection] = useState<Selection>(createSelection);
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
+	const [gridSettings, setGridSettings] = useState<GridSettings>(() => ({ ...DEFAULT_GRID_SETTINGS }));
+	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
 	const [slotOrderDropPreview, setSlotOrderDropPreview] = useState<Readonly<{ slotId: EntityId; zone: SlotDropZone }> | undefined>(undefined);
@@ -335,6 +338,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 	const stepHistory = function stepHistory(nextHistory: HistoryState): void {
 		commitHistory(nextHistory);
+	};
+
+	const updateGridSpacing = function updateGridSpacing(value: string): void {
+		setGridSpacingInput(value);
+		const spacing = Number(value);
+
+		if (Number.isFinite(spacing) && spacing > 0) {
+			setGridSettings((current) => ({ ...current, spacing }));
+		}
+	};
+
+	const commitGridSpacingInput = function commitGridSpacingInput(): void {
+		setGridSpacingInput(String(gridSettings.spacing));
 	};
 
 	const applyCommandSequence = function applyCommandSequence(
@@ -892,6 +908,38 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<div className="viewport-toolbar">
 						<span className="context-label">{modeLabels[mode]} mode</span>
 						<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
+						<div className="grid-controls" aria-label="Grid controls">
+							<label className="grid-toggle">
+								<input
+									type="checkbox"
+									aria-label="Show grid"
+									checked={gridSettings.visible}
+									onChange={(event) => setGridSettings((current) => ({ ...current, visible: event.target.checked }))}
+								/>
+								<span>Grid</span>
+							</label>
+							<label className="grid-spacing-field">
+								<span>Spacing</span>
+								<input
+									aria-label="Grid spacing"
+									type="number"
+									min="1"
+									step="1"
+									value={gridSpacingInput}
+									onChange={(event) => updateGridSpacing(event.target.value)}
+									onBlur={commitGridSpacingInput}
+								/>
+							</label>
+							<label className="grid-toggle">
+								<input
+									type="checkbox"
+									aria-label="Snap to grid"
+									checked={gridSettings.snap}
+									onChange={(event) => setGridSettings((current) => ({ ...current, snap: event.target.checked }))}
+								/>
+								<span>Snap</span>
+							</label>
+						</div>
 					</div>
 					<div className="viewport-stage">
 						<ViewportCanvas
@@ -900,9 +948,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							onAssetDrop={dropAssetOnCanvas}
 							onCanvasSelect={selectCanvasPoint}
 							onCanvasMarquee={selectCanvasMarquee}
-							selection={selection}
-							transformTool={transformTool}
-							onCanvasTransformStart={beginCanvasTransform}
+								selection={selection}
+								transformTool={transformTool}
+								gridVisible={gridSettings.visible}
+								gridSpacing={gridSettings.spacing}
+								snapToGrid={gridSettings.snap}
+								onCanvasTransformStart={beginCanvasTransform}
 							onCanvasTransform={updateCanvasTransform}
 						/>
 						{project.bones.length === 0 && project.assets.length === 0 && (

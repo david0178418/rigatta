@@ -62,7 +62,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
 	font: inherit;
 }
 
@@ -71,7 +72,8 @@ button {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
 	outline: 2px solid var(--accent-strong);
 	outline-offset: 2px;
 }
@@ -335,6 +337,38 @@ h2 {
 
 .viewport-readout {
 	color: var(--muted);
+}
+
+.grid-controls {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-left: auto;
+	color: var(--muted);
+	font-size: 10px;
+}
+
+.grid-toggle,
+.grid-spacing-field {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	white-space: nowrap;
+}
+
+.grid-toggle input {
+	width: auto;
+	margin: 0;
+}
+
+.grid-spacing-field input {
+	width: 52px;
+	padding: 4px 5px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--canvas);
+	color: var(--text);
+	font-size: 10px;
 }
 
 .viewport-stage {
