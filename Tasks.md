@@ -9,11 +9,11 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P0-03** Define the `.boneanim` manifest and archive layout. Depends on P0-02.
 - [x] **P0-04** Define standard PixiJS atlas output and companion gameplay metadata schemas. Depends on P0-01.
 - [x] **P0-05** Prototype PixiJS fixed-canvas rendering and PNG extraction. Depends on P0-01.
-- [ ] **P0-06** Prototype alpha trimming and verify `sourceSize` and `spriteSourceSize` alignment by reloading the atlas in PixiJS. Depends on P0-04 and P0-05.
+- [x] **P0-06** Prototype alpha trimming and verify `sourceSize` and `spriteSourceSize` alignment by reloading the atlas in PixiJS. Depends on P0-04 and P0-05.
 - [x] **P0-07** Prototype Chrome directory picker and recursive directory drop traversal.
 - [x] **P0-08** Prototype IndexedDB image blob persistence and reload.
 - [x] **P0-09** Prototype ZIP archive creation and validation-driven import. Depends on P0-03.
-- [ ] **P0-10** Record prototype conclusions and finalize technical choices.
+- [x] **P0-10** Record prototype conclusions and finalize technical choices.
 
 ## Phase 1: project foundation
 
