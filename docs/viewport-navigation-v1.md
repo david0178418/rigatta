@@ -12,3 +12,8 @@ pixel dimensions and logical coordinate system unchanged.
 The default state is 100% zoom with zero offset. Export and PNG extraction use
 the renderer canvas directly, so viewport navigation cannot alter exported
 frame dimensions or coordinates.
+
+Move, Rotate, Scale, and Shear are available in a persistent toolbar at the
+canvas edge. The toolbar remains available while the hierarchy/inspector dock
+scrolls and while no entity is selected; it changes the active transform tool
+but does not add new shortcuts or change the viewport navigation state.

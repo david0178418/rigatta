@@ -16,3 +16,8 @@ keyboard.
 The reference is available from Setup and Animate mode. Undo and redo operate
 on the same bounded history as the toolbar buttons. Playback shortcuts affect
 only the active clip; when no clip exists they do nothing.
+
+The Animate timeline splitter also accepts local keyboard controls when it has
+focus: Arrow Up/Down resize by one step, Home moves to the minimum height, and
+End moves to the maximum height. These controls are component-local layout
+actions and do not create project-history entries.

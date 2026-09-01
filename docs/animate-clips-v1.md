@@ -6,10 +6,11 @@ duplicated, and deleted. Duplication preserves playback settings, tracks, keys,
 and event payloads while allocating fresh IDs for the clip and every nested
 track, key, and event.
 
-The clip inspector edits positive duration and FPS values and the loop flag.
-These settings are project data, so committed changes participate in bounded
-history and autosave. The initial timeline keeps the clip controls visible
-while later Animate tasks add typed-track editing.
+The timeline keeps clip selection, creation, transport, frame/time readout,
+Auto Key, and navigation controls in its sticky toolbar. Clip rename,
+duplicate, delete, duration, FPS, and loop editing are available from the
+contextual Clip settings surface. These settings are project data, so committed
+changes participate in bounded history and autosave.
 
 Playback is represented as an integer frame index with a retained sub-frame
 remainder. The controls can play, pause, and step by one frame. Looping wraps
@@ -22,16 +23,19 @@ remainder and pauses playback so the selected frame remains stable.
 
 The timeline navigation keeps a clamped frame window over longer clips. Zoom
 uses the active frame as its anchor, pan moves by visible pixel distance, and
-the track filter is case-insensitive and matches the typed track label.
+the track filter is case-insensitive and matches the typed track label. The
+ruler and dopesheet live in an independently scrollable timeline pane, while
+the event row and playhead remain in that pane below the track rows.
 
 Typed tracks are represented as dopesheet rows. Each row includes the target
 and property label, the track kind, and key markers snapped to the nearest
 integer frame. Markers outside the current navigated frame window are hidden.
 
-Available typed properties can be added as tracks. The selected track accepts
-keys at the current playhead frame, and selected key markers can be moved,
-copied to another frame, or deleted. Numeric, boolean, slot-attachment, and
-draw-order key inputs use the corresponding typed domain command.
+Available typed properties can be added from the contextual Track details
+surface. The selected track accepts keys at the current playhead frame, and
+selected key markers can be edited from Key details: moved, copied to another
+frame, or deleted. Numeric, boolean, slot-attachment, and draw-order key
+inputs use the corresponding typed domain command.
 
 Key markers support additive selection with Ctrl or Command. A multi-selection
 can be retimed by an integer frame offset in one validated command; collisions,
@@ -77,6 +81,13 @@ track or key exists, Pending for an edited-but-unkeyed property, and Keyed when
 a track contains a key at that frame. The same state is computed from the
 active clip and pending edit set so it stays aligned with the timeline.
 
-Browser coverage exercises clip lifecycle, playback, timeline navigation,
-typed-key editing, interpolation and Bezier controls, multi-key retiming and
-deletion, Auto Key, pending edits, slot attachment swaps, and keyed draw order.
+Event creation remains available from the Events row. Selecting an event opens
+Event details for name, validated JSON payload, frame, and delete operations.
+
+The Animate timeline height starts at 260 px and can be resized with its
+accessible horizontal separator between 190 px and 55% of the viewport height.
+The height is local UI state and is not persisted. Browser coverage exercises
+clip lifecycle, playback, timeline navigation, typed-key editing,
+interpolation and Bezier controls, multi-key retiming and deletion, Auto Key,
+pending edits, slot attachment swaps, keyed draw order, and the contextual
+detail surfaces.
