@@ -455,6 +455,27 @@ export const createImageAttachment = function createImageAttachment(
 	return success({ ...project, attachments: [...project.attachments, attachment] });
 };
 
+export const assignSlotAttachment = function assignSlotAttachment(
+	project: Project,
+	slotId: EntityId,
+	attachmentId: EntityId | null
+): OperationResult<Project> {
+	const slot = findSlot(project, slotId);
+
+	if (!slot) {
+		return failure('not-found', 'Slot does not exist.');
+	}
+	if (attachmentId !== null) {
+		const attachment = findAttachment(project, attachmentId);
+
+		if (!attachment || attachment.kind !== 'image' || attachment.slotId !== slotId) {
+			return failure('invalid-reference', 'Setup attachment must be an image belonging to the slot.');
+		}
+	}
+
+	return updateSlot(project, slotId, (current) => ({ ...current, setupAttachmentId: attachmentId }));
+};
+
 export const createPointAttachment = function createPointAttachment(
 	project: Project,
 	input: CreatePointAttachmentInput,

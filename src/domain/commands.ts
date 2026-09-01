@@ -27,6 +27,7 @@ import {
 	createPointAttachment,
 	createRectangleAttachment,
 	createSlot,
+	assignSlotAttachment,
 	deleteAttachment,
 	deleteBone,
 	deleteSlot,
@@ -66,6 +67,7 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'delete-slot'; slotId: EntityId }>
 	| Readonly<{ kind: 'reorder-slot'; slotId: EntityId; targetIndex: number }>
 	| Readonly<{ kind: 'create-image-attachment'; id: EntityId; input: CreateImageAttachmentInput }>
+	| Readonly<{ kind: 'assign-slot-attachment'; slotId: EntityId; attachmentId: EntityId | null }>
 	| Readonly<{ kind: 'create-point-attachment'; id: EntityId; input: CreatePointAttachmentInput }>
 	| Readonly<{ kind: 'create-rectangle-attachment'; id: EntityId; input: CreateRectangleAttachmentInput }>
 	| Readonly<{ kind: 'rename-attachment'; attachmentId: EntityId; name: string }>
@@ -131,6 +133,9 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'create-image-attachment') {
 		return createImageAttachment(project, command.input, () => command.id);
+	}
+	if (command.kind === 'assign-slot-attachment') {
+		return assignSlotAttachment(project, command.slotId, command.attachmentId);
 	}
 	if (command.kind === 'create-point-attachment') {
 		return createPointAttachment(project, command.input, () => command.id);

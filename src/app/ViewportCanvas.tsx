@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react';
 import type { Project } from '../domain/model.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
-import { createViewportState, formatViewportZoom, panViewport, resetViewport, zoomViewport, type ViewportState } from './viewport.ts';
+import { createViewportState, formatViewportZoom, panViewport, resetViewport, screenToLogicalPoint, zoomViewport, type ViewportPoint, type ViewportState } from './viewport.ts';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -13,9 +13,15 @@ type PointerSession = Readonly<{
 
 export const ViewportCanvas = function ViewportCanvas({
 	project,
-	assets
-}: Readonly<{ project: Project; assets: ProjectAssetBlobs }>): ReactElement {
+	assets,
+	onAssetDrop
+}: Readonly<{
+	project: Project;
+	assets: ProjectAssetBlobs;
+	onAssetDrop?: (assetId: string, point: ViewportPoint) => void;
+}>): ReactElement {
 	const hostRef = useRef<HTMLDivElement>(null);
+	const viewportRef = useRef<HTMLDivElement>(null);
 	const pointerSessionRef = useRef<PointerSession | undefined>(undefined);
 	const [error, setError] = useState<string | undefined>(undefined);
 	const [viewport, setViewport] = useState<ViewportState>(createViewportState);
@@ -117,8 +123,41 @@ export const ViewportCanvas = function ViewportCanvas({
 		}));
 	};
 
+	const dragOverViewport = function dragOverViewport(event: ReactDragEvent<HTMLDivElement>): void {
+		if (!event.dataTransfer.types.includes('application/x-bone-animation-asset')) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'copy';
+	};
+
+	const dropAsset = function dropAsset(event: ReactDragEvent<HTMLDivElement>): void {
+		event.preventDefault();
+		const assetId = event.dataTransfer.getData('application/x-bone-animation-asset');
+		const stage = viewportRef.current?.getBoundingClientRect();
+
+		if (!assetId || !stage || !onAssetDrop) {
+			return;
+		}
+
+		onAssetDrop(assetId, screenToLogicalPoint(
+			{ x: event.clientX, y: event.clientY },
+			stage,
+			viewport,
+			project.logicalCanvas
+		));
+	};
+
 	return (
-		<div className="pixi-viewport" aria-label="Pixi fixed logical canvas" onWheel={zoomWithWheel}>
+		<div
+			className="pixi-viewport"
+			ref={viewportRef}
+			aria-label="Pixi fixed logical canvas"
+			onWheel={zoomWithWheel}
+			onDragOver={dragOverViewport}
+			onDrop={dropAsset}
+		>
 			<div
 				className={isPanning ? 'pixi-host is-panning' : 'pixi-host'}
 				ref={hostRef}

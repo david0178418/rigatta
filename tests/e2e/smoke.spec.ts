@@ -53,3 +53,34 @@ test('supports viewport zoom controls and reset', async ({ page }) => {
 	await page.getByRole('button', { name: 'Center viewport' }).click();
 	await expect(page.getByRole('button', { name: 'Reset viewport' })).toHaveText('100%');
 });
+
+test('imports an image directory and creates a dropped image part', async ({ page }) => {
+	await page.addInitScript(() => {
+		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), (character) => character.charCodeAt(0));
+
+		Object.defineProperty(window, 'showDirectoryPicker', {
+			configurable: true,
+			value: async () => ({
+				kind: 'directory',
+				name: 'parts',
+				isSameEntry: async () => false,
+				values: async function* values() {
+					yield {
+						kind: 'file',
+						name: 'hero.png',
+						isSameEntry: async () => false,
+						getFile: async () => new File([pngBytes], 'hero.png', { type: 'image/png' })
+					};
+				}
+			})
+		});
+	});
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Import image directory' }).click();
+	await expect(page.getByText('hero.png', { exact: true })).toBeVisible();
+	await page.locator('.asset-row').dragTo(page.locator('.pixi-viewport'));
+
+	await expect(page.getByText('root', { exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+});

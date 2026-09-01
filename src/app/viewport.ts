@@ -1,3 +1,5 @@
+import type { CanvasSize } from '../domain/model.ts';
+
 export type ViewportState = Readonly<{
 	zoom: number;
 	offsetX: number;
@@ -7,6 +9,13 @@ export type ViewportState = Readonly<{
 export type ViewportPoint = Readonly<{
 	x: number;
 	y: number;
+}>;
+
+export type ViewportRect = Readonly<{
+	left: number;
+	top: number;
+	width: number;
+	height: number;
 }>;
 
 export const MIN_VIEWPORT_ZOOM = 0.25;
@@ -58,6 +67,21 @@ export const zoomViewport = function zoomViewport(
 
 export const resetViewport = function resetViewport(): ViewportState {
 	return createViewportState();
+};
+
+export const screenToLogicalPoint = function screenToLogicalPoint(
+	screenPoint: ViewportPoint,
+	stage: ViewportRect,
+	viewport: ViewportState,
+	logicalCanvas: CanvasSize
+): ViewportPoint {
+	const centeredX = screenPoint.x - stage.left - stage.width / 2;
+	const centeredY = screenPoint.y - stage.top - stage.height / 2;
+
+	return {
+		x: (centeredX - viewport.offsetX) / viewport.zoom + logicalCanvas.width / 2,
+		y: (centeredY - viewport.offsetY) / viewport.zoom + logicalCanvas.height / 2
+	};
 };
 
 export const formatViewportZoom = function formatViewportZoom(zoom: number): string {

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState, type DragEvent, type ReactElement } from 'react';
-import { createEntityId } from '../domain/ids.ts';
+import { DEFAULT_LOCAL_TRANSFORM } from '../domain/coordinates.ts';
+import { createEntityId, type EntityId } from '../domain/ids.ts';
 import {
 	canRedo,
 	canUndo,
+	beginTransaction,
+	commitTransaction,
 	createHistory,
 	currentProject,
 	dispatchCommand,
@@ -12,12 +15,16 @@ import {
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { Project } from '../domain/model.ts';
+import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
+import type { OperationResult } from '../domain/operations.ts';
 import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
 import { createAutosaveScheduler } from '../persistence/autosave.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { ReadyStartup, StartupState } from './startup.ts';
 import { loadEditorStartup } from './startup.ts';
+import { buildAssetLibraryEntries } from './asset-library.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
+import type { ViewportPoint } from './viewport.ts';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -118,8 +125,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	}), [startup.repository]);
 	const project = currentProject(history);
 	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
-	const normalizedQuery = assetQuery.trim().toLowerCase();
-	const visibleAssets = project.assets.filter((asset) => asset.relativePath.toLowerCase().includes(normalizedQuery));
+	const libraryEntries = buildAssetLibraryEntries(project.assets, assetQuery);
 
 	useEffect(() => {
 		return function cleanup(): void {
@@ -210,6 +216,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		event.preventDefault();
 	};
 
+	const dragAsset = function dragAsset(event: DragEvent<HTMLDivElement>, assetId: string): void {
+		event.dataTransfer.effectAllowed = 'copy';
+		event.dataTransfer.setData('application/x-bone-animation-asset', assetId);
+	};
+
 	const dropOnLibrary = function dropOnLibrary(event: DragEvent<HTMLElement>): void {
 		event.preventDefault();
 
@@ -240,6 +251,69 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 	const stepHistory = function stepHistory(nextHistory: HistoryState): void {
 		commitHistory(nextHistory);
+	};
+
+	const applyCommandSequence = function applyCommandSequence(
+		commands: readonly ProjectCommand[],
+		nextAssets: ProjectAssetBlobs = assetBlobs
+	): void {
+		const started = beginTransaction(history);
+		const result = commands.reduce<OperationResult<HistoryState>>(
+			(current, command) => current.ok ? dispatchCommand(current.value, command) : current,
+			{ ok: true, value: started }
+		);
+
+		if (!result.ok) {
+			setCommandError(result.error.message);
+			return;
+		}
+
+		commitHistory(commitTransaction(result.value), nextAssets);
+	};
+
+	const dropAssetOnCanvas = function dropAssetOnCanvas(assetId: string, point: ViewportPoint): void {
+		const asset = project.assets.find((candidate) => candidate.id === assetId);
+		const root = project.bones.find((bone) => bone.parentId === null);
+
+		if (!asset) {
+			setAssetError('The dragged image is no longer in this project.');
+			return;
+		}
+
+		const localPoint = root
+			? localPointForBone(evaluateBoneWorldMatrices(project), root.id, point)
+			: point;
+
+		if (!localPoint) {
+			setAssetError('The root bone transform cannot receive an image at that position.');
+			return;
+		}
+
+		const rootId: EntityId = root?.id ?? createEntityId();
+		const slotId = createEntityId();
+		const attachmentId = createEntityId();
+		const commands: readonly ProjectCommand[] = [
+			...(root ? [] : [{ kind: 'create-bone' as const, id: rootId, input: { name: 'root', parentId: null } }]),
+			{
+				kind: 'create-slot' as const,
+				id: slotId,
+				input: { name: asset.name, boneId: rootId }
+			},
+			{
+				kind: 'create-image-attachment' as const,
+				id: attachmentId,
+				input: {
+					name: asset.name,
+					slotId,
+					assetId,
+					transform: { ...DEFAULT_LOCAL_TRANSFORM, x: localPoint.x, y: localPoint.y }
+				}
+			},
+			{ kind: 'assign-slot-attachment' as const, slotId, attachmentId }
+		];
+
+		setAssetError(undefined);
+		applyCommandSequence(commands);
 	};
 	const statusMessage = commandError ?? persistenceError ?? assetError;
 
@@ -298,11 +372,28 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							<p>No images imported</p>
 							<span>Drop a folder here to begin.</span>
 						</div>
-					) : visibleAssets.length === 0 ? (
+					) : libraryEntries.length === 0 ? (
 						<div className="tree-empty">No images match “{assetQuery}”.</div>
 					) : (
 						<div className="asset-list" aria-label="Imported images">
-							{visibleAssets.map((asset) => <div className="asset-row" key={asset.id}><span className="asset-glyph" aria-hidden="true">▧</span><span>{asset.relativePath}</span></div>)}
+							{libraryEntries.map((entry) => entry.kind === 'folder' ? (
+								<div className="asset-folder-row" key={`folder:${entry.path}`} style={{ paddingLeft: `${8 + entry.depth * 12}px` }}>
+									<span className="asset-glyph" aria-hidden="true">▾</span>
+									<span>{entry.name}</span>
+								</div>
+							) : (
+								<div
+									className="asset-row"
+									draggable
+									key={entry.asset.id}
+									onDragStart={(event) => dragAsset(event, entry.asset.id)}
+									style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
+									title={`Drag ${entry.asset.relativePath} into the canvas`}
+								>
+									<span className="asset-glyph" aria-hidden="true">▧</span>
+									<span>{entry.asset.name}<small>{entry.asset.relativePath}</small></span>
+								</div>
+							))}
 						</div>
 					)}
 				</aside>
@@ -313,7 +404,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
 					</div>
 					<div className="viewport-stage">
-						<ViewportCanvas project={project} assets={assetBlobs} />
+						<ViewportCanvas project={project} assets={assetBlobs} onAssetDrop={dropAssetOnCanvas} />
 						{project.bones.length === 0 && project.assets.length === 0 && (
 							<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
 								<span>Drop image parts here</span>

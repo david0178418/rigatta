@@ -4,6 +4,7 @@ import {
 	createImageAsset,
 	createImageAssets,
 	createImageAttachment,
+	assignSlotAttachment,
 	createPointAttachment,
 	createRectangleAttachment,
 	createSlot,
@@ -106,6 +107,15 @@ describe('immutable project operations', () => {
 		if (!imageWithAsset.ok) {
 			return;
 		}
+		const assigned = assignSlotAttachment(imageWithAsset.value, fixtureIds.slot, fixtureIds.image);
+		expect(assigned.ok).toBe(true);
+		if (assigned.ok) {
+			expect(assigned.value.slots[0]?.setupAttachmentId).toBe(fixtureIds.image);
+		}
+		expect(assignSlotAttachment(imageWithAsset.value, fixtureIds.slot, fixtureIds.point)).toMatchObject({
+			ok: false,
+			error: { code: 'invalid-reference' }
+		});
 
 		const point = createPointAttachment(imageWithAsset.value, {
 			name: 'muzzle',

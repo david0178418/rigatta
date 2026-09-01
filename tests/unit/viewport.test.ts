@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createViewportState, formatViewportZoom, panViewport, resetViewport, zoomViewport, type ViewportState } from '../../src/app/viewport.ts';
+import { createViewportState, formatViewportZoom, panViewport, resetViewport, screenToLogicalPoint, zoomViewport, type ViewportState } from '../../src/app/viewport.ts';
 
 describe('viewport navigation state', () => {
 	test('pans without changing zoom', () => {
@@ -25,5 +25,16 @@ describe('viewport navigation state', () => {
 		expect(zoomed.zoom).toBe(4);
 		expect(formatViewportZoom(zoomed.zoom)).toBe('400%');
 		expect(resetViewport()).toEqual({ zoom: 1, offsetX: 0, offsetY: 0 });
+	});
+
+	test('maps a screen drop through pan and zoom into logical coordinates', () => {
+		const point = screenToLogicalPoint(
+			{ x: 650, y: 350 },
+			{ left: 100, top: 100, width: 600, height: 600 },
+			{ zoom: 2, offsetX: 20, offsetY: -10 },
+			{ width: 1024, height: 512 }
+		);
+
+		expect(point).toEqual({ x: 627, y: 236 });
 	});
 });
