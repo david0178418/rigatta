@@ -1,5 +1,6 @@
 import {
 	DEFAULT_LOCAL_TRANSFORM,
+	isFiniteLocalTransform,
 	type LocalTransform
 } from './coordinates.ts';
 import { createEntityId, isEntityId, type EntityId } from './ids.ts';
@@ -268,6 +269,11 @@ export const createBone = function createBone(
 	if (input.parentId === null && project.bones.some((bone) => bone.parentId === null)) {
 		return failure('invalid-reference', 'A project can contain only one root bone.');
 	}
+	const transform = input.transform ?? DEFAULT_LOCAL_TRANSFORM;
+
+	if (!isFiniteLocalTransform(transform)) {
+		return failure('invalid-value', 'Bone transforms must contain finite numbers.');
+	}
 
 	const id = allocateId(project, idFactory);
 
@@ -279,10 +285,23 @@ export const createBone = function createBone(
 		id: id.value,
 		name: name.value,
 		parentId: input.parentId,
-		transform: input.transform ?? DEFAULT_LOCAL_TRANSFORM
+		transform
 	};
 
 	return success({ ...project, bones: [...project.bones, bone], boneOrder: [...project.boneOrder, bone.id] });
+};
+
+export const renameProject = function renameProject(
+	project: Project,
+	name: string
+): OperationResult<Project> {
+	const normalizedName = invalidName(name);
+
+	if (!normalizedName.ok) {
+		return normalizedName;
+	}
+
+	return success({ ...project, name: normalizedName.value });
 };
 
 export const createSlot = function createSlot(
@@ -342,6 +361,11 @@ export const createImageAttachment = function createImageAttachment(
 	if (!isUnitInterval(opacity) || !isUnitInterval(pivotX) || !isUnitInterval(pivotY)) {
 		return failure('invalid-value', 'Image opacity and pivots must be within [0, 1].');
 	}
+	const transform = input.transform ?? DEFAULT_LOCAL_TRANSFORM;
+
+	if (!isFiniteLocalTransform(transform)) {
+		return failure('invalid-value', 'Attachment transforms must contain finite numbers.');
+	}
 
 	const id = allocateId(project, idFactory);
 
@@ -355,7 +379,7 @@ export const createImageAttachment = function createImageAttachment(
 		name: name.value,
 		slotId: input.slotId,
 		assetId: input.assetId,
-		transform: input.transform ?? DEFAULT_LOCAL_TRANSFORM,
+		transform,
 		opacity,
 		pivotX,
 		pivotY
@@ -377,6 +401,11 @@ export const createPointAttachment = function createPointAttachment(
 	if (!findBone(project, input.boneId)) {
 		return failure('invalid-reference', 'Point attachment bone does not exist.');
 	}
+	const transform = input.transform ?? DEFAULT_LOCAL_TRANSFORM;
+
+	if (!isFiniteLocalTransform(transform)) {
+		return failure('invalid-value', 'Attachment transforms must contain finite numbers.');
+	}
 
 	const id = allocateId(project, idFactory);
 
@@ -389,7 +418,7 @@ export const createPointAttachment = function createPointAttachment(
 		kind: 'point',
 		name: name.value,
 		boneId: input.boneId,
-		transform: input.transform ?? DEFAULT_LOCAL_TRANSFORM,
+		transform,
 		enabled: input.enabled ?? true
 	};
 
@@ -412,6 +441,11 @@ export const createRectangleAttachment = function createRectangleAttachment(
 	if (!isPositiveFinite(input.width) || !isPositiveFinite(input.height)) {
 		return failure('invalid-value', 'Rectangle dimensions must be positive finite numbers.');
 	}
+	const transform = input.transform ?? DEFAULT_LOCAL_TRANSFORM;
+
+	if (!isFiniteLocalTransform(transform)) {
+		return failure('invalid-value', 'Attachment transforms must contain finite numbers.');
+	}
 
 	const id = allocateId(project, idFactory);
 
@@ -424,7 +458,7 @@ export const createRectangleAttachment = function createRectangleAttachment(
 		kind: 'rectangle',
 		name: name.value,
 		boneId: input.boneId,
-		transform: input.transform ?? DEFAULT_LOCAL_TRANSFORM,
+		transform,
 		width: input.width,
 		height: input.height,
 		enabled: input.enabled ?? true
@@ -623,4 +657,22 @@ export const reorderSlot = function reorderSlot(
 	return setupDrawOrder
 		? success({ ...project, setupDrawOrder })
 		: failure('invalid-order', 'Slot draw-order index is outside the valid range.');
+};
+
+export const updateBoneSetupTransform = function updateBoneSetupTransform(
+	project: Project,
+	boneId: EntityId,
+	transform: LocalTransform
+): OperationResult<Project> {
+	if (!findBone(project, boneId)) {
+		return failure('not-found', 'Bone does not exist.');
+	}
+	if (!isFiniteLocalTransform(transform)) {
+		return failure('invalid-value', 'Bone transforms must contain finite numbers.');
+	}
+
+	return success({
+		...project,
+		bones: project.bones.map((bone) => bone.id === boneId ? { ...bone, transform } : bone)
+	});
 };

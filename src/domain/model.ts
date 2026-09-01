@@ -98,57 +98,73 @@ export type BoneTransformProperty =
 
 export type AttachmentTransformProperty = BoneTransformProperty;
 
+export type BoneTransformTrack = Readonly<{
+	id: EntityId;
+	kind: 'bone-transform';
+	targetId: EntityId;
+	property: BoneTransformProperty;
+	keys: readonly NumberKey[];
+}>;
+
+export type AttachmentTransformTrack = Readonly<{
+	id: EntityId;
+	kind: 'attachment-transform';
+	targetId: EntityId;
+	property: AttachmentTransformProperty;
+	keys: readonly NumberKey[];
+}>;
+
+export type AttachmentOpacityTrack = Readonly<{
+	id: EntityId;
+	kind: 'attachment-opacity';
+	targetId: EntityId;
+	keys: readonly NumberKey[];
+}>;
+
+export type SlotAttachmentTrack = Readonly<{
+	id: EntityId;
+	kind: 'slot-attachment';
+	targetId: EntityId;
+	keys: readonly DiscreteKey<EntityId | null>[];
+}>;
+
+export type SlotDrawOrderTrack = Readonly<{
+	id: EntityId;
+	kind: 'slot-draw-order';
+	keys: readonly DiscreteKey<readonly EntityId[]>[];
+}>;
+
+export type PointEnabledTrack = Readonly<{
+	id: EntityId;
+	kind: 'point-enabled';
+	targetId: EntityId;
+	keys: readonly DiscreteKey<boolean>[];
+}>;
+
+export type RectangleSizeTrack = Readonly<{
+	id: EntityId;
+	kind: 'rectangle-size';
+	targetId: EntityId;
+	property: 'width' | 'height';
+	keys: readonly NumberKey[];
+}>;
+
+export type RectangleEnabledTrack = Readonly<{
+	id: EntityId;
+	kind: 'rectangle-enabled';
+	targetId: EntityId;
+	keys: readonly DiscreteKey<boolean>[];
+}>;
+
 export type Track =
-	| Readonly<{
-			id: EntityId;
-			kind: 'bone-transform';
-			targetId: EntityId;
-			property: BoneTransformProperty;
-			keys: readonly NumberKey[];
-		}>
-	| Readonly<{
-			id: EntityId;
-			kind: 'attachment-transform';
-			targetId: EntityId;
-			property: AttachmentTransformProperty;
-			keys: readonly NumberKey[];
-		}>
-	| Readonly<{
-			id: EntityId;
-			kind: 'attachment-opacity';
-			targetId: EntityId;
-			keys: readonly NumberKey[];
-		}>
-	| Readonly<{
-			id: EntityId;
-			kind: 'slot-attachment';
-			targetId: EntityId;
-			keys: readonly DiscreteKey<EntityId | null>[];
-		}>
-	| Readonly<{
-			id: EntityId;
-			kind: 'slot-draw-order';
-			keys: readonly DiscreteKey<readonly EntityId[]>[];
-		}>
-	| Readonly<{
-			id: EntityId;
-			kind: 'point-enabled';
-			targetId: EntityId;
-			keys: readonly DiscreteKey<boolean>[];
-		}>
-	| Readonly<{
-			id: EntityId;
-			kind: 'rectangle-size';
-			targetId: EntityId;
-			property: 'width' | 'height';
-			keys: readonly NumberKey[];
-		}>
-	| Readonly<{
-			id: EntityId;
-			kind: 'rectangle-enabled';
-			targetId: EntityId;
-			keys: readonly DiscreteKey<boolean>[];
-		}>;
+	| BoneTransformTrack
+	| AttachmentTransformTrack
+	| AttachmentOpacityTrack
+	| SlotAttachmentTrack
+	| SlotDrawOrderTrack
+	| PointEnabledTrack
+	| RectangleSizeTrack
+	| RectangleEnabledTrack;
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =

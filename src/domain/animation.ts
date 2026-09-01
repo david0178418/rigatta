@@ -648,23 +648,6 @@ export const updateClipPlayback = function updateClipPlayback(
 	}));
 };
 
-export const updateBoneSetupTransform = function updateBoneSetupTransform(
-	project: Project,
-	boneId: EntityId,
-	transform: LocalTransform
-): OperationResult<Project> {
-	const bone = project.bones.find((candidate) => candidate.id === boneId);
-
-	if (!bone) {
-		return failure('not-found', 'Bone does not exist.');
-	}
-
-	return success({
-		...project,
-		bones: project.bones.map((candidate) => candidate.id === boneId ? { ...candidate, transform } : candidate)
-	});
-};
-
 export const ensureDefaultTransform = function ensureDefaultTransform(
 	transform: LocalTransform | undefined
 ): LocalTransform {

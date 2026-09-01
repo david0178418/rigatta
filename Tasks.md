@@ -42,10 +42,10 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P2-10** Implement cubic Bezier evaluation and segment metadata.
 - [x] **P2-11** Implement discrete attachment, visibility, and draw-order tracks.
 - [x] **P2-12** Implement the pure pose evaluator. Depends on P2-02 and P2-08 through P2-11.
-- [ ] **P2-13** Implement typed project commands and pure command reduction.
-- [ ] **P2-14** Implement bounded undo/redo history.
-- [ ] **P2-15** Implement continuous-gesture transaction grouping. Depends on P2-14.
-- [ ] **P2-16** Add domain, evaluator, validation, and history tests.
+- [x] **P2-13** Implement typed project commands and pure command reduction.
+- [x] **P2-14** Implement bounded undo/redo history.
+- [x] **P2-15** Implement continuous-gesture transaction grouping. Depends on P2-14.
+- [x] **P2-16** Add domain, evaluator, validation, and history tests.
 
 ## Phase 3: assets, persistence, and archives
 
