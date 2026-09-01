@@ -52,6 +52,11 @@ owned by the tracked slot. The selected-key editor updates that value without
 changing the key time or identity, so attachment swaps remain independent of
 setup attachment assignment.
 
+Draw-order tracks use a complete slot-order key at each keyed frame. The
+selected-key editor lists the keyed slots and moves a slot earlier or later by
+one position, preserving the key identity and validating that every project
+slot remains present exactly once.
+
 Auto Key is enabled by default for the editor session. Editing a changed bone
 or attachment transform in Animate mode updates setup data and creates or
 upserts the corresponding numeric key at the current frame in the same

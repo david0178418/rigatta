@@ -14,12 +14,14 @@ import {
 	retimeKeys,
 	setNumberKeyInterpolation,
 	updateAttachmentKey,
+	updateDrawOrderKey,
 	upsertNumberKey,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
 import type { Project } from '../../src/domain/model.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
+import { createSlot } from '../../src/domain/operations.ts';
 
 const clipId = '123e4567-e89b-42d3-a456-426614174010';
 const boneTrackId = '123e4567-e89b-42d3-a456-426614174011';
@@ -170,6 +172,29 @@ describe('typed animation tracks', () => {
 		}]);
 		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: keyIds[4], value: null }]);
 		expect(invalid).toMatchObject({ ok: false, error: { code: 'invalid-reference' } });
+	});
+
+	test('updates a draw-order key with a complete immutable slot order', () => {
+		const project = withClip();
+		const secondSlotId = keyIds[10];
+		const withSecondSlot = unwrap(createSlot(project, { name: 'second', boneId: fixtureIds.root }, () => secondSlotId));
+		const withTrack = unwrap(createTrack(withSecondSlot, clipId, {
+			kind: 'slot-draw-order'
+		}, () => drawOrderTrackId));
+		const withKey = unwrap(addDrawOrderKey(withTrack, clipId, drawOrderTrackId, {
+			timeSeconds: 0,
+			value: [fixtureIds.slot, secondSlotId]
+		}, () => keyIds[9]));
+		const reordered = unwrap(updateDrawOrderKey(withKey, clipId, drawOrderTrackId, keyIds[9], [secondSlotId, fixtureIds.slot]));
+		const invalid = updateDrawOrderKey(withKey, clipId, drawOrderTrackId, keyIds[9], [fixtureIds.slot]);
+
+		expect(reordered.clips[0]?.tracks[0]?.keys).toMatchObject([{
+			id: keyIds[9],
+			timeSeconds: 0,
+			value: [secondSlotId, fixtureIds.slot]
+		}]);
+		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ value: [fixtureIds.slot, secondSlotId] }]);
+		expect(invalid).toMatchObject({ ok: false, error: { code: 'invalid-value' } });
 	});
 
 	test('updates playback settings without mutating the original clip', () => {

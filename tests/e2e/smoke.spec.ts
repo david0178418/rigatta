@@ -431,7 +431,27 @@ test('reorders setup slots through hierarchy drag and drop', async ({ page }) =>
 
 	const slots = page.locator('.slot-row');
 	await expect(slots).toHaveCount(2);
+	const firstSlotId = await slots.nth(0).getAttribute('data-slot-id');
+	const secondSlotId = await slots.nth(1).getAttribute('data-slot-id');
+
+	if (!firstSlotId || !secondSlotId) {
+		throw new Error('The slot IDs are unavailable.');
+	}
+
 	await slots.nth(0).dragTo(slots.nth(1));
 	await expect(slots.nth(0)).toHaveAttribute('data-draw-order-index', '1');
 	await expect(slots.nth(1)).toHaveAttribute('data-draw-order-index', '0');
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'Setup · Draw order' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('button', { name: 'Key frame 1' }).click();
+
+	const keyedSlots = page.locator('.draw-order-key-editor li');
+	await expect(keyedSlots).toHaveCount(2);
+	await expect(keyedSlots.nth(0)).toHaveAttribute('data-slot-id', secondSlotId);
+	await keyedSlots.nth(0).getByRole('button', { name: 'Move slot later' }).click();
+	await expect(keyedSlots.nth(0)).toHaveAttribute('data-slot-id', firstSlotId);
 });

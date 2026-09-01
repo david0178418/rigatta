@@ -403,6 +403,32 @@ const BezierGraphEditor = function BezierGraphEditor({
 	);
 };
 
+const moveDrawOrderSlot = function moveDrawOrderSlot(
+	order: readonly EntityId[],
+	slotId: EntityId,
+	direction: -1 | 1
+): readonly EntityId[] {
+	const index = order.indexOf(slotId);
+	const targetIndex = index + direction;
+
+	if (index < 0 || targetIndex < 0 || targetIndex >= order.length) {
+		return order;
+	}
+
+	const moving = order[index];
+	const target = order[targetIndex];
+
+	if (!moving || !target) {
+		return order;
+	}
+
+	return order.map((current, currentIndex) => currentIndex === index
+		? target
+		: currentIndex === targetIndex
+			? moving
+			: current);
+};
+
 type AnimateTimelineProps = Readonly<{
 	project: Project;
 	activeClip: Clip | undefined;
@@ -425,6 +451,7 @@ type AnimateTimelineProps = Readonly<{
 	onCopyKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => EntityId | undefined;
 	onUpdateInterpolation: (trackId: EntityId, keyId: EntityId, input: NumberKeyInterpolationInput) => void;
 	onUpdateAttachmentKey: (trackId: EntityId, keyId: EntityId, value: EntityId | null) => void;
+	onUpdateDrawOrderKey: (trackId: EntityId, keyId: EntityId, value: readonly EntityId[]) => void;
 	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 	onAutoKeyChange: (enabled: boolean) => void;
@@ -453,6 +480,7 @@ const AnimateTimeline = function AnimateTimeline({
 	onCopyKey,
 	onUpdateInterpolation,
 	onUpdateAttachmentKey,
+	onUpdateDrawOrderKey,
 	onDeleteKey,
 	onRetimeKeys,
 	onAutoKeyChange,
@@ -509,6 +537,9 @@ const AnimateTimeline = function AnimateTimeline({
 		? selectedRow.track.keys.find((key) => key.id === selectedKeyMarker.keyId)
 		: undefined;
 	const selectedSlotId = selectedRow?.track.kind === 'slot-attachment' ? selectedRow.track.targetId : undefined;
+	const selectedDrawOrderKey = selectedKeyMarker && selectedRow?.track.kind === 'slot-draw-order'
+		? selectedRow.track.keys.find((key) => key.id === selectedKeyMarker.keyId)
+		: undefined;
 	const submitCreateTrack = function submitCreateTrack(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 
@@ -606,6 +637,17 @@ const AnimateTimeline = function AnimateTimeline({
 		}
 
 		onUpdateAttachmentKey(selectedRow.track.id, selectedKeyMarker.keyId, parseEntityId(value) ?? null);
+	};
+	const updateSelectedDrawOrder = function updateSelectedDrawOrder(slotId: EntityId, direction: -1 | 1): void {
+		if (!selectedRow || !selectedKeyMarker || !selectedDrawOrderKey) {
+			return;
+		}
+
+		onUpdateDrawOrderKey(
+			selectedRow.track.id,
+			selectedKeyMarker.keyId,
+			moveDrawOrderSlot(selectedDrawOrderKey.value, slotId, direction)
+		);
 	};
 	const selectAnimationKey = function selectAnimationKey(
 		trackId: EntityId,
@@ -807,6 +849,26 @@ const AnimateTimeline = function AnimateTimeline({
 																			.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}
 																		</select>
 																	</label>
+																)}
+																{selectedDrawOrderKey && (
+																	<div className="draw-order-key-editor">
+																		<span className="field-label">Keyed slot order</span>
+																		<ol>
+																			{selectedDrawOrderKey.value.map((slotId, index) => {
+																				const slotName = project.slots.find((slot) => slot.id === slotId)?.name ?? slotId;
+
+																				return (
+																		<li key={slotId} data-slot-id={slotId}>
+																						<span>{slotName}</span>
+																						<div>
+																							<button className="quiet-button" type="button" aria-label={`Move ${slotName} earlier`} disabled={index === 0} onClick={() => updateSelectedDrawOrder(slotId, -1)}>↑</button>
+																							<button className="quiet-button" type="button" aria-label={`Move ${slotName} later`} disabled={index === selectedDrawOrderKey.value.length - 1} onClick={() => updateSelectedDrawOrder(slotId, 1)}>↓</button>
+																						</div>
+																					</li>
+																				);
+																			})}
+																		</ol>
+																	</div>
 																)}
 																<button className="secondary-button" type="submit">Move key</button>
 									<button className="quiet-button" type="button" onClick={(event) => {
@@ -1075,6 +1137,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	): void {
 		if (activeClip) {
 			applyCommand({ kind: 'set-attachment-key', clipId: activeClip.id, trackId, keyId, value });
+		}
+	};
+
+	const updateAnimationDrawOrderKey = function updateAnimationDrawOrderKey(
+		trackId: EntityId,
+		keyId: EntityId,
+		value: readonly EntityId[]
+	): void {
+		if (activeClip) {
+			applyCommand({ kind: 'set-draw-order-key', clipId: activeClip.id, trackId, keyId, value });
 		}
 	};
 
@@ -2170,6 +2242,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onCopyKey={copyAnimationKey}
 						onUpdateInterpolation={updateAnimationInterpolation}
 						onUpdateAttachmentKey={updateAnimationAttachmentKey}
+						onUpdateDrawOrderKey={updateAnimationDrawOrderKey}
 						onDeleteKey={deleteAnimationKey}
 						onRetimeKeys={retimeAnimationKeys}
 						onAutoKeyChange={setAutoKey}

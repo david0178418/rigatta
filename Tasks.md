@@ -99,7 +99,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P5-12** Implement interpolation selection per segment.
 - [x] **P5-13** Build the cubic Bezier graph editor.
 - [x] **P5-14** Implement keyed slot attachment swapping.
-- [ ] **P5-15** Implement keyed draw order.
+- [x] **P5-15** Implement keyed draw order.
 - [ ] **P5-16** Connect all animation mutations to coherent history transactions.
 - [ ] **P5-17** Add Animate-mode browser tests.
 

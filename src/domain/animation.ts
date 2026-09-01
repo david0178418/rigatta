@@ -147,6 +147,17 @@ const validSlotAttachmentValue = function validSlotAttachmentValue(
 	return attachment?.kind === 'image' && attachment.slotId === slotId;
 };
 
+const validDrawOrderValue = function validDrawOrderValue(
+	project: Project,
+	value: readonly EntityId[]
+): boolean {
+	const slotIds = project.slots.map((slot) => slot.id);
+
+	return value.length === slotIds.length
+		&& new Set(value).size === slotIds.length
+		&& value.every((slotId) => slotIds.includes(slotId));
+};
+
 const allEntityIds = function allEntityIds(project: Project): readonly EntityId[] {
 	return [
 		project.id,
@@ -983,10 +994,6 @@ export const addDrawOrderKey = function addDrawOrderKey(
 ): OperationResult<Project> {
 	const clip = findClip(project, clipId);
 	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
-	const slotIds = project.slots.map((slot) => slot.id);
-	const validOrder = input.value.length === slotIds.length
-		&& new Set(input.value).size === slotIds.length
-		&& input.value.every((slotId) => slotIds.includes(slotId));
 
 	if (!clip || !track) {
 		return failure('not-found', 'Animation track does not exist.');
@@ -994,7 +1001,7 @@ export const addDrawOrderKey = function addDrawOrderKey(
 	if (track.kind !== 'slot-draw-order') {
 		return failure('invalid-value', 'This track does not accept draw-order keys.');
 	}
-	if (!isValidKeyTime(clip, input.timeSeconds) || !validOrder) {
+	if (!isValidKeyTime(clip, input.timeSeconds) || !validDrawOrderValue(project, input.value)) {
 		return failure('invalid-value', 'Draw-order keys need a complete slot order inside the clip duration.');
 	}
 
@@ -1013,6 +1020,40 @@ export const addDrawOrderKey = function addDrawOrderKey(
 
 	return updateTrack(project, clipId, trackId, (currentTrack) => currentTrack.kind === 'slot-draw-order'
 		? { ...currentTrack, keys }
+		: currentTrack);
+};
+
+export const updateDrawOrderKey = function updateDrawOrderKey(
+	project: Project,
+	clipId: EntityId,
+	trackId: EntityId,
+	keyId: EntityId,
+	value: readonly EntityId[]
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+
+	if (!clip || !track) {
+		return failure('not-found', 'Animation track does not exist.');
+	}
+	if (track.kind !== 'slot-draw-order') {
+		return failure('invalid-value', 'This track does not accept draw-order keys.');
+	}
+	if (!validDrawOrderValue(project, value)) {
+		return failure('invalid-value', 'Draw-order keys need a complete slot order.');
+	}
+
+	const existing = track.keys.find((key) => key.id === keyId);
+
+	if (!existing) {
+		return failure('not-found', 'Animation key does not exist.');
+	}
+
+	return updateTrack(project, clipId, trackId, (currentTrack) => currentTrack.kind === 'slot-draw-order'
+		? {
+			...currentTrack,
+			keys: currentTrack.keys.map((key) => key.id === keyId ? { ...key, value: [...value] } : key)
+		}
 		: currentTrack);
 };
 

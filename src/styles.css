@@ -997,6 +997,40 @@ h2 {
 	width: 64px;
 }
 
+.draw-order-key-editor {
+	flex: 1 1 100%;
+	min-width: 220px;
+}
+
+.draw-order-key-editor ol {
+	display: grid;
+	gap: 3px;
+	margin: 5px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.draw-order-key-editor li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 3px 5px;
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	background: var(--surface);
+}
+
+.draw-order-key-editor li > div {
+	display: flex;
+	gap: 2px;
+}
+
+.draw-order-key-editor .quiet-button {
+	min-width: 24px;
+	padding: 2px 5px;
+}
+
 .key-boolean-field {
 	display: flex !important;
 	align-items: center;
