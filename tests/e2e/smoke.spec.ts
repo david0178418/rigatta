@@ -186,3 +186,19 @@ test('reparents a bone through hierarchy drag and drop', async ({ page }) => {
 	await bones.nth(2).dragTo(bones.nth(1));
 	await expect(bones.nth(2)).toHaveAttribute('data-parent-id', targetId);
 });
+
+test('reorders setup slots through hierarchy drag and drop', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add slot' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add slot' }).click();
+
+	const slots = page.locator('.slot-row');
+	await expect(slots).toHaveCount(2);
+	await slots.nth(0).dragTo(slots.nth(1));
+	await expect(slots.nth(0)).toHaveAttribute('data-draw-order-index', '1');
+	await expect(slots.nth(1)).toHaveAttribute('data-draw-order-index', '0');
+});

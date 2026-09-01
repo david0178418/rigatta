@@ -27,6 +27,7 @@ import { buildAssetLibraryEntries } from './asset-library.ts';
 import { entitiesInBounds, hitTestProject } from './hit-testing.ts';
 import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hierarchy-dnd.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
+import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommand, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
@@ -42,6 +43,7 @@ const transformToolLabels: Record<TransformTool, string> = {
 
 const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
 const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
+const SLOT_DRAG_MIME = 'application/x-bone-animation-slot';
 
 const modeLabels: Record<EditorMode, string> = {
 	setup: 'Setup',
@@ -195,7 +197,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [selection, setSelection] = useState<Selection>(createSelection);
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
-	const [slotDropPreview, setSlotDropPreview] = useState<EntityId | undefined>(undefined);
+	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
+	const [slotOrderDropPreview, setSlotOrderDropPreview] = useState<Readonly<{ slotId: EntityId; zone: SlotDropZone }> | undefined>(undefined);
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
@@ -405,12 +408,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		event.preventDefault();
 		event.dataTransfer.dropEffect = 'copy';
-		setSlotDropPreview(slotId);
+		setAssetSlotDropPreview(slotId);
 	};
 
 	const dropAssetOnSlot = function dropAssetOnSlot(event: DragEvent<HTMLElement>, slotId: EntityId): void {
 		event.preventDefault();
-		setSlotDropPreview(undefined);
+		setAssetSlotDropPreview(undefined);
 		const assetId = event.dataTransfer.getData(ASSET_DRAG_MIME);
 		const asset = project.assets.find((candidate) => candidate.id === assetId);
 
@@ -441,6 +444,47 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		if (applyCommandSequence(commands)) {
 			setSelection([{ kind: 'attachment', id: attachmentId }]);
 		}
+	};
+
+	const dragSlot = function dragSlot(event: DragEvent<HTMLElement>, slotId: EntityId): void {
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData(SLOT_DRAG_MIME, slotId);
+	};
+
+	const dragOverSlotOrder = function dragOverSlotOrder(event: DragEvent<HTMLElement>, slotId: EntityId): void {
+		if (!event.dataTransfer.types.includes(SLOT_DRAG_MIME)) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'move';
+		const bounds = event.currentTarget.getBoundingClientRect();
+
+		setSlotOrderDropPreview({
+			slotId,
+			zone: slotDropZoneForClientY(bounds.top, bounds.height, event.clientY)
+		});
+	};
+
+	const dropSlotOrder = function dropSlotOrder(event: DragEvent<HTMLElement>, targetId: EntityId): void {
+		event.preventDefault();
+		setSlotOrderDropPreview(undefined);
+		const sourceId = event.dataTransfer.getData(SLOT_DRAG_MIME);
+
+		if (!sourceId) {
+			return;
+		}
+
+		const bounds = event.currentTarget.getBoundingClientRect();
+		const zone = slotDropZoneForClientY(bounds.top, bounds.height, event.clientY);
+		const commands = slotDropCommands(project, sourceId, targetId, zone);
+
+		if (!commands) {
+			setCommandError('That slot drop could not update setup draw order.');
+			return;
+		}
+
+		applyCommandSequence(commands);
 	};
 
 	const updateSlotAttachment = function updateSlotAttachment(slotId: EntityId, attachmentId: EntityId | null): void {
@@ -831,7 +875,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									key={entry.asset.id}
 									onClick={(event) => updateSelection({ kind: 'asset', id: entry.asset.id }, event.metaKey || event.ctrlKey)}
 									onDragStart={(event) => dragAsset(event, entry.asset.id)}
-									onDragEnd={() => setSlotDropPreview(undefined)}
+									onDragEnd={() => setAssetSlotDropPreview(undefined)}
 									aria-pressed={isSelected(selection, { kind: 'asset', id: entry.asset.id })}
 									style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
 									title={`Drag ${entry.asset.relativePath} into the canvas`}
@@ -910,13 +954,28 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										<button
 											className={[
 												isSelected(selection, { kind: 'slot', id: slot.id }) ? 'slot-row is-selected' : 'slot-row',
-												slotDropPreview === slot.id ? 'drop-target' : ''
+												assetSlotDropPreview === slot.id
+													? 'drop-target'
+													: slotOrderDropPreview?.slotId === slot.id ? `drop-order-${slotOrderDropPreview.zone}` : ''
 											].filter(Boolean).join(' ')}
+											draggable
 											key={slot.id}
 											type="button"
+											data-slot-id={slot.id}
+											data-draw-order-index={project.setupDrawOrder.indexOf(slot.id)}
 											onClick={(event) => updateSelection({ kind: 'slot', id: slot.id }, event.metaKey || event.ctrlKey)}
-											onDragOver={(event) => dragOverSlot(event, slot.id)}
-											onDrop={(event) => dropAssetOnSlot(event, slot.id)}
+											onDragStart={(event) => dragSlot(event, slot.id)}
+											onDragEnd={() => {
+												setAssetSlotDropPreview(undefined);
+												setSlotOrderDropPreview(undefined);
+											}}
+											onDragOver={(event) => {
+												dragOverSlot(event, slot.id);
+												dragOverSlotOrder(event, slot.id);
+											}}
+											onDrop={(event) => event.dataTransfer.types.includes(SLOT_DRAG_MIME)
+												? dropSlotOrder(event, slot.id)
+												: dropAssetOnSlot(event, slot.id)}
 											aria-pressed={isSelected(selection, { kind: 'slot', id: slot.id })}
 										>
 											<span aria-hidden="true">↳</span>{slot.name}
@@ -1016,6 +1075,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 															.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}
 													</select>
 												</label>
+												<p className="muted-copy">Draw order {project.setupDrawOrder.indexOf(selectedSlot.id) + 1} of {project.setupDrawOrder.length}. Drag slots to reorder them.</p>
 												<p className="muted-copy">Drop an image from the library onto this slot to add a setup attachment.</p>
 											</div>
 										)}
