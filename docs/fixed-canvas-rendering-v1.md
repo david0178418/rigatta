@@ -12,9 +12,12 @@ attachments use the catalog pivot and a texture created from a decoded local
 `ImageBitmap`; no source directory handle is retained.
 
 Rendering is manual (`autoStart: false`) so a pose update is an explicit
-render boundary. PNG extraction reads the fixed renderer canvas after a render,
-and renderer destruction releases Pixi resources and decoded bitmaps. The
-browser harness verifies the 1024 by 1024 default canvas and its PNG data URL.
+render boundary. The viewport keeps the renderer alive while Setup and
+Animate state changes request new content; animation frame requests are
+coalesced so an older asynchronous render cannot replace a newer pose. PNG
+extraction reads the fixed renderer canvas after a render, and renderer
+destruction releases Pixi resources and decoded bitmaps. The browser harness
+verifies the 1024 by 1024 default canvas and its PNG data URL.
 
 ## Loading workflow
 
