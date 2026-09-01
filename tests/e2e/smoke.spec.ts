@@ -69,8 +69,12 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 		const getFile = async function getFile(): Promise<File> {
 			return new File([pngBytes], 'hero.png', { type: 'image/png' });
 		};
+		const getAlternateFile = async function getAlternateFile(): Promise<File> {
+			return new File([pngBytes], 'alt.png', { type: 'image/png' });
+		};
 		const values = async function* values(): AsyncGenerator<MockFileEntry> {
 			yield { kind: 'file', name: 'hero.png', isSameEntry: sameEntry, getFile };
+			yield { kind: 'file', name: 'alt.png', isSameEntry: sameEntry, getFile: getAlternateFile };
 		};
 
 		Object.defineProperty(window, 'showDirectoryPicker', {
@@ -87,7 +91,8 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 
 	await page.getByRole('button', { name: 'Import image directory' }).click();
 	await expect(page.getByText('hero.png', { exact: true })).toBeVisible();
-	await page.locator('.asset-row').dragTo(page.locator('.pixi-viewport'));
+	await expect(page.getByText('alt.png', { exact: true })).toBeVisible();
+	await page.locator('.asset-row').filter({ hasText: 'hero.png' }).dragTo(page.locator('.pixi-viewport'));
 
 	await expect(page.getByText('root', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
@@ -108,7 +113,19 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.keyboard.up('Shift');
 	await page.keyboard.up('Control');
 	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
-	await page.locator('.attachment-row').click();
+	await page.locator('.slot-row').click();
+	const setupImage = page.getByRole('combobox', { name: 'Setup image' });
+	await expect(setupImage).toHaveValue(/.+/);
+	await page.locator('.asset-row').filter({ hasText: 'alt.png' }).dragTo(page.locator('.slot-row'));
+	await page.locator('.slot-row').click();
+	const alternateAttachmentId = await page.getByRole('option', { name: 'alt.png' }).getAttribute('value');
+
+	if (!alternateAttachmentId) {
+		throw new Error('The alternate attachment ID is unavailable.');
+	}
+
+	await expect(page.getByRole('combobox', { name: 'Setup image' })).toHaveValue(alternateAttachmentId);
+	await page.locator('.attachment-row').filter({ hasText: 'alt.png' }).click();
 	const xField = page.getByRole('spinbutton', { name: 'X', exact: true });
 	const originalX = await xField.inputValue();
 	const imageBounds = await viewport.boundingBox();

@@ -77,7 +77,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [ ] **P4-11** Implement multi-selection transform deltas.
 - [x] **P4-12** Build numeric transform and opacity inspectors.
 - [x] **P4-13** Implement fixed pivot editing.
-- [ ] **P4-14** Implement slot attachment assignment and setup image swapping.
+- [x] **P4-14** Implement slot attachment assignment and setup image swapping.
 - [ ] **P4-15** Implement setup draw-order editing.
 - [ ] **P4-16** Implement grid spacing, visibility, and snapping controls.
 - [ ] **P4-17** Connect all setup mutations to history transactions.

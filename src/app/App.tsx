@@ -41,6 +41,7 @@ const transformToolLabels: Record<TransformTool, string> = {
 };
 
 const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
+const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
 
 const modeLabels: Record<EditorMode, string> = {
 	setup: 'Setup',
@@ -194,6 +195,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [selection, setSelection] = useState<Selection>(createSelection);
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
+	const [slotDropPreview, setSlotDropPreview] = useState<EntityId | undefined>(undefined);
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
@@ -297,7 +299,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 	const dragAsset = function dragAsset(event: DragEvent<HTMLElement>, assetId: string): void {
 		event.dataTransfer.effectAllowed = 'copy';
-		event.dataTransfer.setData('application/x-bone-animation-asset', assetId);
+		event.dataTransfer.setData(ASSET_DRAG_MIME, assetId);
 	};
 
 	const dropOnLibrary = function dropOnLibrary(event: DragEvent<HTMLElement>): void {
@@ -396,6 +398,55 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		applyCommandSequence(commands);
 	};
 
+	const dragOverSlot = function dragOverSlot(event: DragEvent<HTMLElement>, slotId: EntityId): void {
+		if (!event.dataTransfer.types.includes(ASSET_DRAG_MIME)) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'copy';
+		setSlotDropPreview(slotId);
+	};
+
+	const dropAssetOnSlot = function dropAssetOnSlot(event: DragEvent<HTMLElement>, slotId: EntityId): void {
+		event.preventDefault();
+		setSlotDropPreview(undefined);
+		const assetId = event.dataTransfer.getData(ASSET_DRAG_MIME);
+		const asset = project.assets.find((candidate) => candidate.id === assetId);
+
+		if (!asset) {
+			setAssetError('The dragged image is no longer in this project.');
+			return;
+		}
+
+		const currentAttachment = project.attachments.find((attachment) => attachment.id === project.slots.find((slot) => slot.id === slotId)?.setupAttachmentId);
+		const attachmentId = createEntityId();
+		const commands: readonly ProjectCommand[] = [
+			{
+				kind: 'create-image-attachment',
+				id: attachmentId,
+				input: {
+					name: asset.name,
+					slotId,
+					assetId,
+					transform: currentAttachment?.kind === 'image' ? currentAttachment.transform : DEFAULT_LOCAL_TRANSFORM,
+					opacity: currentAttachment?.kind === 'image' ? currentAttachment.opacity : 1,
+					pivotX: currentAttachment?.kind === 'image' ? currentAttachment.pivotX : 0.5,
+					pivotY: currentAttachment?.kind === 'image' ? currentAttachment.pivotY : 0.5
+				}
+			},
+			{ kind: 'assign-slot-attachment', slotId, attachmentId }
+		];
+
+		if (applyCommandSequence(commands)) {
+			setSelection([{ kind: 'attachment', id: attachmentId }]);
+		}
+	};
+
+	const updateSlotAttachment = function updateSlotAttachment(slotId: EntityId, attachmentId: EntityId | null): void {
+		applyCommand({ kind: 'assign-slot-attachment', slotId, attachmentId });
+	};
+
 	const updateSelection = function updateSelection(entity: SelectableEntity, additive: boolean): void {
 		setSelection((current) => selectEntity(current, entity, additive));
 	};
@@ -467,6 +518,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		: undefined;
 	const selectedBone = selectedEntity?.kind === 'bone'
 		? project.bones.find((bone) => bone.id === selectedEntity.id)
+		: undefined;
+	const selectedSlot = selectedEntity?.kind === 'slot'
+		? project.slots.find((slot) => slot.id === selectedEntity.id)
 		: undefined;
 	const selectedAttachment = selectedEntity?.kind === 'attachment'
 		? project.attachments.find((attachment) => attachment.id === selectedEntity.id)
@@ -777,6 +831,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									key={entry.asset.id}
 									onClick={(event) => updateSelection({ kind: 'asset', id: entry.asset.id }, event.metaKey || event.ctrlKey)}
 									onDragStart={(event) => dragAsset(event, entry.asset.id)}
+									onDragEnd={() => setSlotDropPreview(undefined)}
 									aria-pressed={isSelected(selection, { kind: 'asset', id: entry.asset.id })}
 									style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
 									title={`Drag ${entry.asset.relativePath} into the canvas`}
@@ -853,10 +908,15 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									</button>,
 									...project.slots.filter((slot) => slot.boneId === bone.id).flatMap((slot) => [
 										<button
-											className={isSelected(selection, { kind: 'slot', id: slot.id }) ? 'slot-row is-selected' : 'slot-row'}
+											className={[
+												isSelected(selection, { kind: 'slot', id: slot.id }) ? 'slot-row is-selected' : 'slot-row',
+												slotDropPreview === slot.id ? 'drop-target' : ''
+											].filter(Boolean).join(' ')}
 											key={slot.id}
 											type="button"
 											onClick={(event) => updateSelection({ kind: 'slot', id: slot.id }, event.metaKey || event.ctrlKey)}
+											onDragOver={(event) => dragOverSlot(event, slot.id)}
+											onDrop={(event) => dropAssetOnSlot(event, slot.id)}
 											aria-pressed={isSelected(selection, { kind: 'slot', id: slot.id })}
 										>
 											<span aria-hidden="true">↳</span>{slot.name}
@@ -940,7 +1000,25 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 														)}
 														<button className="secondary-button" type="submit">Apply values</button>
 													</form>
-													)}
+											)}
+										{selectedSlot && (
+											<div className="inspector-form slot-assignment-form">
+												<label>
+													<span className="field-label">Setup image</span>
+													<select
+														aria-label="Setup image"
+														value={selectedSlot.setupAttachmentId ?? ''}
+														onChange={(event) => updateSlotAttachment(selectedSlot.id, event.target.value || null)}
+													>
+														<option value="">None</option>
+														{project.attachments
+															.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedSlot.id)
+															.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}
+													</select>
+												</label>
+												<p className="muted-copy">Drop an image from the library onto this slot to add a setup attachment.</p>
+											</div>
+										)}
 										<div className="transform-tools" aria-label="Transform tools">
 											{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
 												<button
