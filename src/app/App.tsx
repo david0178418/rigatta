@@ -43,6 +43,7 @@ import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, s
 import { createExportDiagnostics, formatByteCount } from '../export/diagnostics.ts';
 import { createExampleAssetBlobs, exampleProject } from '../examples/example-project.ts';
 import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
+import { nextAvailableName } from './entity-names.ts';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -1464,7 +1465,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const created = applyCommand({
 			kind: 'create-clip',
 			id,
-			input: { name: `clip ${project.clips.length + 1}` }
+			input: { name: nextAvailableName(`clip ${project.clips.length + 1}`, project.clips.map((clip) => clip.name)) }
 		});
 
 		if (created) {
@@ -2107,7 +2108,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const added = applyCommand({
 			kind: 'create-bone',
 			id,
-			input: { name: 'bone', parentId: selectedBone.id }
+			input: { name: nextAvailableName('bone', project.bones.map((bone) => bone.name)), parentId: selectedBone.id }
 		});
 
 		if (added) {
@@ -2125,7 +2126,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const added = applyCommand({
 			kind: 'create-slot',
 			id,
-			input: { name: 'slot', boneId: selectedBone.id }
+			input: { name: nextAvailableName('slot', project.slots.map((slot) => slot.name)), boneId: selectedBone.id }
 		});
 
 		if (added) {
@@ -2143,7 +2144,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const added = applyCommand({
 			kind: 'create-point-attachment',
 			id,
-			input: { name: 'point', boneId: selectedBone.id }
+			input: { name: nextAvailableName('point', project.attachments.map((attachment) => attachment.name)), boneId: selectedBone.id }
 		});
 
 		if (added) {
@@ -2161,7 +2162,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const added = applyCommand({
 			kind: 'create-rectangle-attachment',
 			id,
-			input: { name: 'rectangle', boneId: selectedBone.id, width: 64, height: 64 }
+			input: {
+				name: nextAvailableName('rectangle', project.attachments.map((attachment) => attachment.name)),
+				boneId: selectedBone.id,
+				width: 64,
+				height: 64
+			}
 		});
 
 		if (added) {
