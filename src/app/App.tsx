@@ -32,7 +32,7 @@ import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hiera
 import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
-import { createTimelineViewport, panTimeline, resetTimelineViewport, timelineFrameRange, trackLabel, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
+import { buildTimelineTrackRows, createTimelineViewport, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
@@ -262,8 +262,7 @@ const AnimateTimeline = function AnimateTimeline({
 	const frameCount = activeClip ? frameCountForClip(activeClip) : 1;
 	const timelineRange = timelineFrameRange(timelineViewport, frameCount);
 	const timelineVisibleCount = visibleFrameCount(timelineViewport, frameCount);
-	const normalizedFilter = trackFilter.trim().toLowerCase();
-	const matchingTrackCount = activeClip?.tracks.filter((track) => trackLabel(project, track).toLowerCase().includes(normalizedFilter)).length ?? 0;
+	const trackRows = activeClip ? buildTimelineTrackRows(project, activeClip, trackFilter) : [];
 
 	return (
 		<>
@@ -327,11 +326,34 @@ const AnimateTimeline = function AnimateTimeline({
 							</div>
 							<div className="timeline-ruler-meta">
 								<span aria-label="Timeline frame range">Frames {timelineRange.startFrame + 1}–{timelineRange.endFrame + 1} of {frameCount}</span>
-								<span className="muted-copy">{matchingTrackCount} matching track{matchingTrackCount === 1 ? '' : 's'}</span>
+								<span className="muted-copy">{trackRows.length} matching track{trackRows.length === 1 ? '' : 's'}</span>
 							</div>
-							<div className="timeline-ruler" aria-label="Timeline ruler">
-								{Array.from({ length: timelineVisibleCount }, (_, index) => timelineRange.startFrame + index).map((frame) => (
-									<span className={frame === playback.frameIndex ? 'timeline-tick is-playhead' : 'timeline-tick'} key={frame}>{frame + 1}</span>
+							<div className="dopesheet" aria-label="Animation tracks">
+								<div className="dopesheet-ruler">
+									<span className="track-row-label">Track</span>
+									<div className="timeline-ruler" aria-label="Timeline ruler">
+										{Array.from({ length: timelineVisibleCount }, (_, index) => timelineRange.startFrame + index).map((frame) => (
+											<span className={frame === playback.frameIndex ? 'timeline-tick is-playhead' : 'timeline-tick'} key={frame}>{frame + 1}</span>
+										))}
+									</div>
+								</div>
+								{trackRows.length === 0 ? (
+									<div className="dopesheet-empty">No typed tracks match this filter.</div>
+								) : trackRows.map((row) => (
+									<div className="track-row" data-track-id={row.track.id} key={row.track.id}>
+										<div className="track-row-label"><span>{row.label}</span><small>{row.track.kind}</small></div>
+										<div className="track-key-lane">
+											{row.keys.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame).map((key) => (
+												<span
+													aria-label={`Key frame ${key.frameIndex + 1}`}
+													className="track-key"
+													key={key.id}
+													style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
+													title={`Frame ${key.frameIndex + 1}`}
+												/>
+											))}
+										</div>
+									</div>
 								))}
 							</div>
 							<label className="playhead-field">

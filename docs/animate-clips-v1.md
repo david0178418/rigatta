@@ -23,3 +23,7 @@ remainder and pauses playback so the selected frame remains stable.
 The timeline navigation keeps a clamped frame window over longer clips. Zoom
 uses the active frame as its anchor, pan moves by visible pixel distance, and
 the track filter is case-insensitive and matches the typed track label.
+
+Typed tracks are represented as dopesheet rows. Each row includes the target
+and property label, the track kind, and key markers snapped to the nearest
+integer frame. Markers outside the current navigated frame window are hidden.

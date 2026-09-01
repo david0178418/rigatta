@@ -1,8 +1,15 @@
-import type { Project, Track } from '../domain/model.ts';
+import type { Clip, Project, Track } from '../domain/model.ts';
+import type { EntityId } from '../domain/ids.ts';
 
 export type TimelineViewport = Readonly<{
 	startFrame: number;
 	pixelsPerFrame: number;
+}>;
+
+export type TimelineTrackRow = Readonly<{
+	track: Track;
+	label: string;
+	keys: readonly Readonly<{ id: EntityId; frameIndex: number }>[];
 }>;
 
 export const DEFAULT_TIMELINE_WIDTH = 640;
@@ -113,4 +120,24 @@ export const trackLabel = function trackLabel(project: Project, track: Track): s
 	const target = 'targetId' in track ? ` · ${targetName(project, track.targetId)}` : '';
 
 	return `${labels[track.kind]}${property}${target}`;
+};
+
+const frameIndexForTime = function frameIndexForTime(clip: Clip, timeSeconds: number): number {
+	return clamp(Math.round(timeSeconds * clip.fps), 0, Math.max(0, Math.ceil(clip.durationSeconds * clip.fps) - 1));
+};
+
+export const buildTimelineTrackRows = function buildTimelineTrackRows(
+	project: Project,
+	clip: Clip,
+	filter: string = ''
+): readonly TimelineTrackRow[] {
+	const query = filter.trim().toLowerCase();
+
+	return clip.tracks
+		.filter((track) => trackLabel(project, track).toLowerCase().includes(query))
+		.map((track) => ({
+			track,
+			label: trackLabel(project, track),
+			keys: track.keys.map((key) => ({ id: key.id, frameIndex: frameIndexForTime(clip, key.timeSeconds) }))
+		}));
 };

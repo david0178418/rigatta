@@ -858,6 +858,80 @@ h2 {
 	background: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 1px), rgba(111, 212, 189, 0.14) 5%);
 }
 
+.dopesheet {
+	display: grid;
+	margin-top: 6px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.dopesheet-ruler,
+.track-row {
+	display: grid;
+	grid-template-columns: minmax(180px, 0.36fr) minmax(0, 1fr);
+}
+
+.dopesheet-ruler {
+	background: var(--surface-hover);
+}
+
+.dopesheet-ruler .timeline-ruler {
+	margin-top: 0;
+	border-bottom: 0;
+}
+
+.track-row {
+	min-height: 36px;
+	border-top: 1px solid var(--border);
+}
+
+.track-row-label {
+	display: grid;
+	align-content: center;
+	gap: 2px;
+	min-width: 0;
+	padding: 6px 9px;
+	color: var(--text);
+	font-size: 10px;
+}
+
+.track-row-label span,
+.track-row-label small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.track-row-label small {
+	color: var(--muted);
+	font-size: 8px;
+}
+
+.track-key-lane {
+	position: relative;
+	min-width: 0;
+	background: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 1px), rgba(111, 212, 189, 0.1) 5%);
+}
+
+.track-key {
+	position: absolute;
+	top: 50%;
+	width: 9px;
+	height: 9px;
+	border: 1px solid var(--accent-strong);
+	background: var(--accent);
+	transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.dopesheet-empty {
+	padding: 12px;
+	border-top: 1px solid var(--border);
+	color: var(--muted);
+	font-size: 10px;
+	text-align: center;
+}
+
 .timeline-tick {
 	position: relative;
 	padding-top: 8px;
