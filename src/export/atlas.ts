@@ -1,5 +1,6 @@
 import type { SpritesheetData, SpritesheetFrameData } from 'pixi.js';
 import type { FrameBounds, FrameSize, TrimmedRgbaFrame } from './trim.ts';
+import type { GridLayout } from './grid.ts';
 
 export type AtlasPlacement = Readonly<{
 	x: number;
@@ -14,6 +15,15 @@ export type AtlasSize = Readonly<{
 export type AtlasResult<TValue> =
 	| Readonly<{ ok: true; value: TValue }>
 	| Readonly<{ ok: false; error: string }>;
+
+export type AnimationClipFrames = Readonly<{
+	name: string;
+	frameKeys: readonly string[];
+}>;
+
+export type AnimationJson = Readonly<{
+	animations: Readonly<Record<string, readonly string[]>>;
+}>;
 
 const success = function success<TValue>(value: TValue): AtlasResult<TValue> {
 	return { ok: true, value };
@@ -102,5 +112,77 @@ export const createPixiAtlasData = function createPixiAtlasData(
 			scale: '1',
 			version: '1'
 		}
+	});
+};
+
+export const createPixiGridAtlasData = function createPixiGridAtlasData(
+	frameKeys: readonly string[],
+	layout: GridLayout,
+	imageFilename: string = 'atlas-0.png'
+): AtlasResult<SpritesheetData> {
+	if (frameKeys.length !== layout.placements.length) {
+		return failure('Grid frame keys do not match the layout.');
+	}
+	if (frameKeys.some((key) => key.trim().length === 0)) {
+		return failure('Grid frame keys must be non-empty.');
+	}
+	if (new Set(frameKeys).size !== frameKeys.length) {
+		return failure('Grid frame keys must be unique.');
+	}
+	if (!isPositiveInteger(layout.width) || !isPositiveInteger(layout.height)) {
+		return failure('Grid atlas dimensions must be positive integers.');
+	}
+
+	const frames = Object.fromEntries(layout.placements.flatMap((placement) => {
+		const frameKey = frameKeys[placement.index];
+
+		return frameKey ? [[frameKey, {
+			frame: {
+				x: placement.x,
+				y: placement.y,
+				w: placement.width,
+				h: placement.height
+			},
+			rotated: false,
+			trimmed: false,
+			spriteSourceSize: { x: 0, y: 0, w: placement.width, h: placement.height },
+			sourceSize: { w: placement.width, h: placement.height }
+		} as SpritesheetFrameData] as const] : [];
+	}));
+
+	return success({
+		frames,
+		meta: {
+			app: 'Bone Animation Utility',
+			format: 'RGBA8888',
+			image: imageFilename,
+			size: { w: layout.width, h: layout.height },
+			scale: '1',
+			version: '1'
+		}
+	});
+};
+
+export const createAnimationData = function createAnimationData(
+	clips: readonly AnimationClipFrames[]
+): AtlasResult<AnimationJson> {
+	const names = clips.map((clip) => clip.name);
+	const frameKeys = clips.flatMap((clip) => clip.frameKeys);
+
+	if (clips.some((clip) => clip.name.trim().length === 0)) {
+		return failure('Animation names must be non-empty.');
+	}
+	if (new Set(names).size !== names.length) {
+		return failure('Animation names must be unique.');
+	}
+	if (frameKeys.some((key) => key.trim().length === 0)) {
+		return failure('Animation frame keys must be non-empty.');
+	}
+	if (new Set(frameKeys).size !== frameKeys.length) {
+		return failure('Animation frame keys must be unique across clips.');
+	}
+
+	return success({
+		animations: Object.fromEntries(clips.map((clip) => [clip.name, clip.frameKeys]))
 	});
 };
