@@ -18,7 +18,7 @@ import type { ProjectCommand } from '../domain/commands.ts';
 import type { Project } from '../domain/model.ts';
 import type { Clip } from '../domain/model.ts';
 import type { DuplicateClipIds } from '../domain/animation.ts';
-import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
+import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
 import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
@@ -219,6 +219,7 @@ type AnimateTimelineProps = Readonly<{
 	onUpdatePlayback: (settings: ClipPlaybackSettings) => void;
 	onTogglePlayback: () => void;
 	onStepPlayback: (direction: PlaybackDirection) => void;
+	onSeekPlayback: (frameIndex: number) => void;
 }>;
 
 const AnimateTimeline = function AnimateTimeline({
@@ -232,7 +233,8 @@ const AnimateTimeline = function AnimateTimeline({
 	onDeleteClip,
 	onUpdatePlayback,
 	onTogglePlayback,
-	onStepPlayback
+	onStepPlayback,
+	onSeekPlayback
 }: AnimateTimelineProps): ReactElement {
 	const submitClipName = function submitClipName(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
@@ -301,6 +303,18 @@ const AnimateTimeline = function AnimateTimeline({
 								<button className="quiet-button" type="button" aria-label="Step forward" onClick={() => onStepPlayback(1)}>▶</button>
 								<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
 							</div>
+							<label className="playhead-field">
+								<span className="field-label">Playhead</span>
+								<input
+									aria-label="Playhead"
+									type="range"
+									min="0"
+									max={frameCountForClip(activeClip) - 1}
+									step="1"
+									value={playback.frameIndex}
+									onChange={(event) => onSeekPlayback(Number(event.target.value))}
+								/>
+							</label>
 							<form className="clip-form" key={`name:${activeClip.id}:${activeClip.name}`} onSubmit={submitClipName}>
 								<label><span className="field-label">Clip name</span><input name="name" defaultValue={activeClip.name} aria-label="Clip name" /></label>
 								<button className="secondary-button" type="submit">Rename</button>
@@ -483,6 +497,14 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 
 		setPlayback({ clipId: activeClip.id, state: stepPlayback(activePlayback, activeClip, direction) });
+	};
+
+	const seekActivePlayback = function seekActivePlayback(frameIndex: number): void {
+		if (!activeClip) {
+			return;
+		}
+
+		setPlayback({ clipId: activeClip.id, state: seekPlayback(activePlayback, activeClip, frameIndex) });
 	};
 
 	const addImportedImages = function addImportedImages(result: AssetImportResult): void {
@@ -1413,6 +1435,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onUpdatePlayback={updateActiveClipPlayback}
 						onTogglePlayback={toggleActivePlayback}
 						onStepPlayback={stepActivePlayback}
+						onSeekPlayback={seekActivePlayback}
 					/>
 				) : (
 					<>

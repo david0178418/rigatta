@@ -812,6 +812,16 @@ h2 {
 	font-variant-numeric: tabular-nums;
 }
 
+.playhead-field {
+	display: grid;
+	gap: 4px;
+}
+
+.playhead-field input[type="range"] {
+	width: 100%;
+	accent-color: var(--accent);
+}
+
 .clip-form label {
 	display: grid;
 	min-width: 0;

@@ -63,6 +63,17 @@ describe('frame-accurate playback', () => {
 		expect(frameTimeSeconds(nextFrame, clip)).toBeCloseTo(1 / 12);
 	});
 
+	test('seeks to an integer frame, clamps the range, and pauses playback', () => {
+		const clip = clipFrom(withClip());
+		const playing = togglePlayback(createPlaybackState(), clip);
+		const seeked = seekPlayback(playing, clip, 4.8);
+		const clamped = seekPlayback(seeked, clip, 100);
+
+		expect(seeked.frameIndex).toBe(4);
+		expect(seeked.playing).toBe(false);
+		expect(clamped.frameIndex).toBe(11);
+	});
+
 	test('steps in both directions and wraps looped clips', () => {
 		const clip = clipFrom(withClip());
 		const first = stepPlayback(createPlaybackState(), clip, 1);

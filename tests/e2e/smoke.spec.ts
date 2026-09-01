@@ -105,6 +105,9 @@ test('plays, pauses, and steps the active animation clip by frame', async ({ pag
 	await expect(page.getByRole('button', { name: 'Pause animation' })).toBeVisible();
 	await page.getByRole('button', { name: 'Pause animation' }).click();
 	await expect(page.getByRole('button', { name: 'Play animation' })).toBeVisible();
+	await page.getByLabel('Playhead').fill('5');
+	await expect(page.getByText('Frame 6 / 12', { exact: false })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Play animation' })).toBeVisible();
 });
 
 test('imports an image directory and creates a dropped image part', async ({ page }) => {

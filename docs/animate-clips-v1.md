@@ -15,3 +15,7 @@ Playback is represented as an integer frame index with a retained sub-frame
 remainder. The controls can play, pause, and step by one frame. Looping wraps
 from the final frame to frame zero; non-looping clips stop on their final frame
 and can be restarted with Play.
+
+The playhead is a one-based display over a zero-based frame index. Its range
+input only accepts integer frame positions, and seeking clears the sub-frame
+remainder and pauses playback so the selected frame remains stable.

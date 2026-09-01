@@ -40,6 +40,7 @@ export const seekPlayback = function seekPlayback(
 	return {
 		...state,
 		frameIndex: clampFrame(frameIndex, frameCountForClip(clip)),
+		playing: false,
 		remainderSeconds: 0
 	};
 };
