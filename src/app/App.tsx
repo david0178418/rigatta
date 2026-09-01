@@ -862,7 +862,7 @@ const AnimateTimeline = function AnimateTimeline({
 								</div>
 							)}
 							{selectedTrack && (
-								<form className="key-create-form" onSubmit={submitAddKey}>
+								<form className="key-create-form" key={selectedTrack.id} onSubmit={submitAddKey}>
 									<span className="muted-copy">Add key at frame {playback.frameIndex + 1}</span>
 									{(selectedTrack.kind === 'bone-transform'
 										|| selectedTrack.kind === 'attachment-transform'

@@ -110,7 +110,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P6-03** Implement point attachment editor visualization and selection.
 - [x] **P6-04** Implement keyable point transform and enabled state.
 - [x] **P6-05** Implement rectangle attachment editor visualization and handles.
-- [ ] **P6-06** Implement keyable rectangle transform, size, rotation, and enabled state.
+- [x] **P6-06** Implement keyable rectangle transform, size, rotation, and enabled state.
 - [ ] **P6-07** Evaluate gameplay attachments into world-space sampled-frame data.
 - [ ] **P6-08** Add event and gameplay attachment tests.
 

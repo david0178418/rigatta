@@ -184,6 +184,33 @@ test('keys point transform and enabled state', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(2);
 });
 
+test('keys rectangle rotation, dimensions, and enabled state', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add rectangle' }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'rectangle · Rectangle · rotation' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await expect(page.getByText('Image transform · rotation · rectangle', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'rectangle · Rectangle · width' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await expect(page.getByText('Rectangle size · width · rectangle', { exact: true })).toBeVisible();
+	await page.getByText('Rectangle size · width · rectangle', { exact: true }).click();
+	await expect(page.getByText('Selected: Rectangle size · width · rectangle', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'rectangle · Rectangle · enabled' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await expect(page.getByText('Rectangle enabled · rectangle', { exact: true })).toBeVisible();
+	await page.getByText('Rectangle enabled · rectangle', { exact: true }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+
+	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(3);
+});
+
 test('changes interpolation for a selected numeric key', async ({ page }) => {
 	await page.goto('/');
 

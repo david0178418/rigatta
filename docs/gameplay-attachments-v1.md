@@ -20,3 +20,7 @@ Rectangle guides show their transformed bounds. With the Scale tool active,
 the selected rectangle exposes handles on its local right and bottom edges;
 dragging those handles emits an immutable rectangle-size command while keeping
 the attachment transform unchanged.
+
+Rectangle animation exposes all local transform properties, including rotation,
+plus independent positive width and height numeric tracks and a discrete
+enabled track. The current setup dimensions and enabled state seed new keys.
