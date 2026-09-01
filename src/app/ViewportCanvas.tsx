@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react';
 import type { Project } from '../domain/model.ts';
+import type { EvaluatedPose } from '../domain/pose.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
@@ -20,6 +21,7 @@ type PointerSession = Readonly<{
 export const ViewportCanvas = function ViewportCanvas({
 	project,
 	assets,
+	pose,
 	onAssetDrop,
 	onCanvasSelect,
 	onCanvasMarquee,
@@ -33,6 +35,7 @@ export const ViewportCanvas = function ViewportCanvas({
 }: Readonly<{
 	project: Project;
 	assets: ProjectAssetBlobs;
+	pose?: EvaluatedPose;
 	onAssetDrop?: (assetId: string, point: ViewportPoint) => void;
 	onCanvasSelect?: (point: ViewportPoint, additive: boolean) => void;
 	onCanvasMarquee?: (bounds: LogicalBounds, additive: boolean) => void;
@@ -48,7 +51,11 @@ export const ViewportCanvas = function ViewportCanvas({
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const pointerSessionRef = useRef<PointerSession | undefined>(undefined);
 	const didPanRef = useRef(false);
+	const renderQueueRef = useRef<Promise<void>>(Promise.resolve());
+	const renderRequestRef = useRef(0);
 	const [error, setError] = useState<string | undefined>(undefined);
+	const [renderer, setRenderer] = useState<FixedCanvasRenderer | undefined>(undefined);
+	const rendererRef = useRef<FixedCanvasRenderer | undefined>(undefined);
 	const [viewport, setViewport] = useState<ViewportState>(createViewportState);
 	const [isPanning, setIsPanning] = useState(false);
 	const [marquee, setMarquee] = useState<ViewportRectangle | undefined>(undefined);
@@ -78,19 +85,18 @@ export const ViewportCanvas = function ViewportCanvas({
 			return function cleanup(): void {};
 		}
 
-		const lifecycle: {
-			cancelled: boolean;
-			renderer: FixedCanvasRenderer | undefined;
-		} = {
-			cancelled: false,
-			renderer: undefined
-		};
+		const lifecycle = { cancelled: false };
 
 		setError(undefined);
-		void createFixedCanvasRenderer(host, project.logicalCanvas)
-			.then(async (created) => {
+		void createFixedCanvasRenderer(host, {
+			width: project.logicalCanvas.width,
+			height: project.logicalCanvas.height
+		})
+			.then((created) => {
 				if (!created.ok) {
-					setError(created.error.message);
+					if (!lifecycle.cancelled) {
+						setError(created.error.message);
+					}
 					return;
 				}
 				if (lifecycle.cancelled) {
@@ -98,18 +104,8 @@ export const ViewportCanvas = function ViewportCanvas({
 					return;
 				}
 
-				const renderer = created.value;
-				lifecycle.renderer = renderer;
-				const rendered = await renderer.renderSetup(project, assets, {
-					selectedIds: selection?.map((entity) => entity.id),
-					transformTool,
-					gridVisible,
-					gridSpacing
-				});
-
-				if (!rendered.ok && !lifecycle.cancelled) {
-					setError(rendered.error.message);
-				}
+				rendererRef.current = created.value;
+				setRenderer(created.value);
 			})
 			.catch((reason: unknown) => {
 				if (!lifecycle.cancelled) {
@@ -119,9 +115,63 @@ export const ViewportCanvas = function ViewportCanvas({
 
 		return function cleanup(): void {
 			lifecycle.cancelled = true;
-			lifecycle.renderer?.destroy();
+			renderRequestRef.current += 1;
+			rendererRef.current?.destroy();
+			rendererRef.current = undefined;
+			setRenderer(undefined);
 		};
-	}, [assets, project, selection, transformTool, gridVisible, gridSpacing]);
+	}, [project.logicalCanvas.height, project.logicalCanvas.width]);
+
+	useEffect(() => {
+		if (!renderer) {
+			return function cleanup(): void {};
+		}
+
+		const requestId = renderRequestRef.current + 1;
+		renderRequestRef.current = requestId;
+		let cancelled = false;
+		const renderCurrent = async function renderCurrent(): Promise<void> {
+			if (cancelled || renderRequestRef.current !== requestId) {
+				return;
+			}
+
+			try {
+				const rendered = pose
+					? await renderer.renderPose(project, pose, assets, {
+						gridVisible,
+						gridSpacing,
+						showBones: true,
+						showGameplay: true
+					})
+					: await renderer.renderSetup(project, assets, {
+						selectedIds: selection?.map((entity) => entity.id),
+						transformTool,
+						gridVisible,
+						gridSpacing
+					});
+
+				if (cancelled || renderRequestRef.current !== requestId) {
+					return;
+				}
+				if (!rendered.ok) {
+					setError(rendered.error.message);
+					return;
+				}
+
+				setError(undefined);
+			} catch (reason: unknown) {
+				if (!cancelled && renderRequestRef.current === requestId) {
+					setError(reason instanceof Error ? reason.message : 'Canvas rendering failed.');
+				}
+			}
+		};
+
+		renderQueueRef.current = renderQueueRef.current.then(renderCurrent, renderCurrent);
+
+		return function cleanup(): void {
+			cancelled = true;
+		};
+	}, [assets, gridSpacing, gridVisible, pose, project, renderer, selection, transformTool]);
 
 	const logicalPointAt = function logicalPointAt(
 		screenPoint: ViewportPoint,

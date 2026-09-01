@@ -20,6 +20,32 @@ test('loads the built-in example project', async ({ page }) => {
 	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
 });
 
+test('renders the evaluated animation pose in the viewport', async ({ page }) => {
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Load example' }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+
+	const canvas = page.locator('canvas.pixi-canvas');
+	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
+	const firstFrame = await canvas.evaluate((element) => {
+		if (!(element instanceof HTMLCanvasElement)) {
+			throw new Error('The Pixi canvas was not mounted.');
+		}
+
+		return element.toDataURL('image/png');
+	});
+
+	await page.getByRole('button', { name: 'Step forward' }).click();
+	await expect(page.getByText('Frame 2 / 12', { exact: false })).toBeVisible();
+	await expect.poll(async () => canvas.evaluate((element) => {
+		if (!(element instanceof HTMLCanvasElement)) {
+			throw new Error('The Pixi canvas was not mounted.');
+		}
+
+		return element.toDataURL('image/png');
+	})).not.toBe(firstFrame);
+});
+
 test('recovers a committed root edit after reload', async ({ page }) => {
 	await page.goto('/');
 

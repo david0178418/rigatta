@@ -17,6 +17,7 @@ import {
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { BoneTransformProperty, Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
+import { evaluatePose } from '../domain/pose.ts';
 import { validateProject, type ValidationDiagnostic } from '../domain/validation.ts';
 import { canvasWarningsForSetup, type CanvasWarning } from '../domain/canvas-warnings.ts';
 import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, EventKeyInput, EventKeyUpdate, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
@@ -1298,6 +1299,13 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const activePlayback = activeClip && playback?.clipId === activeClip.id
 		? playback.state
 		: createPlaybackState();
+	const activePose = useMemo(() => {
+		if (mode !== 'animate' || !activeClip) {
+			return undefined;
+		}
+
+		return evaluatePose(project, activeClip.id, frameTimeSeconds(activePlayback, activeClip)).pose;
+	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, mode, project]);
 	const playbackRef = useRef<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	playbackRef.current = playback;
 	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
@@ -2505,9 +2513,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						</div>
 						<CanvasWarnings warnings={canvasWarnings} />
 						<div className="viewport-stage">
-						<ViewportCanvas
-							project={project}
-							assets={assetBlobs}
+							<ViewportCanvas
+								project={project}
+								assets={assetBlobs}
+								pose={activePose}
 							onAssetDrop={dropAssetOnCanvas}
 							onCanvasSelect={selectCanvasPoint}
 							onCanvasMarquee={selectCanvasMarquee}

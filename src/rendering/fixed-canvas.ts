@@ -30,7 +30,7 @@ export type FixedCanvasRenderOptions = Readonly<{
 export type FixedCanvasRenderer = Readonly<{
 	canvas: HTMLCanvasElement;
 	renderSetup: (project: Project, assets: ProjectAssetBlobs, options?: FixedCanvasRenderOptions) => Promise<RendererResult<void>>;
-	renderPose: (project: Project, pose: EvaluatedPose, assets: ProjectAssetBlobs) => Promise<RendererResult<void>>;
+	renderPose: (project: Project, pose: EvaluatedPose, assets: ProjectAssetBlobs, options?: FixedCanvasRenderOptions) => Promise<RendererResult<void>>;
 	capturePng: () => Promise<RendererResult<Blob>>;
 	destroy: () => void;
 }>;
@@ -223,6 +223,35 @@ const addGameplayAttachments = function addGameplayAttachments(
 			graphics.setFromMatrix(pixiMatrix(worldMatrix));
 			container.addChild(graphics);
 	});
+};
+
+const addPoseGameplayAttachments = function addPoseGameplayAttachments(
+	container: Container,
+	pose: EvaluatedPose,
+	showGameplay: boolean
+): void {
+	if (!showGameplay) {
+		return;
+	}
+
+	pose.attachments
+		.filter((attachment) => attachment.kind !== 'image')
+		.forEach((attachment) => {
+			const graphics = new Graphics();
+			const alpha = attachment.enabled ? 0.85 : 0.3;
+
+			if (attachment.kind === 'point') {
+				graphics.moveTo(-8, 0).lineTo(8, 0).moveTo(0, -8).lineTo(0, 8).circle(0, 0, 5)
+					.stroke({ width: 2, color: 0xf0b86d, alpha });
+			} else {
+				graphics.rect(-attachment.width / 2, -attachment.height / 2, attachment.width, attachment.height)
+					.fill({ color: 0xf0b86d, alpha: attachment.enabled ? 0.18 : 0.06 })
+					.stroke({ width: 2, color: 0xf0b86d, alpha });
+			}
+
+			graphics.setFromMatrix(pixiMatrix(attachment.worldMatrix));
+			container.addChild(graphics);
+		});
 };
 
 const addSelectionGuides = function addSelectionGuides(
@@ -474,7 +503,8 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 		const renderPose = async function renderPose(
 			project: Project,
 			pose: EvaluatedPose,
-			assets: ProjectAssetBlobs
+			assets: ProjectAssetBlobs,
+			options: FixedCanvasRenderOptions = {}
 		): Promise<RendererResult<void>> {
 			if (state.destroyed) {
 				return failure('renderer-failure', 'The canvas renderer has been destroyed.');
@@ -493,10 +523,25 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 			}
 
 			const content = replaceContent(application, state);
+			const grid = new Graphics();
+
+			if (options.gridVisible === true && Number.isFinite(options.gridSpacing) && (options.gridSpacing ?? 0) > 0) {
+				drawGrid(grid, size, options.gridSpacing ?? DEFAULT_GRID_SPACING);
+			}
+
+			content.addChild(grid);
 			const attachments = new Container();
+			const matrices = new Map(pose.bones.map((bone) => [bone.id, bone.worldMatrix] as const));
 
 			addImageSprites(attachments, prepared.value);
+			addPoseGameplayAttachments(attachments, pose, options.showGameplay === true);
 			content.addChild(attachments);
+
+			if (options.showBones === true) {
+				const bones = new Graphics();
+				drawBones(bones, project, matrices);
+				content.addChild(bones);
+			}
 			state.resources = prepared.value;
 			application.render();
 
