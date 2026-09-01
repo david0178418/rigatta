@@ -42,3 +42,14 @@ test('renders a fixed logical canvas and exposes PNG extraction', async ({ page 
 
 	expect(dataUrlPrefix).toBe('data:image/png;base64,');
 });
+
+test('supports viewport zoom controls and reset', async ({ page }) => {
+	await page.goto('/');
+
+	const zoom = page.getByRole('button', { name: 'Zoom in' });
+	await zoom.click();
+	await expect(page.getByRole('button', { name: 'Reset viewport' })).toHaveText('110%');
+
+	await page.getByRole('button', { name: 'Center viewport' }).click();
+	await expect(page.getByRole('button', { name: 'Reset viewport' })).toHaveText('100%');
+});
