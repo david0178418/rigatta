@@ -46,3 +46,8 @@ With Auto Key disabled, changed numeric properties are retained as pending
 edited-but-unkeyed state. The Animate panel exposes an explicit Key edited
 properties action that commits all pending values at the current frame in one
 transaction; the pending state is cleared only after a successful commit.
+
+Inspector property labels expose the state at the active frame: Unkeyed when no
+track or key exists, Pending for an edited-but-unkeyed property, and Keyed when
+a track contains a key at that frame. The same state is computed from the
+active clip and pending edit set so it stays aligned with the timeline.

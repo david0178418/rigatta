@@ -162,6 +162,41 @@ type PendingAnimationEdit = Readonly<{
 	property: PendingAnimationProperty;
 }>;
 
+type AnimationKeyState = 'unkeyed' | 'edited' | 'keyed';
+
+const keyStateLabels: Readonly<Record<AnimationKeyState, string>> = {
+	unkeyed: 'Unkeyed',
+	edited: 'Pending',
+	keyed: 'Keyed'
+};
+
+const animationKeyState = function animationKeyState(
+	project: Project,
+	clip: Clip | undefined,
+	targetId: EntityId,
+	property: PendingAnimationProperty,
+	frameIndex: number,
+	pendingEdits: readonly PendingAnimationEdit[]
+): AnimationKeyState {
+	if (pendingEdits.some((edit) => edit.targetId === targetId && edit.property === property)) {
+		return 'edited';
+	}
+	if (!clip) {
+		return 'unkeyed';
+	}
+
+	const transformTrackKind = project.bones.some((bone) => bone.id === targetId)
+		? 'bone-transform'
+		: 'attachment-transform';
+	const track = property === 'opacity'
+		? clip.tracks.find((candidate) => candidate.kind === 'attachment-opacity' && candidate.targetId === targetId)
+		: property === 'width' || property === 'height'
+			? clip.tracks.find((candidate) => candidate.kind === 'rectangle-size' && candidate.targetId === targetId && candidate.property === property)
+			: clip.tracks.find((candidate) => candidate.kind === transformTrackKind && candidate.targetId === targetId && candidate.property === property);
+
+	return track?.keys.some((key) => Math.round(key.timeSeconds * clip.fps) === frameIndex) ? 'keyed' : 'unkeyed';
+};
+
 const trackMatchesDefinition = function trackMatchesDefinition(
 	track: Track,
 	definition: TrackDefinition
@@ -1240,6 +1275,20 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		: undefined;
 	const selectedTransform = selectedBone?.transform ?? selectedAttachment?.transform;
 	const renameInputRef = useRef<HTMLInputElement>(null);
+	const animationFieldLabel = function animationFieldLabel(
+		label: string,
+		targetId: EntityId,
+		property: PendingAnimationProperty
+	): ReactElement {
+		const state = mode === 'animate' ? animationKeyState(project, activeClip, targetId, property, activePlayback.frameIndex, pendingAnimationEdits) : undefined;
+
+		return (
+			<span className={state ? `field-label key-state key-state-${state}` : 'field-label'}>
+				<span>{label}</span>
+				{state && <small>{keyStateLabels[state]}</small>}
+			</span>
+		);
+	};
 
 	const beginCanvasTransform = function beginCanvasTransform(point: ViewportPoint, tool: TransformTool): boolean {
 		const transformableSelection = selection.filter((entity) => entity.kind === 'bone' || entity.kind === 'attachment');
@@ -1822,33 +1871,33 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										{selectedTransform && (
 											<form
 												className="inspector-form transform-form"
-												key={`${selectedEntity.kind}:${selectedEntity.id}:${selectedTransform.x}:${selectedTransform.y}:${selectedTransform.rotation}:${selectedTransform.scaleX}:${selectedTransform.scaleY}:${selectedTransform.shearX}:${selectedTransform.shearY}`}
-												onSubmit={submitTransform}
-											>
-												<div className="transform-grid">
-													<label><span className="field-label">X</span><input name="x" type="number" step="any" defaultValue={selectedTransform.x} /></label>
-													<label><span className="field-label">Y</span><input name="y" type="number" step="any" defaultValue={selectedTransform.y} /></label>
-													<label><span className="field-label">Rotation (deg)</span><input name="rotation" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.rotation)} /></label>
-													<label><span className="field-label">Scale X</span><input name="scaleX" type="number" step="any" defaultValue={selectedTransform.scaleX} /></label>
-													<label><span className="field-label">Scale Y</span><input name="scaleY" type="number" step="any" defaultValue={selectedTransform.scaleY} /></label>
-													<label><span className="field-label">Shear X (deg)</span><input name="shearX" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearX)} /></label>
-													<label><span className="field-label">Shear Y (deg)</span><input name="shearY" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearY)} /></label>
-												</div>
-												{selectedAttachment?.kind === 'image' && (
-													<div className="transform-grid compact-grid">
-														<label><span className="field-label">Opacity</span><input name="opacity" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.opacity} /></label>
-														<label><span className="field-label">Pivot X</span><input name="pivotX" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotX} /></label>
-														<label><span className="field-label">Pivot Y</span><input name="pivotY" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotY} /></label>
+														key={`${selectedEntity.kind}:${selectedEntity.id}:${selectedTransform.x}:${selectedTransform.y}:${selectedTransform.rotation}:${selectedTransform.scaleX}:${selectedTransform.scaleY}:${selectedTransform.shearX}:${selectedTransform.shearY}`}
+														onSubmit={submitTransform}
+												>
+													<div className="transform-grid">
+														<label>{animationFieldLabel('X', selectedEntity.id, 'x')}<input name="x" type="number" step="any" defaultValue={selectedTransform.x} /></label>
+														<label>{animationFieldLabel('Y', selectedEntity.id, 'y')}<input name="y" type="number" step="any" defaultValue={selectedTransform.y} /></label>
+														<label>{animationFieldLabel('Rotation (deg)', selectedEntity.id, 'rotation')}<input name="rotation" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.rotation)} /></label>
+														<label>{animationFieldLabel('Scale X', selectedEntity.id, 'scaleX')}<input name="scaleX" type="number" step="any" defaultValue={selectedTransform.scaleX} /></label>
+														<label>{animationFieldLabel('Scale Y', selectedEntity.id, 'scaleY')}<input name="scaleY" type="number" step="any" defaultValue={selectedTransform.scaleY} /></label>
+														<label>{animationFieldLabel('Shear X (deg)', selectedEntity.id, 'shearX')}<input name="shearX" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearX)} /></label>
+														<label>{animationFieldLabel('Shear Y (deg)', selectedEntity.id, 'shearY')}<input name="shearY" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearY)} /></label>
 													</div>
-												)}
-														{selectedAttachment?.kind === 'rectangle' && (
-													<div className="transform-grid compact-grid">
-														<label><span className="field-label">Width</span><input name="width" type="number" min="0" step="any" defaultValue={selectedAttachment.width} /></label>
-														<label><span className="field-label">Height</span><input name="height" type="number" min="0" step="any" defaultValue={selectedAttachment.height} /></label>
-													</div>
-														)}
-														<button className="secondary-button" type="submit">Apply values</button>
-													</form>
+													{selectedAttachment?.kind === 'image' && (
+														<div className="transform-grid compact-grid">
+															<label>{animationFieldLabel('Opacity', selectedAttachment.id, 'opacity')}<input name="opacity" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.opacity} /></label>
+															<label><span className="field-label">Pivot X</span><input name="pivotX" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotX} /></label>
+															<label><span className="field-label">Pivot Y</span><input name="pivotY" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotY} /></label>
+														</div>
+													)}
+													{selectedAttachment?.kind === 'rectangle' && (
+														<div className="transform-grid compact-grid">
+															<label>{animationFieldLabel('Width', selectedAttachment.id, 'width')}<input name="width" type="number" min="0" step="any" defaultValue={selectedAttachment.width} /></label>
+															<label>{animationFieldLabel('Height', selectedAttachment.id, 'height')}<input name="height" type="number" min="0" step="any" defaultValue={selectedAttachment.height} /></label>
+														</div>
+													)}
+													<button className="secondary-button" type="submit">Apply values</button>
+												</form>
 											)}
 										{selectedSlot && (
 											<div className="inspector-form slot-assignment-form">

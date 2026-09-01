@@ -669,6 +669,32 @@ h2 {
 	font-size: 10px;
 }
 
+.key-state {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 4px;
+}
+
+.key-state small {
+	font-size: 8px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.key-state-unkeyed small {
+	color: var(--muted);
+}
+
+.key-state-edited small {
+	color: var(--warning);
+}
+
+.key-state-keyed small {
+	color: var(--accent-strong);
+}
+
 .inspector-form input,
 .inspector-form select {
 	width: 100%;

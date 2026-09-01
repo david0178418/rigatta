@@ -176,7 +176,7 @@ test('auto-keys changed transform properties by default', async ({ page }) => {
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await expect(page.getByLabel('Auto Key')).toBeChecked();
-	await page.getByRole('spinbutton', { name: 'X', exact: true }).fill('48');
+	await page.locator('input[name="x"]').fill('48');
 	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toBeVisible();
@@ -192,13 +192,29 @@ test('queues edited properties when Auto Key is disabled', async ({ page }) => {
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await page.getByLabel('Auto Key').uncheck();
-	await page.getByRole('spinbutton', { name: 'X', exact: true }).fill('48');
+	await page.locator('input[name="x"]').fill('48');
 	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Key edited properties (1)', exact: true })).toBeEnabled();
 	await page.getByRole('button', { name: 'Key edited properties (1)', exact: true }).click();
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toBeVisible();
+});
+
+test('shows unkeyed, pending, and keyed property states', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await expect(page.getByText('Unkeyed', { exact: true }).first()).toBeVisible();
+	await page.getByLabel('Auto Key').uncheck();
+	await page.locator('input[name="x"]').fill('48');
+	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
+	await expect(page.getByText('Pending', { exact: true }).first()).toBeVisible();
+	await page.getByRole('button', { name: 'Key edited properties (1)', exact: true }).click();
+	await expect(page.getByText('Keyed', { exact: true }).first()).toBeVisible();
 });
 
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
@@ -260,7 +276,7 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.keyboard.up('Shift');
 	await page.keyboard.up('Control');
 	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
-	const multiSelectionX = page.getByRole('spinbutton', { name: 'X', exact: true });
+	const multiSelectionX = page.locator('input[name="x"]');
 	const multiSelectionY = page.getByRole('spinbutton', { name: 'Y', exact: true });
 	const originalMultiSelectionX = await multiSelectionX.inputValue();
 	const imageLogicalX = Number(originalMultiSelectionX);
@@ -290,13 +306,13 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await expect(page.getByRole('combobox', { name: 'Setup image' })).toHaveValue(alternateAttachmentId);
 	const alternateAttachment = page.locator('.attachment-row').filter({ hasText: 'alt.png' });
 	await alternateAttachment.click();
-	const alternateLocalX = Number(await page.getByRole('spinbutton', { name: 'X', exact: true }).inputValue());
+	const alternateLocalX = Number(await page.locator('input[name="x"]').inputValue());
 	const alternateLocalY = Number(await page.getByRole('spinbutton', { name: 'Y', exact: true }).inputValue());
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	const rootX = Number(await page.getByRole('spinbutton', { name: 'X', exact: true }).inputValue());
+	const rootX = Number(await page.locator('input[name="x"]').inputValue());
 	const rootY = Number(await page.getByRole('spinbutton', { name: 'Y', exact: true }).inputValue());
 	await alternateAttachment.click();
-	const xField = page.getByRole('spinbutton', { name: 'X', exact: true });
+	const xField = page.locator('input[name="x"]');
 	const originalX = await xField.inputValue();
 	const imageBounds = await viewport.boundingBox();
 
@@ -322,10 +338,10 @@ test('builds and edits a hierarchy through the inspector', async ({ page }) => {
 	await page.getByRole('button', { name: 'root', exact: true }).click();
 	await page.getByRole('button', { name: 'Add child bone' }).click();
 	await expect(page.getByRole('button', { name: 'bone', exact: true })).toBeVisible();
-	await page.getByRole('spinbutton', { name: 'X', exact: true }).fill('24');
+	await page.locator('input[name="x"]').fill('24');
 	await page.getByLabel('Rotation (deg)', { exact: true }).fill('15');
 	await page.getByRole('button', { name: 'Apply values' }).click();
-	await expect(page.getByRole('spinbutton', { name: 'X', exact: true })).toHaveValue('24');
+	await expect(page.locator('input[name="x"]')).toHaveValue('24');
 
 	await page.getByLabel('Selected name').fill('arm');
 	await page.getByRole('button', { name: 'Rename' }).click();
