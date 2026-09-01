@@ -125,9 +125,9 @@ type ExportSettings = {
 };
 ```
 
-The `Track`, `EventKey`, and sampled gameplay metadata shapes are specified in
-the animation and export implementation modules as they become executable.
-They retain the same ID and immutability rules.
+The `Track`, `EventKey`, and sampled gameplay metadata shapes are summarized in
+[`schema-reference-v1.md`](schema-reference-v1.md) and retain the same ID and
+immutability rules.
 
 ## Validation invariants
 
