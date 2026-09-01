@@ -796,6 +796,22 @@ h2 {
 	align-items: center;
 }
 
+.clip-playback-controls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 0;
+	border-top: 1px solid var(--border);
+	border-bottom: 1px solid var(--border);
+}
+
+.playback-readout {
+	margin-left: 4px;
+	color: var(--muted);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
 .clip-form label {
 	display: grid;
 	min-width: 0;

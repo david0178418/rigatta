@@ -87,7 +87,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 
 - [x] **P5-01** Implement clip create, duplicate, rename, and delete operations.
 - [x] **P5-02** Implement clip FPS, duration, and loop settings.
-- [ ] **P5-03** Implement frame-accurate playback, pause, stepping, and looping.
+- [x] **P5-03** Implement frame-accurate playback, pause, stepping, and looping.
 - [ ] **P5-04** Build playhead scrubbing and timeline frame snapping.
 - [ ] **P5-05** Build timeline pan, zoom, and row filtering.
 - [ ] **P5-06** Build dopesheet rows from typed tracks.

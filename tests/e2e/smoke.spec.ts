@@ -91,6 +91,22 @@ test('creates, duplicates, renames, and configures animation clips', async ({ pa
 	await expect(page.getByLabel('Loop')).not.toBeChecked();
 });
 
+test('plays, pauses, and steps the active animation clip by frame', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
+	await page.getByRole('button', { name: 'Step forward' }).click();
+	await expect(page.getByText('Frame 2 / 12', { exact: false })).toBeVisible();
+	await page.getByRole('button', { name: 'Step backward' }).click();
+	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
+	await page.getByRole('button', { name: 'Play animation' }).click();
+	await expect(page.getByRole('button', { name: 'Pause animation' })).toBeVisible();
+	await page.getByRole('button', { name: 'Pause animation' }).click();
+	await expect(page.getByRole('button', { name: 'Play animation' })).toBeVisible();
+});
+
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
 	await page.addInitScript(() => {
 		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAQMAAACQp+OdAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkBBxAXAvkWQwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0wMVQwNzoxNjoyMyswMDowMMxohAEAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMDFUMDc6MTY6MjMrMDA6MDC9NTy9AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTAxVDA3OjE2OjIzKzAwOjAw6iAdYgAAAA9JREFUKM9jYBgFo4B8AAACQAABjMWrdwAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));

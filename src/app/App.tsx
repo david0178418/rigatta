@@ -18,6 +18,7 @@ import type { ProjectCommand } from '../domain/commands.ts';
 import type { Project } from '../domain/model.ts';
 import type { Clip } from '../domain/model.ts';
 import type { DuplicateClipIds } from '../domain/animation.ts';
+import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
 import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
@@ -209,23 +210,29 @@ type ClipPlaybackSettings = Readonly<Partial<{
 type AnimateTimelineProps = Readonly<{
 	project: Project;
 	activeClip: Clip | undefined;
+	playback: PlaybackState;
 	onSelectClip: (clipId: EntityId) => void;
 	onCreateClip: () => void;
 	onDuplicateClip: () => void;
 	onRenameClip: (name: string) => void;
 	onDeleteClip: () => void;
 	onUpdatePlayback: (settings: ClipPlaybackSettings) => void;
+	onTogglePlayback: () => void;
+	onStepPlayback: (direction: PlaybackDirection) => void;
 }>;
 
 const AnimateTimeline = function AnimateTimeline({
 	project,
 	activeClip,
+	playback,
 	onSelectClip,
 	onCreateClip,
 	onDuplicateClip,
 	onRenameClip,
 	onDeleteClip,
-	onUpdatePlayback
+	onUpdatePlayback,
+	onTogglePlayback,
+	onStepPlayback
 }: AnimateTimelineProps): ReactElement {
 	const submitClipName = function submitClipName(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
@@ -286,6 +293,14 @@ const AnimateTimeline = function AnimateTimeline({
 									<button className="danger-button" type="button" onClick={onDeleteClip}>Delete</button>
 								</div>
 							</div>
+							<div className="clip-playback-controls" aria-label="Playback controls">
+								<button className="quiet-button" type="button" aria-label="Step backward" onClick={() => onStepPlayback(-1)}>◀</button>
+								<button className="secondary-button" type="button" aria-label={playback.playing ? 'Pause animation' : 'Play animation'} onClick={onTogglePlayback}>
+									{playback.playing ? 'Pause' : 'Play'}
+								</button>
+								<button className="quiet-button" type="button" aria-label="Step forward" onClick={() => onStepPlayback(1)}>▶</button>
+								<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
+							</div>
 							<form className="clip-form" key={`name:${activeClip.id}:${activeClip.name}`} onSubmit={submitClipName}>
 								<label><span className="field-label">Clip name</span><input name="name" defaultValue={activeClip.name} aria-label="Clip name" /></label>
 								<button className="secondary-button" type="submit">Rename</button>
@@ -315,6 +330,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [gridSettings, setGridSettings] = useState<GridSettings>(() => ({ ...DEFAULT_GRID_SETTINGS }));
 	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
 	const [activeClipId, setActiveClipId] = useState<EntityId | undefined>(undefined);
+	const [playback, setPlayback] = useState<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
 	const [slotOrderDropPreview, setSlotOrderDropPreview] = useState<Readonly<{ slotId: EntityId; zone: SlotDropZone }> | undefined>(undefined);
@@ -327,6 +343,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	}), [startup.repository]);
 	const project = currentProject(history);
 	const activeClip = project.clips.find((clip) => clip.id === activeClipId) ?? project.clips[0];
+	const activePlayback = activeClip && playback?.clipId === activeClip.id
+		? playback.state
+		: createPlaybackState();
+	const playbackRef = useRef<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
+	playbackRef.current = playback;
 	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
 	const libraryEntries = buildAssetLibraryEntries(project.assets, assetQuery);
 
@@ -335,6 +356,46 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			autosave.cancel();
 		};
 	}, [autosave]);
+
+	useEffect(() => {
+		const clip = activeClip;
+
+		if (!clip || !activePlayback.playing) {
+			return function cleanup(): void {};
+		}
+
+		const lastTimestampRef = { current: undefined as number | undefined };
+		const animationFrameRef = { current: undefined as number | undefined };
+		const tick = function tick(timestamp: number): void {
+			const previousTimestamp = lastTimestampRef.current ?? timestamp;
+			lastTimestampRef.current = timestamp;
+			const current = playbackRef.current;
+
+			if (!current || current.clipId !== clip.id || !current.state.playing) {
+				return;
+			}
+
+			const nextState = advancePlayback(current.state, clip, (timestamp - previousTimestamp) / 1000);
+			const next = { clipId: clip.id, state: nextState };
+
+			playbackRef.current = next;
+			setPlayback(next);
+
+			if (nextState.playing) {
+				animationFrameRef.current = requestAnimationFrame(tick);
+			}
+		};
+
+		animationFrameRef.current = requestAnimationFrame(tick);
+
+		return function cleanup(): void {
+			const animationFrame = animationFrameRef.current;
+
+			if (animationFrame !== undefined) {
+				cancelAnimationFrame(animationFrame);
+			}
+		};
+	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.playing]);
 
 	const commitHistory = function commitHistory(
 		nextHistory: HistoryState,
@@ -406,6 +467,22 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		if (activeClip) {
 			applyCommand({ kind: 'update-clip-playback', clipId: activeClip.id, settings });
 		}
+	};
+
+	const toggleActivePlayback = function toggleActivePlayback(): void {
+		if (!activeClip) {
+			return;
+		}
+
+		setPlayback({ clipId: activeClip.id, state: togglePlayback(activePlayback, activeClip) });
+	};
+
+	const stepActivePlayback = function stepActivePlayback(direction: PlaybackDirection): void {
+		if (!activeClip) {
+			return;
+		}
+
+		setPlayback({ clipId: activeClip.id, state: stepPlayback(activePlayback, activeClip, direction) });
 	};
 
 	const addImportedImages = function addImportedImages(result: AssetImportResult): void {
@@ -1327,12 +1404,15 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<AnimateTimeline
 						project={project}
 						activeClip={activeClip}
+						playback={activePlayback}
 						onSelectClip={setActiveClipId}
 						onCreateClip={createAnimationClip}
 						onDuplicateClip={duplicateActiveClip}
 						onRenameClip={renameActiveClip}
 						onDeleteClip={deleteActiveClip}
 						onUpdatePlayback={updateActiveClipPlayback}
+						onTogglePlayback={toggleActivePlayback}
+						onStepPlayback={stepActivePlayback}
 					/>
 				) : (
 					<>
