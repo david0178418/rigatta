@@ -10,3 +10,8 @@ Canvas hit testing and marquee selection use the point marker and rectangle
 bounds in world space. Image hit testing continues to consider only the
 currently assigned setup attachment, while gameplay attachment selection is
 independent of runtime enabled state.
+
+Point transforms are available as numeric attachment tracks for every local
+transform property, and point enabled state is a discrete boolean track. New
+keys use the current setup value as their boolean default and participate in
+the same immutable clip history as other animation keys.

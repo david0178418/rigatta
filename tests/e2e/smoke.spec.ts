@@ -166,6 +166,24 @@ test('creates and edits timeline events', async ({ page }) => {
 	await expect(page.locator('.event-key')).toHaveCount(0);
 });
 
+test('keys point transform and enabled state', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add point' }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'point · Point · x' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'point · Point · enabled' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+
+	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(2);
+});
+
 test('changes interpolation for a selected numeric key', async ({ page }) => {
 	await page.goto('/');
 

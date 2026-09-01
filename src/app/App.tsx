@@ -146,6 +146,21 @@ const duplicateIdsForClip = function duplicateIdsForClip(clip: Clip): DuplicateC
 	};
 };
 
+const enabledValueForTrack = function enabledValueForTrack(project: Project, track: Track): boolean {
+	const attachment = 'targetId' in track
+		? project.attachments.find((candidate) => candidate.id === track.targetId)
+		: undefined;
+
+	if (track.kind === 'point-enabled') {
+		return attachment?.kind === 'point' ? attachment.enabled : true;
+	}
+	if (track.kind === 'rectangle-enabled') {
+		return attachment?.kind === 'rectangle' ? attachment.enabled : true;
+	}
+
+	return true;
+};
+
 const animationProperties: readonly BoneTransformProperty[] = [
 	'x',
 	'y',
@@ -859,7 +874,7 @@ const AnimateTimeline = function AnimateTimeline({
 										<label><span className="field-label">Attachment</span><select name="attachmentId" aria-label="Key attachment" defaultValue=""><option value="">None</option>{project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedTrack.targetId).map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}</select></label>
 									)}
 									{(selectedTrack.kind === 'point-enabled' || selectedTrack.kind === 'rectangle-enabled') && (
-										<label className="key-boolean-field"><input name="enabled" type="checkbox" defaultChecked /><span className="field-label">Enabled</span></label>
+										<label className="key-boolean-field"><input name="enabled" type="checkbox" defaultChecked={enabledValueForTrack(project, selectedTrack)} /><span className="field-label">Enabled</span></label>
 									)}
 									<button className="secondary-button" type="submit">Add key</button>
 								</form>

@@ -206,6 +206,17 @@ export const availableTrackDefinitions = function availableTrackDefinitions(
 				{ kind: 'attachment-opacity', targetId: attachment.id }
 			)
 		]);
+	const gameplayTransformOptions = project.attachments
+		.filter((attachment) => attachment.kind === 'point' || attachment.kind === 'rectangle')
+		.flatMap((attachment) => {
+			const label = attachment.kind === 'point' ? 'Point' : 'Rectangle';
+
+			return transformProperties.map((property) => option(
+				`attachment:${attachment.id}:${property}`,
+				`${attachment.name} · ${label} · ${property}`,
+				{ kind: 'attachment-transform', targetId: attachment.id, property }
+			));
+		});
 	const slotOptions = project.slots.flatMap((slot) => [option(
 		`slot:${slot.id}`,
 		`${slot.name} · Attachment`,
@@ -240,7 +251,7 @@ export const availableTrackDefinitions = function availableTrackDefinitions(
 	const drawOrderOptions = project.slots.length > 0
 		? [option('draw-order', 'Setup · Draw order', { kind: 'slot-draw-order' })]
 		: [];
-	const options = [...boneOptions, ...imageOptions, ...slotOptions, ...drawOrderOptions, ...pointOptions, ...rectangleOptions];
+	const options = [...boneOptions, ...imageOptions, ...gameplayTransformOptions, ...slotOptions, ...drawOrderOptions, ...pointOptions, ...rectangleOptions];
 
 	return options.filter((candidate) => !clip.tracks.some((track) => definitionMatchesTrack(track, candidate.definition)));
 };
