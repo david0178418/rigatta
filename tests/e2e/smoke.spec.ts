@@ -71,6 +71,26 @@ test('configures setup grid visibility, spacing, and snapping', async ({ page })
 	await expect(snapToGrid).toBeChecked();
 });
 
+test('creates, duplicates, renames, and configures animation clips', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await expect(page.getByRole('button', { name: 'clip 1', exact: true })).toBeVisible();
+	await page.getByLabel('Clip name').fill('walk');
+	await page.getByRole('button', { name: 'Rename', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'walk', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'walk copy', exact: true })).toBeVisible();
+	await page.getByLabel('Duration (sec)').fill('2');
+	await page.getByLabel('FPS').fill('24');
+	await page.getByLabel('Loop').uncheck();
+	await page.getByRole('button', { name: 'Apply playback', exact: true }).click();
+	await expect(page.getByLabel('Duration (sec)')).toHaveValue('2');
+	await expect(page.getByLabel('FPS')).toHaveValue('24');
+	await expect(page.getByLabel('Loop')).not.toBeChecked();
+});
+
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
 	await page.addInitScript(() => {
 		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAQMAAACQp+OdAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkBBxAXAvkWQwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0wMVQwNzoxNjoyMyswMDowMMxohAEAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMDFUMDc6MTY6MjMrMDA6MDC9NTy9AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTAxVDA3OjE2OjIzKzAwOjAw6iAdYgAAAA9JREFUKM9jYBgFo4B8AAACQAABjMWrdwAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));

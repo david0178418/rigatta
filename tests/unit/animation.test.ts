@@ -8,6 +8,7 @@ import {
 	createTrack,
 	deleteKey,
 	deleteTrack,
+	duplicateClip,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
@@ -36,6 +37,9 @@ const keyIds = [
 	'123e4567-e89b-42d3-a456-426614174022',
 	'123e4567-e89b-42d3-a456-426614174023'
 ] as const;
+const duplicateClipId = '123e4567-e89b-42d3-a456-426614174024';
+const duplicateTrackId = '123e4567-e89b-42d3-a456-426614174025';
+const duplicateKeyId = '123e4567-e89b-42d3-a456-426614174026';
 
 const unwrap = function unwrap<TValue>(result: OperationResult<TValue>): TValue {
 	if (!result.ok) {
@@ -150,6 +154,32 @@ describe('typed animation tracks', () => {
 			expect(updated.value.clips[0]?.durationSeconds).toBe(2);
 			expect(updated.value.clips[0]?.fps).toBe(24);
 			expect(updated.value.clips[0]?.loop).toBe(false);
+		}
+	});
+
+	test('duplicates a clip with fresh nested IDs and retained content', () => {
+		const project = withClip();
+		const withTrack = unwrap(createTrack(project, clipId, {
+			kind: 'bone-transform',
+			targetId: fixtureIds.root,
+			property: 'x'
+		}, () => duplicateTrackId));
+		const withKey = unwrap(addNumberKey(withTrack, clipId, duplicateTrackId, {
+			timeSeconds: 0,
+			value: 12
+		}, () => duplicateKeyId));
+		const duplicated = duplicateClip(withKey, clipId, {
+			id: duplicateClipId,
+			trackIds: [keyIds[10]],
+			keyIds: [[keyIds[11]]],
+			eventIds: []
+		});
+
+		expect(duplicated.ok).toBe(true);
+		if (duplicated.ok) {
+			expect(duplicated.value.clips).toHaveLength(2);
+			expect(duplicated.value.clips[1]).toMatchObject({ name: 'walk copy', tracks: [{ id: keyIds[10], keys: [{ id: keyIds[11], value: 12 }] }] });
+			expect(duplicated.value.clips[0]).toEqual(withKey.clips[0]);
 		}
 	});
 });

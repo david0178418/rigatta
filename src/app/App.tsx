@@ -16,6 +16,8 @@ import {
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { Project } from '../domain/model.ts';
+import type { Clip } from '../domain/model.ts';
+import type { DuplicateClipIds } from '../domain/animation.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
 import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
@@ -133,6 +135,15 @@ const blobsForProject = function blobsForProject(
 	}));
 };
 
+const duplicateIdsForClip = function duplicateIdsForClip(clip: Clip): DuplicateClipIds {
+	return {
+		id: createEntityId(),
+		trackIds: clip.tracks.map(() => createEntityId()),
+		keyIds: clip.tracks.map((track) => track.keys.map(() => createEntityId())),
+		eventIds: clip.events.map(() => createEntityId())
+	};
+};
+
 export const App = function App(): ReactElement {
 	const [startup, setStartup] = useState<StartupState>({ status: 'loading' });
 
@@ -189,6 +200,110 @@ const StartupStateView = function StartupStateView({
 	);
 };
 
+type ClipPlaybackSettings = Readonly<Partial<{
+	durationSeconds: number;
+	fps: number;
+	loop: boolean;
+}>>;
+
+type AnimateTimelineProps = Readonly<{
+	project: Project;
+	activeClip: Clip | undefined;
+	onSelectClip: (clipId: EntityId) => void;
+	onCreateClip: () => void;
+	onDuplicateClip: () => void;
+	onRenameClip: (name: string) => void;
+	onDeleteClip: () => void;
+	onUpdatePlayback: (settings: ClipPlaybackSettings) => void;
+}>;
+
+const AnimateTimeline = function AnimateTimeline({
+	project,
+	activeClip,
+	onSelectClip,
+	onCreateClip,
+	onDuplicateClip,
+	onRenameClip,
+	onDeleteClip,
+	onUpdatePlayback
+}: AnimateTimelineProps): ReactElement {
+	const submitClipName = function submitClipName(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+		const name = new FormData(event.currentTarget).get('name');
+
+		if (typeof name === 'string') {
+			onRenameClip(name);
+		}
+	};
+	const submitPlayback = function submitPlayback(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+		const data = new FormData(event.currentTarget);
+		const durationSeconds = formNumber(data, 'durationSeconds');
+		const fps = formNumber(data, 'fps');
+
+		if (durationSeconds === undefined || fps === undefined) {
+			return;
+		}
+
+		onUpdatePlayback({ durationSeconds, fps, loop: data.get('loop') === 'on' });
+	};
+
+	return (
+		<>
+			<div className="timeline-header">
+				<div>
+					<p className="eyebrow">Animation</p>
+					<h2>Timeline</h2>
+				</div>
+				<button className="secondary-button" type="button" onClick={onCreateClip}>+ Clip</button>
+			</div>
+			{project.clips.length === 0 ? (
+				<div className="timeline-empty">
+					<p>No clips yet</p>
+					<button className="secondary-button" type="button" onClick={onCreateClip}>Create animation clip</button>
+				</div>
+			) : (
+				<div className="animate-timeline">
+					<div className="clip-tabs" aria-label="Animation clips">
+						{project.clips.map((clip) => (
+							<button
+								className={activeClip?.id === clip.id ? 'clip-tab is-active' : 'clip-tab'}
+								key={clip.id}
+								type="button"
+								onClick={() => onSelectClip(clip.id)}
+								aria-pressed={activeClip?.id === clip.id}
+							>
+									{clip.name}
+							</button>
+							))}
+					</div>
+					{activeClip && (
+						<div className="clip-editor">
+							<div className="clip-editor-heading">
+								<span className="muted-copy">{activeClip.tracks.length} tracks · {activeClip.events.length} events</span>
+								<div className="inspector-actions">
+									<button className="quiet-button" type="button" onClick={onDuplicateClip}>Duplicate</button>
+									<button className="danger-button" type="button" onClick={onDeleteClip}>Delete</button>
+								</div>
+							</div>
+							<form className="clip-form" key={`name:${activeClip.id}:${activeClip.name}`} onSubmit={submitClipName}>
+								<label><span className="field-label">Clip name</span><input name="name" defaultValue={activeClip.name} aria-label="Clip name" /></label>
+								<button className="secondary-button" type="submit">Rename</button>
+							</form>
+							<form className="clip-form clip-playback-form" key={`playback:${activeClip.id}:${activeClip.durationSeconds}:${activeClip.fps}:${activeClip.loop}`} onSubmit={submitPlayback}>
+								<label><span className="field-label">Duration (sec)</span><input name="durationSeconds" type="number" min="0.01" step="any" defaultValue={activeClip.durationSeconds} /></label>
+								<label><span className="field-label">FPS</span><input name="fps" type="number" min="0.01" step="any" defaultValue={activeClip.fps} /></label>
+								<label className="clip-loop-field"><input name="loop" type="checkbox" defaultChecked={activeClip.loop} /><span className="field-label">Loop</span></label>
+								<button className="secondary-button" type="submit">Apply playback</button>
+							</form>
+						</div>
+					)}
+				</div>
+			)}
+		</>
+	);
+};
+
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
@@ -199,6 +314,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
 	const [gridSettings, setGridSettings] = useState<GridSettings>(() => ({ ...DEFAULT_GRID_SETTINGS }));
 	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
+	const [activeClipId, setActiveClipId] = useState<EntityId | undefined>(undefined);
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
 	const [slotOrderDropPreview, setSlotOrderDropPreview] = useState<Readonly<{ slotId: EntityId; zone: SlotDropZone }> | undefined>(undefined);
@@ -210,6 +326,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		onError: (error) => setPersistenceError(error.message)
 	}), [startup.repository]);
 	const project = currentProject(history);
+	const activeClip = project.clips.find((clip) => clip.id === activeClipId) ?? project.clips[0];
 	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
 	const libraryEntries = buildAssetLibraryEntries(project.assets, assetQuery);
 
@@ -243,6 +360,52 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		commitHistory(result.value);
 		return true;
+	};
+
+	const createAnimationClip = function createAnimationClip(): void {
+		const id = createEntityId();
+		const created = applyCommand({
+			kind: 'create-clip',
+			id,
+			input: { name: `clip ${project.clips.length + 1}` }
+		});
+
+		if (created) {
+			setActiveClipId(id);
+		}
+	};
+
+	const duplicateActiveClip = function duplicateActiveClip(): void {
+		if (!activeClip) {
+			return;
+		}
+
+		const ids = duplicateIdsForClip(activeClip);
+		const duplicated = applyCommand({ kind: 'duplicate-clip', clipId: activeClip.id, ids });
+
+		if (duplicated) {
+			setActiveClipId(ids.id);
+		}
+	};
+
+	const renameActiveClip = function renameActiveClip(name: string): void {
+		if (activeClip) {
+			applyCommand({ kind: 'rename-clip', clipId: activeClip.id, name });
+		}
+	};
+
+	const deleteActiveClip = function deleteActiveClip(): void {
+		if (!activeClip || !applyCommand({ kind: 'delete-clip', clipId: activeClip.id })) {
+			return;
+		}
+
+		setActiveClipId(project.clips.find((clip) => clip.id !== activeClip.id)?.id);
+	};
+
+	const updateActiveClipPlayback = function updateActiveClipPlayback(settings: ClipPlaybackSettings): void {
+		if (activeClip) {
+			applyCommand({ kind: 'update-clip-playback', clipId: activeClip.id, settings });
+		}
 	};
 
 	const addImportedImages = function addImportedImages(result: AssetImportResult): void {
@@ -1160,14 +1323,29 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			</main>
 
 			<footer className="timeline-panel" aria-label="Animation timeline">
-				<div className="timeline-header">
-					<div>
-						<p className="eyebrow">Animation</p>
-						<h2>Timeline</h2>
-					</div>
-					<span className="muted-copy">{project.clips.length === 0 ? 'No clips yet' : `${project.clips.length} clip${project.clips.length === 1 ? '' : 's'}`}</span>
-				</div>
-				<div className="timeline-empty">Create an animation clip when the rig is ready.</div>
+				{mode === 'animate' ? (
+					<AnimateTimeline
+						project={project}
+						activeClip={activeClip}
+						onSelectClip={setActiveClipId}
+						onCreateClip={createAnimationClip}
+						onDuplicateClip={duplicateActiveClip}
+						onRenameClip={renameActiveClip}
+						onDeleteClip={deleteActiveClip}
+						onUpdatePlayback={updateActiveClipPlayback}
+					/>
+				) : (
+					<>
+						<div className="timeline-header">
+							<div>
+								<p className="eyebrow">Animation</p>
+								<h2>Timeline</h2>
+							</div>
+							<span className="muted-copy">{project.clips.length === 0 ? 'No clips yet' : `${project.clips.length} clip${project.clips.length === 1 ? '' : 's'}`}</span>
+						</div>
+						<div className="timeline-empty">Create an animation clip when the rig is ready.</div>
+					</>
+				)}
 				{statusMessage && <div className="status-strip" role="status">{statusMessage}</div>}
 			</footer>
 		</div>

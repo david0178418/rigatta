@@ -29,6 +29,13 @@ export type CreateClipInput = Readonly<{
 	loop?: boolean;
 }>;
 
+export type DuplicateClipIds = Readonly<{
+	id: EntityId;
+	trackIds: readonly EntityId[];
+	keyIds: readonly (readonly EntityId[])[];
+	eventIds: readonly EntityId[];
+}>;
+
 export type TrackDefinition =
 	| Readonly<{
 			kind: 'bone-transform';
@@ -379,6 +386,98 @@ export const deleteClip = function deleteClip(
 	}
 
 	return success({ ...project, clips: project.clips.filter((clip) => clip.id !== clipId) });
+};
+
+type KeyWithId = Readonly<{ id: EntityId }>;
+
+const cloneKeys = function cloneKeys<TKey extends KeyWithId>(
+	keys: readonly TKey[],
+	ids: readonly EntityId[]
+): readonly TKey[] {
+	return keys.map((key, index) => {
+		const id = ids[index];
+
+		return id ? { ...key, id } : key;
+	});
+};
+
+const cloneTrack = function cloneTrack(
+	track: Track,
+	trackId: EntityId,
+	keyIds: readonly EntityId[]
+): Track {
+	if (track.kind === 'bone-transform') {
+		return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+	}
+	if (track.kind === 'attachment-transform') {
+		return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+	}
+	if (track.kind === 'attachment-opacity') {
+		return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+	}
+	if (track.kind === 'slot-attachment') {
+		return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+	}
+	if (track.kind === 'slot-draw-order') {
+		return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+	}
+	if (track.kind === 'point-enabled') {
+		return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+	}
+	if (track.kind === 'rectangle-size') {
+		return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+	}
+
+	return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+};
+
+export const duplicateClip = function duplicateClip(
+	project: Project,
+	clipId: EntityId,
+	ids: DuplicateClipIds
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const existingIds = allEntityIds(project);
+	const newIds = [
+		ids.id,
+		...ids.trackIds,
+		...ids.keyIds.flat(),
+		...ids.eventIds
+	];
+
+	if (!clip) {
+		return failure('not-found', 'Animation clip does not exist.');
+	}
+	if (ids.trackIds.length !== clip.tracks.length
+		|| ids.keyIds.length !== clip.tracks.length
+		|| ids.eventIds.length !== clip.events.length
+		|| ids.keyIds.some((keyIds, index) => keyIds.length !== (clip.tracks[index]?.keys.length ?? -1))) {
+		return failure('invalid-value', 'Clip duplication IDs do not match the source clip.');
+	}
+	if (newIds.some((id) => !isEntityId(id)) || new Set(newIds).size !== newIds.length || newIds.some((id) => existingIds.includes(id))) {
+		return failure('invalid-id', 'Clip duplication IDs must be unique unused UUID v4 IDs.');
+	}
+
+	const tracks = clip.tracks.map((track, trackIndex) => {
+		const trackId = ids.trackIds[trackIndex];
+		const keyIds = ids.keyIds[trackIndex];
+
+		return trackId && keyIds ? cloneTrack(track, trackId, keyIds) : track;
+	});
+	const events = clip.events.map((event, index) => {
+		const eventId = ids.eventIds[index];
+
+		return eventId ? { ...event, id: eventId } : event;
+	});
+	const duplicate: Clip = {
+		...clip,
+		id: ids.id,
+		name: `${clip.name} copy`,
+		tracks,
+		events
+	};
+
+	return success({ ...project, clips: [...project.clips, duplicate] });
 };
 
 export const createTrack = function createTrack(

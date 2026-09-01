@@ -10,6 +10,7 @@ import {
 	deleteClip,
 	deleteKey,
 	deleteTrack,
+	duplicateClip,
 	renameClip,
 	updateClipPlayback
 } from './animation.ts';
@@ -20,6 +21,7 @@ import type {
 	NumberKeyInput,
 	TrackDefinition
 } from './animation.ts';
+import type { DuplicateClipIds } from './animation.ts';
 import {
 	createBone,
 	createImageAssets,
@@ -81,6 +83,7 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'create-clip'; id: EntityId; input: Readonly<{ name: string; durationSeconds?: number; fps?: number; loop?: boolean }> }>
 	| Readonly<{ kind: 'rename-clip'; clipId: EntityId; name: string }>
 	| Readonly<{ kind: 'delete-clip'; clipId: EntityId }>
+	| Readonly<{ kind: 'duplicate-clip'; clipId: EntityId; ids: DuplicateClipIds }>
 	| Readonly<{ kind: 'update-clip-playback'; clipId: EntityId; settings: Readonly<Partial<{ durationSeconds: number; fps: number; loop: boolean }>> }>
 	| Readonly<{ kind: 'create-track'; id: EntityId; clipId: EntityId; definition: TrackDefinition }>
 	| Readonly<{ kind: 'delete-track'; clipId: EntityId; trackId: EntityId }>
@@ -172,6 +175,9 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'delete-clip') {
 		return deleteClip(project, command.clipId);
+	}
+	if (command.kind === 'duplicate-clip') {
+		return duplicateClip(project, command.clipId, command.ids);
 	}
 	if (command.kind === 'update-clip-playback') {
 		return updateClipPlayback(project, command.clipId, command.settings);
