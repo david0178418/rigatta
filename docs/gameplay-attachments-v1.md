@@ -31,3 +31,7 @@ world-space logical-canvas coordinates, along with evaluated rectangle width,
 height, rotation in radians, and enabled state. Point and rectangle arrays retain
 project attachment order and stable attachment IDs; invalid projects, clips, or
 times return diagnostics without a frame.
+
+Unit coverage verifies event validation and immutable event operations, plus
+world-space point and rectangle frame projection. Browser coverage verifies
+event editing, gameplay key creation, and Setup selection of both guide types.

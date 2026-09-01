@@ -111,8 +111,8 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P6-04** Implement keyable point transform and enabled state.
 - [x] **P6-05** Implement rectangle attachment editor visualization and handles.
 - [x] **P6-06** Implement keyable rectangle transform, size, rotation, and enabled state.
-- [ ] **P6-07** Evaluate gameplay attachments into world-space sampled-frame data.
-- [ ] **P6-08** Add event and gameplay attachment tests.
+- [x] **P6-07** Evaluate gameplay attachments into world-space sampled-frame data.
+- [x] **P6-08** Add event and gameplay attachment tests.
 
 ## Phase 7: sprite-sheet export
 

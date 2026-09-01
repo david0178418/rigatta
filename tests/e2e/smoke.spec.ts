@@ -211,6 +211,26 @@ test('keys rectangle rotation, dimensions, and enabled state', async ({ page }) 
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(3);
 });
 
+test('selects point and rectangle gameplay guides in setup', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add point' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add rectangle' }).click();
+
+	const attachments = page.locator('.attachment-row');
+	await expect(attachments).toHaveCount(2);
+	await attachments.filter({ hasText: 'point' }).click();
+	await expect(page.getByRole('heading', { name: 'point', exact: true })).toBeVisible();
+	await expect(attachments.filter({ hasText: 'point' })).toHaveAttribute('aria-pressed', 'true');
+	await attachments.filter({ hasText: 'rectangle' }).click();
+	await expect(page.getByRole('heading', { name: 'rectangle', exact: true })).toBeVisible();
+	await expect(page.locator('input[name="width"]')).toHaveValue('64');
+	await expect(page.locator('input[name="height"]')).toHaveValue('64');
+});
+
 test('changes interpolation for a selected numeric key', async ({ page }) => {
 	await page.goto('/');
 
