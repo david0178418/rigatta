@@ -66,6 +66,8 @@ export type EvaluatedRectangleAttachment = Readonly<{
 	worldMatrix: AffineMatrix;
 	width: number;
 	height: number;
+	rotation: number;
+	corners: readonly [Point, Point, Point, Point];
 	enabled: boolean;
 }>;
 
@@ -83,6 +85,28 @@ export type EvaluatedPose = Readonly<{
 	drawOrder: readonly EntityId[];
 }>;
 
+export type EvaluatedGameplayPoint = Readonly<{
+	id: EntityId;
+	position: Point;
+	enabled: boolean;
+}>;
+
+export type EvaluatedGameplayRectangle = Readonly<{
+	id: EntityId;
+	corners: readonly [Point, Point, Point, Point];
+	width: number;
+	height: number;
+	rotation: number;
+	enabled: boolean;
+}>;
+
+export type EvaluatedGameplayFrame = Readonly<{
+	clipId: EntityId;
+	timeSeconds: number;
+	points: readonly EvaluatedGameplayPoint[];
+	rectangles: readonly EvaluatedGameplayRectangle[];
+}>;
+
 export type PoseDiagnostic = Readonly<{
 	code: 'missing-clip' | 'invalid-time';
 	path: string;
@@ -92,6 +116,11 @@ export type PoseDiagnostic = Readonly<{
 export type PoseEvaluationResult = Readonly<{
 	pose: EvaluatedPose | undefined;
 	diagnostics: readonly (ValidationDiagnostic | PoseDiagnostic)[];
+}>;
+
+export type GameplayFrameEvaluationResult = Readonly<{
+	frame: EvaluatedGameplayFrame | undefined;
+	diagnostics: PoseEvaluationResult['diagnostics'];
 }>;
 
 const transformProperties = [
@@ -353,15 +382,25 @@ const rectanglePose = function rectanglePose(
 	}
 
 	const localTransform = effectiveTransform(attachment.transform, clip, attachment.id, false, timeSeconds);
+	const worldMatrix = multiplyAffine(boneWorldMatrix, localTransformToMatrix(localTransform));
+	const width = effectiveRectangleSize(attachment, clip, 'width', timeSeconds);
+	const height = effectiveRectangleSize(attachment, clip, 'height', timeSeconds);
 
 	return {
 		id: attachment.id,
 		kind: 'rectangle',
 		boneId: attachment.boneId,
 		localTransform,
-		worldMatrix: multiplyAffine(boneWorldMatrix, localTransformToMatrix(localTransform)),
-		width: effectiveRectangleSize(attachment, clip, 'width', timeSeconds),
-		height: effectiveRectangleSize(attachment, clip, 'height', timeSeconds),
+		worldMatrix,
+		width,
+		height,
+		rotation: Math.atan2(worldMatrix.b, worldMatrix.a),
+		corners: [
+			transformPoint(worldMatrix, { x: -width / 2, y: -height / 2 }),
+			transformPoint(worldMatrix, { x: width / 2, y: -height / 2 }),
+			transformPoint(worldMatrix, { x: width / 2, y: height / 2 }),
+			transformPoint(worldMatrix, { x: -width / 2, y: height / 2 })
+		],
 		enabled: effectiveRectangleEnabled(attachment, clip, timeSeconds)
 	};
 };
@@ -438,5 +477,40 @@ export const evaluatePose = function evaluatePose(
 			drawOrder: effectiveDrawOrder(project, clip, currentTime)
 		},
 		diagnostics: worldEvaluation.diagnostics
+	};
+};
+
+export const gameplayFrameFromPose = function gameplayFrameFromPose(
+	pose: EvaluatedPose
+): EvaluatedGameplayFrame {
+	return {
+		clipId: pose.clipId,
+		timeSeconds: pose.timeSeconds,
+		points: pose.attachments.flatMap((attachment) => attachment.kind === 'point'
+			? [{ id: attachment.id, position: attachment.position, enabled: attachment.enabled }]
+			: []),
+		rectangles: pose.attachments.flatMap((attachment) => attachment.kind === 'rectangle'
+			? [{
+				id: attachment.id,
+				corners: attachment.corners,
+				width: attachment.width,
+				height: attachment.height,
+				rotation: attachment.rotation,
+				enabled: attachment.enabled
+			}]
+			: [])
+	};
+};
+
+export const evaluateGameplayFrame = function evaluateGameplayFrame(
+	project: Project,
+	clipId: EntityId,
+	timeSeconds: number
+): GameplayFrameEvaluationResult {
+	const poseResult = evaluatePose(project, clipId, timeSeconds);
+
+	return {
+		frame: poseResult.pose ? gameplayFrameFromPose(poseResult.pose) : undefined,
+		diagnostics: poseResult.diagnostics
 	};
 };

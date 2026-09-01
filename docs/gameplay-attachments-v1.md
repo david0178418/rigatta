@@ -24,3 +24,10 @@ the attachment transform unchanged.
 Rectangle animation exposes all local transform properties, including rotation,
 plus independent positive width and height numeric tracks and a discrete
 enabled track. The current setup dimensions and enabled state seed new keys.
+
+`evaluateGameplayFrame` samples a validated clip time through the same pure pose
+evaluator used by the editor. It returns point origins and rectangle corners in
+world-space logical-canvas coordinates, along with evaluated rectangle width,
+height, rotation in radians, and enabled state. Point and rectangle arrays retain
+project attachment order and stable attachment IDs; invalid projects, clips, or
+times return diagnostics without a frame.

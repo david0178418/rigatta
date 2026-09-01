@@ -6,7 +6,7 @@ import {
 	createClip,
 	createTrack
 } from '../../src/domain/animation.ts';
-import { evaluatePose } from '../../src/domain/pose.ts';
+import { evaluateGameplayFrame, evaluatePose } from '../../src/domain/pose.ts';
 import type { Project } from '../../src/domain/model.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
@@ -147,5 +147,50 @@ describe('pure pose evaluator', () => {
 		expect(looped.pose?.timeSeconds).toBeCloseTo(0.5, 8);
 		expect(missing.pose).toBeUndefined();
 		expect(missing.diagnostics[0]?.code).toBe('missing-clip');
+	});
+
+	test('projects gameplay attachments into world-space frame data', () => {
+		const project = animatedProject();
+		const poseResult = evaluatePose(project, clipId, 0.5);
+		const frameResult = evaluateGameplayFrame(project, clipId, 0.5);
+		const pose = poseResult.pose;
+		const frame = frameResult.frame;
+
+		if (!pose || !frame) {
+			throw new Error('The animated fixture should produce a pose and gameplay frame.');
+		}
+
+		const posePoint = pose.attachments.find((attachment) => attachment.id === fixtureIds.point);
+		const poseRectangle = pose.attachments.find((attachment) => attachment.id === fixtureIds.rectangle);
+		const point = frame.points.find((attachment) => attachment.id === fixtureIds.point);
+		const rectangle = frame.rectangles.find((attachment) => attachment.id === fixtureIds.rectangle);
+
+		if (posePoint?.kind !== 'point' || poseRectangle?.kind !== 'rectangle' || !point || !rectangle) {
+			throw new Error('The animated fixture should produce both gameplay attachments.');
+		}
+
+		expect(frameResult.diagnostics).toEqual([]);
+		expect(frame).toMatchObject({ clipId, timeSeconds: 0.5 });
+		expect(point).toEqual({
+			id: fixtureIds.point,
+			position: posePoint.position,
+			enabled: false
+		});
+		expect(rectangle).toEqual({
+			id: fixtureIds.rectangle,
+			corners: poseRectangle.corners,
+			width: 30,
+			height: 30,
+			rotation: poseRectangle.rotation,
+			enabled: false
+		});
+		expect(rectangle.corners).toHaveLength(4);
+	});
+
+	test('preserves pose diagnostics when gameplay frame evaluation cannot sample', () => {
+		const result = evaluateGameplayFrame(animatedProject(), clipId, Number.NaN);
+
+		expect(result.frame).toBeUndefined();
+		expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'invalid-time' }));
 	});
 });
