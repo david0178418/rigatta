@@ -146,7 +146,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P8-09** Run desktop layout QA at supported viewport sizes.
 - [x] **P8-10** Run the complete clean-checkout regression suite.
 - [x] **P8-11** Confirm every `DesignDoc.md` first-release requirement has test evidence.
-- [ ] **P8-12** Confirm deferred features have not become release blockers.
+- [x] **P8-12** Confirm deferred features have not become release blockers.
 
 ## Completion commands
 
