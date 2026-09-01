@@ -133,6 +133,20 @@ const findAttachment = function findAttachment(
 	return project.attachments.find((attachment) => attachment.id === attachmentId);
 };
 
+const validSlotAttachmentValue = function validSlotAttachmentValue(
+	project: Project,
+	slotId: EntityId,
+	value: EntityId | null
+): boolean {
+	if (value === null) {
+		return true;
+	}
+
+	const attachment = findAttachment(project, value);
+
+	return attachment?.kind === 'image' && attachment.slotId === slotId;
+};
+
 const allEntityIds = function allEntityIds(project: Project): readonly EntityId[] {
 	return [
 		project.id,
@@ -904,12 +918,8 @@ export const addAttachmentKey = function addAttachmentKey(
 	if (!isValidKeyTime(clip, input.timeSeconds)) {
 		return failure('invalid-value', 'Key time must be inside the clip duration.');
 	}
-	if (input.value !== null) {
-		const attachment = findAttachment(project, input.value);
-		const slot = project.slots.find((candidate) => candidate.id === track.targetId);
-		if (!attachment || attachment.kind !== 'image' || !slot || attachment.slotId !== slot.id) {
-			return failure('invalid-reference', 'Attachment key must reference an image in the tracked slot.');
-		}
+	if (!validSlotAttachmentValue(project, track.targetId, input.value)) {
+		return failure('invalid-reference', 'Attachment key must reference an image in the tracked slot.');
 	}
 
 	const id = allocateId(project, idFactory);
@@ -927,6 +937,40 @@ export const addAttachmentKey = function addAttachmentKey(
 
 	return updateTrack(project, clipId, trackId, (currentTrack) => currentTrack.kind === 'slot-attachment'
 		? { ...currentTrack, keys }
+		: currentTrack);
+};
+
+export const updateAttachmentKey = function updateAttachmentKey(
+	project: Project,
+	clipId: EntityId,
+	trackId: EntityId,
+	keyId: EntityId,
+	value: EntityId | null
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+
+	if (!clip || !track) {
+		return failure('not-found', 'Animation track does not exist.');
+	}
+	if (track.kind !== 'slot-attachment') {
+		return failure('invalid-value', 'This track does not accept attachment keys.');
+	}
+	if (!validSlotAttachmentValue(project, track.targetId, value)) {
+		return failure('invalid-reference', 'Attachment key must reference an image in the tracked slot.');
+	}
+
+	const existing = track.keys.find((key) => key.id === keyId);
+
+	if (!existing) {
+		return failure('not-found', 'Animation key does not exist.');
+	}
+
+	return updateTrack(project, clipId, trackId, (currentTrack) => currentTrack.kind === 'slot-attachment'
+		? {
+			...currentTrack,
+			keys: currentTrack.keys.map((key) => key.id === keyId ? { ...key, value } : key)
+		}
 		: currentTrack);
 };
 

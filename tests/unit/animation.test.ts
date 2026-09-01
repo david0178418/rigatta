@@ -13,6 +13,7 @@ import {
 	moveKey,
 	retimeKeys,
 	setNumberKeyInterpolation,
+	updateAttachmentKey,
 	upsertNumberKey,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
@@ -147,6 +148,28 @@ describe('typed animation tracks', () => {
 		}, () => keyIds[10])).toMatchObject({ ok: false, error: { code: 'invalid-reference' } });
 		expect(deleteKey(withDrawOrderKey, clipId, pointTrackId, keyIds[6]).ok).toBe(true);
 		expect(deleteTrack(withDrawOrderKey, clipId, drawOrderTrackId).ok).toBe(true);
+	});
+
+	test('updates a slot attachment key while preserving its time and ID', () => {
+		const project = withClip();
+		const withTrack = unwrap(createTrack(project, clipId, {
+			kind: 'slot-attachment',
+			targetId: fixtureIds.slot
+		}, () => attachmentTrackId));
+		const withKey = unwrap(addAttachmentKey(withTrack, clipId, attachmentTrackId, {
+			timeSeconds: 0.5,
+			value: null
+		}, () => keyIds[4]));
+		const assigned = unwrap(updateAttachmentKey(withKey, clipId, attachmentTrackId, keyIds[4], fixtureIds.image));
+		const invalid = updateAttachmentKey(withKey, clipId, attachmentTrackId, keyIds[4], fixtureIds.point);
+
+		expect(assigned.clips[0]?.tracks[0]?.keys).toMatchObject([{
+			id: keyIds[4],
+			timeSeconds: 0.5,
+			value: fixtureIds.image
+		}]);
+		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: keyIds[4], value: null }]);
+		expect(invalid).toMatchObject({ ok: false, error: { code: 'invalid-reference' } });
 	});
 
 	test('updates playback settings without mutating the original clip', () => {

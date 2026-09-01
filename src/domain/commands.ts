@@ -16,6 +16,7 @@ import {
 	retimeKeys,
 	setNumberKeyInterpolation,
 	renameClip,
+	updateAttachmentKey,
 	upsertNumberKey,
 	updateClipPlayback
 } from './animation.ts';
@@ -100,6 +101,7 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'add-boolean-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: BooleanKeyInput }>
 	| Readonly<{ kind: 'set-number-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: NumberKeyInput }>
 	| Readonly<{ kind: 'set-number-key-interpolation'; clipId: EntityId; trackId: EntityId; keyId: EntityId; input: NumberKeyInterpolationInput }>
+	| Readonly<{ kind: 'set-attachment-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; value: EntityId | null }>
 	| Readonly<{ kind: 'move-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'copy-key'; id: EntityId; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'retime-keys'; clipId: EntityId; changes: readonly KeyTimeChange[] }>
@@ -217,6 +219,9 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'set-number-key-interpolation') {
 		return setNumberKeyInterpolation(project, command.clipId, command.trackId, command.keyId, command.input);
+	}
+	if (command.kind === 'set-attachment-key') {
+		return updateAttachmentKey(project, command.clipId, command.trackId, command.keyId, command.value);
 	}
 	if (command.kind === 'move-key') {
 		return moveKey(project, command.clipId, command.trackId, command.keyId, command.timeSeconds);

@@ -424,6 +424,7 @@ type AnimateTimelineProps = Readonly<{
 	onMoveKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => void;
 	onCopyKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => EntityId | undefined;
 	onUpdateInterpolation: (trackId: EntityId, keyId: EntityId, input: NumberKeyInterpolationInput) => void;
+	onUpdateAttachmentKey: (trackId: EntityId, keyId: EntityId, value: EntityId | null) => void;
 	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 	onAutoKeyChange: (enabled: boolean) => void;
@@ -451,6 +452,7 @@ const AnimateTimeline = function AnimateTimeline({
 	onMoveKey,
 	onCopyKey,
 	onUpdateInterpolation,
+	onUpdateAttachmentKey,
 	onDeleteKey,
 	onRetimeKeys,
 	onAutoKeyChange,
@@ -503,6 +505,10 @@ const AnimateTimeline = function AnimateTimeline({
 			|| selectedRow.track.kind === 'rectangle-size')
 		? selectedRow.track.keys.find((key) => key.id === selectedKeyMarker.keyId)
 		: undefined;
+	const selectedAttachmentKey = selectedKeyMarker && selectedRow?.track.kind === 'slot-attachment'
+		? selectedRow.track.keys.find((key) => key.id === selectedKeyMarker.keyId)
+		: undefined;
+	const selectedSlotId = selectedRow?.track.kind === 'slot-attachment' ? selectedRow.track.targetId : undefined;
 	const submitCreateTrack = function submitCreateTrack(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 
@@ -593,6 +599,13 @@ const AnimateTimeline = function AnimateTimeline({
 		onUpdateInterpolation(selectedRow.track.id, selectedKeyMarker.keyId, interpolation === 'bezier'
 			? { interpolation }
 			: { interpolation, curve: null });
+	};
+	const updateSelectedAttachment = function updateSelectedAttachment(value: string): void {
+		if (!selectedRow || !selectedKeyMarker || !selectedAttachmentKey) {
+			return;
+		}
+
+		onUpdateAttachmentKey(selectedRow.track.id, selectedKeyMarker.keyId, parseEntityId(value) ?? null);
 	};
 	const selectAnimationKey = function selectAnimationKey(
 		trackId: EntityId,
@@ -783,6 +796,17 @@ const AnimateTimeline = function AnimateTimeline({
 																		curve={selectedNumberKey.curve}
 																		onChange={(curve) => onUpdateInterpolation(selectedRow.track.id, selectedKeyMarker.keyId, { interpolation: 'bezier', curve })}
 																	/>
+																)}
+																{selectedAttachmentKey && selectedSlotId && (
+																	<label>
+																		<span className="field-label">Keyed attachment</span>
+																		<select aria-label="Selected attachment" value={selectedAttachmentKey.value ?? ''} onChange={(event) => updateSelectedAttachment(event.currentTarget.value)}>
+																			<option value="">None</option>
+																			{project.attachments
+																																		.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedSlotId)
+																			.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}
+																		</select>
+																	</label>
 																)}
 																<button className="secondary-button" type="submit">Move key</button>
 									<button className="quiet-button" type="button" onClick={(event) => {
@@ -1041,6 +1065,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	): void {
 		if (activeClip) {
 			applyCommand({ kind: 'set-number-key-interpolation', clipId: activeClip.id, trackId, keyId, input });
+		}
+	};
+
+	const updateAnimationAttachmentKey = function updateAnimationAttachmentKey(
+		trackId: EntityId,
+		keyId: EntityId,
+		value: EntityId | null
+	): void {
+		if (activeClip) {
+			applyCommand({ kind: 'set-attachment-key', clipId: activeClip.id, trackId, keyId, value });
 		}
 	};
 
@@ -2135,6 +2169,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onMoveKey={moveAnimationKey}
 						onCopyKey={copyAnimationKey}
 						onUpdateInterpolation={updateAnimationInterpolation}
+						onUpdateAttachmentKey={updateAnimationAttachmentKey}
 						onDeleteKey={deleteAnimationKey}
 						onRetimeKeys={retimeAnimationKeys}
 						onAutoKeyChange={setAutoKey}

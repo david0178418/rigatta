@@ -47,6 +47,11 @@ inputs. X coordinates are constrained to the normalized segment range, while
 Y coordinates can represent overshoot. Curve edits are drafted locally and
 committed as a single key update when the drag or Apply curve action ends.
 
+Slot attachment tracks use discrete keys that can select None or any image
+owned by the tracked slot. The selected-key editor updates that value without
+changing the key time or identity, so attachment swaps remain independent of
+setup attachment assignment.
+
 Auto Key is enabled by default for the editor session. Editing a changed bone
 or attachment transform in Animate mode updates setup data and creates or
 upserts the corresponding numeric key at the current frame in the same

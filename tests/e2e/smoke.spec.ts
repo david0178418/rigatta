@@ -352,6 +352,26 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.mouse.move(alternateScreenX + 24, alternateScreenY);
 	await page.mouse.up();
 	await expect(xField).not.toHaveValue(originalX);
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	const newTrack = page.getByRole('combobox', { name: 'New track' });
+	await newTrack.selectOption({ label: 'hero.png · Attachment' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	const keyAttachment = page.getByRole('combobox', { name: 'Key attachment' });
+	await keyAttachment.selectOption({ label: 'hero.png' });
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('button', { name: 'Key frame 1' }).click();
+	const selectedAttachment = page.getByRole('combobox', { name: 'Selected attachment' });
+	await expect(selectedAttachment).toHaveValue(/.+/);
+	await selectedAttachment.selectOption({ label: 'alt.png' });
+	const altAttachmentId = await selectedAttachment.locator('option').filter({ hasText: /^alt\.png$/ }).getAttribute('value');
+
+	if (!altAttachmentId) {
+		throw new Error('The alternate attachment ID is unavailable.');
+	}
+
+	await expect(selectedAttachment).toHaveValue(altAttachmentId);
 });
 
 test('builds and edits a hierarchy through the inspector', async ({ page }) => {
