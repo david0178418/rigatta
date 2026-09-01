@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import { ENTITY_ID_PATTERN, type EntityId } from '../domain/ids.ts';
 import { IMAGE_EXTENSION_BY_MIME_TYPE, PROJECT_SCHEMA_VERSION, ARCHIVE_VERSION, type SupportedImageMimeType } from '../domain/schema.ts';
 import type { ImageAsset, Project } from '../domain/model.ts';
+import { validateImageBytes } from '../assets/images.ts';
 import { parseProject } from './project-schema.ts';
 
 export type ArchiveManifestAsset = Readonly<{
@@ -267,10 +268,16 @@ export const importProjectArchive = async function importProjectArchive(
 		}
 
 		const digest = await sha256(bytes);
+		const image = validateImageBytes(bytes, manifestAsset.mimeType);
+		const projectAsset = projectAssetById(project.project, manifestAsset.id);
 
-		return digest === manifestAsset.sha256 && bytes.byteLength === manifestAsset.byteLength
+		return digest === manifestAsset.sha256
+			&& bytes.byteLength === manifestAsset.byteLength
+			&& image.ok
+			&& projectAsset?.width === image.value.width
+			&& projectAsset.height === image.value.height
 			? archiveSuccess({ id: manifestAsset.id, bytes })
-			: archiveFailure('integrity-failure', `Asset integrity check failed for ${manifestAsset.path}.`);
+			: archiveFailure('integrity-failure', `Asset integrity or dimensions check failed for ${manifestAsset.path}.`);
 	}));
 	const failedAsset = verifiedAssets.find((result) => !result.ok);
 

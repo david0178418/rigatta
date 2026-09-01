@@ -3,7 +3,11 @@ import { strToU8, unzipSync, zipSync } from 'fflate';
 import { exportProjectArchive, importProjectArchive } from '../../src/persistence/archive.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
 
-const sourceBytes = Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]);
+const sourceBytes = Uint8Array.from([
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+	0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+	0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x40
+]);
 
 describe('boneanim archives', () => {
 	test('round trips project metadata and asset bytes', async () => {
