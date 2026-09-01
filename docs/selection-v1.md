@@ -3,6 +3,8 @@
 Selection is editor session state represented by typed entity IDs. A normal
 click replaces the selection; Ctrl-click or Cmd-click toggles one entity.
 Asset rows, hierarchy rows, and logical-canvas hits all update the same state.
+The Pixi adapter renders selected image bounds, bone segments, and gameplay
+guides in a separate overlay layer.
 
 Shift-dragging the viewport draws a screen-space marquee and converts its
 corners through the current pan and zoom back into logical-canvas bounds. The

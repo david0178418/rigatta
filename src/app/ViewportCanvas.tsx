@@ -4,6 +4,7 @@ import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
+import type { Selection } from './selection.ts';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -19,13 +20,15 @@ export const ViewportCanvas = function ViewportCanvas({
 	assets,
 	onAssetDrop,
 	onCanvasSelect,
-	onCanvasMarquee
+	onCanvasMarquee,
+	selection
 }: Readonly<{
 	project: Project;
 	assets: ProjectAssetBlobs;
 	onAssetDrop?: (assetId: string, point: ViewportPoint) => void;
 	onCanvasSelect?: (point: ViewportPoint, additive: boolean) => void;
 	onCanvasMarquee?: (bounds: LogicalBounds, additive: boolean) => void;
+	selection?: Selection;
 }>): ReactElement {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
@@ -73,7 +76,7 @@ export const ViewportCanvas = function ViewportCanvas({
 
 				const renderer = created.value;
 				lifecycle.renderer = renderer;
-				const rendered = await renderer.renderSetup(project, assets);
+				const rendered = await renderer.renderSetup(project, assets, { selectedIds: selection?.map((entity) => entity.id) });
 
 				if (!rendered.ok && !lifecycle.cancelled) {
 					setError(rendered.error.message);
@@ -89,7 +92,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			lifecycle.cancelled = true;
 			lifecycle.renderer?.destroy();
 		};
-	}, [assets, project]);
+	}, [assets, project, selection]);
 
 	const beginPan = function beginPan(event: PointerEvent): void {
 		if (event.button !== 0) {

@@ -571,6 +571,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							onAssetDrop={dropAssetOnCanvas}
 							onCanvasSelect={selectCanvasPoint}
 							onCanvasMarquee={selectCanvasMarquee}
+							selection={selection}
 						/>
 						{project.bones.length === 0 && project.assets.length === 0 && (
 							<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>

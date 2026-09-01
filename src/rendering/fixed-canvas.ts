@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Matrix, Sprite, Texture } from 'pixi.
 import { decodeImageBlob } from '../assets/images.ts';
 import { localTransformToMatrix, multiplyAffine, transformPoint, type AffineMatrix } from '../domain/coordinates.ts';
 import type { Attachment, CanvasSize, ImageAttachment, Project } from '../domain/model.ts';
+import type { EntityId } from '../domain/ids.ts';
 import { evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import { validateProject } from '../domain/validation.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
@@ -20,6 +21,7 @@ export type FixedCanvasRenderOptions = Readonly<{
 	gridSpacing?: number;
 	showBones?: boolean;
 	showGameplay?: boolean;
+	selectedIds?: readonly EntityId[];
 }>;
 
 export type FixedCanvasRenderer = Readonly<{
@@ -241,7 +243,65 @@ const addGameplayAttachments = function addGameplayAttachments(
 
 			graphics.setFromMatrix(pixiMatrix(worldMatrix));
 			container.addChild(graphics);
-		});
+	});
+};
+
+const addSelectionGuides = function addSelectionGuides(
+	container: Container,
+	project: Project,
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	selectedIds: readonly EntityId[]
+): void {
+	const selected = new Set(selectedIds);
+	const slotsById = new Map(project.slots.map((slot) => [slot.id, slot] as const));
+
+	project.bones.filter((bone) => selected.has(bone.id)).forEach((bone) => {
+		const matrix = matrixByBone.get(bone.id);
+
+		if (!matrix) {
+			return;
+		}
+
+		const guide = new Graphics();
+		const start = transformPoint(matrix, { x: 0, y: 0 });
+		const end = transformPoint(matrix, { x: BONE_PREVIEW_LENGTH, y: 0 });
+
+		guide.moveTo(start.x, start.y).lineTo(end.x, end.y).circle(start.x, start.y, 7)
+			.stroke({ width: 2, color: 0xffd27d, alpha: 0.95 });
+		container.addChild(guide);
+	});
+
+	project.attachments.filter((attachment) => selected.has(attachment.id)).forEach((attachment) => {
+		const boneId = attachment.kind === 'image'
+			? slotsById.get(attachment.slotId)?.boneId
+			: attachment.boneId;
+		const boneMatrix = boneId ? matrixByBone.get(boneId) : undefined;
+
+		if (!boneMatrix || (attachment.kind !== 'image' && !attachment.enabled)) {
+			return;
+		}
+
+		const worldMatrix = multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform));
+		const guide = new Graphics();
+
+		if (attachment.kind === 'image') {
+			const asset = project.assets.find((candidate) => candidate.id === attachment.assetId);
+
+			if (!asset) {
+				return;
+			}
+
+			guide.rect(-attachment.pivotX * asset.width, -attachment.pivotY * asset.height, asset.width, asset.height);
+		} else if (attachment.kind === 'point') {
+			guide.circle(0, 0, 9);
+		} else {
+			guide.rect(-attachment.width / 2, -attachment.height / 2, attachment.width, attachment.height);
+		}
+
+		guide.stroke({ width: 2, color: 0xffd27d, alpha: 0.95 });
+		guide.setFromMatrix(pixiMatrix(worldMatrix));
+		container.addChild(guide);
+	});
 };
 
 const captureCanvasPng = async function captureCanvasPng(
@@ -338,6 +398,10 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 				drawBones(bones, project, evaluation.matrices);
 				content.addChild(bones);
 			}
+
+			const selection = new Container();
+			addSelectionGuides(selection, project, evaluation.matrices, options.selectedIds ?? []);
+			content.addChild(selection);
 
 			state.resources = prepared.value;
 			application.render();
