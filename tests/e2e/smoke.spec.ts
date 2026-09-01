@@ -9,6 +9,17 @@ test('opens the empty editor shell', async ({ page }) => {
 	await expect(page.getByText('Drop image parts here')).toBeVisible();
 });
 
+test('loads the built-in example project', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Load example' }).click();
+	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'root', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await expect(page.getByRole('button', { name: 'pulse', exact: true })).toBeVisible();
+	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
+});
+
 test('recovers a committed root edit after reload', async ({ page }) => {
 	await page.goto('/');
 

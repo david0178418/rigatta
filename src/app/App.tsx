@@ -41,6 +41,7 @@ import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
 import { createExportDiagnostics, formatByteCount } from '../export/diagnostics.ts';
+import { createExampleAssetBlobs, exampleProject } from '../examples/example-project.ts';
 import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
 
 type EditorMode = 'setup' | 'animate';
@@ -1306,6 +1307,31 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			: { ...current, clipIds: normalizeExportClipIds(project, current.clipIds) });
 		setExportPanelOpen(true);
 	};
+	const loadExampleProject = function loadExampleProject(): void {
+		const hasContent = project.assets.length > 0
+			|| project.bones.length > 0
+			|| project.slots.length > 0
+			|| project.attachments.length > 0
+			|| project.clips.length > 0;
+
+		if (hasContent && !window.confirm('Replace the current project with the built-in example?')) {
+			return;
+		}
+
+		const nextAssets = createExampleAssetBlobs();
+
+		setHistory(createHistory(exampleProject));
+		setAssetBlobs(nextAssets);
+		setSelection(createSelection());
+		setActiveClipId(exampleProject.clips[0]?.id);
+		setPlayback(undefined);
+		setPendingAnimationEdits([]);
+		setExportSelection(createExportClipSelection(exampleProject));
+		setCommandError(undefined);
+		setPersistenceError(undefined);
+		setAssetError(undefined);
+		autosave.schedule(exampleProject, blobsForProject(exampleProject, nextAssets));
+	};
 
 	useEffect(() => {
 		return function cleanup(): void {
@@ -2362,6 +2388,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				<div className="toolbar-actions">
 					<button className="quiet-button" type="button" disabled={!canUndo(history)} onClick={() => stepHistory(undo(history))}>Undo</button>
 					<button className="quiet-button" type="button" disabled={!canRedo(history)} onClick={() => stepHistory(redo(history))}>Redo</button>
+					<button className="quiet-button" type="button" onClick={loadExampleProject}>Load example</button>
 					<button className="quiet-button" type="button" aria-label="Keyboard shortcuts" onClick={() => setShortcutPanelOpen(true)}>?</button>
 					<button className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel}>Export</button>
 				</div>

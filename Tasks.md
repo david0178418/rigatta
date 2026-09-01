@@ -140,7 +140,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P8-03** Add logical-canvas clipping and overflow warnings.
 - [x] **P8-04** Add atlas-size, storage-quota, and export-memory diagnostics.
 - [x] **P8-05** Add destructive-operation confirmation where history cannot recover data.
-- [ ] **P8-06** Add a small built-in example project and export fixture.
+- [x] **P8-06** Add a small built-in example project and export fixture.
 - [ ] **P8-07** Document project and export schemas.
 - [ ] **P8-08** Document keyboard, project recovery, and PixiJS loading workflows.
 - [ ] **P8-09** Run desktop layout QA at supported viewport sizes.
