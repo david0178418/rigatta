@@ -130,7 +130,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P7-12** Generate companion event and gameplay metadata.
 - [x] **P7-13** Package multifile outputs into ZIP downloads.
 - [x] **P7-14** Add export progress, batching, browser yielding, and cancellation.
-- [ ] **P7-15** Build a PixiJS export-validation harness.
+- [x] **P7-15** Build a PixiJS export-validation harness.
 - [ ] **P7-16** Test grid, packed, combined, per-clip, trimmed, and multipage output.
 
 ## Phase 8: hardening and release gate

@@ -1,5 +1,5 @@
 import { createPixiAtlasData } from './atlas.ts';
-import { reloadPixiAtlasFrame } from './pixi-atlas-validation.ts';
+import { reloadPixiAtlasFrames } from './pixi-atlas-validation.ts';
 import { trimRgbaFrame } from './trim.ts';
 
 const validationFrame = {
@@ -40,7 +40,7 @@ export const runAtlasValidationPage = async function runAtlasValidationPage(): P
 		}
 
 		context.putImageData(new ImageData(new Uint8ClampedArray(trimmed.value.pixels), 2, 2), 3, 4);
-		const validation = await reloadPixiAtlasFrame(canvas, atlas.value, 'test/frame');
+		const validation = await reloadPixiAtlasFrames(canvas, atlas.value, ['test/frame']);
 		const serialized = JSON.stringify(validation);
 
 		output.dataset.result = serialized;
