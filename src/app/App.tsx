@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react';
 import { DEFAULT_LOCAL_TRANSFORM } from '../domain/coordinates.ts';
 import { createEntityId, type EntityId } from '../domain/ids.ts';
 import {
@@ -150,15 +150,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 
-	const applyCommand = function applyCommand(command: ProjectCommand): void {
+	const applyCommand = function applyCommand(command: ProjectCommand): boolean {
 		const result = dispatchCommand(history, command);
 
 		if (!result.ok) {
 			setCommandError(result.error.message);
-			return;
+			return false;
 		}
 
 		commitHistory(result.value);
+		return true;
 	};
 
 	const addImportedImages = function addImportedImages(result: AssetImportResult): void {
@@ -259,7 +260,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const applyCommandSequence = function applyCommandSequence(
 		commands: readonly ProjectCommand[],
 		nextAssets: ProjectAssetBlobs = assetBlobs
-	): void {
+	): boolean {
 		const started = beginTransaction(history);
 		const result = commands.reduce<OperationResult<HistoryState>>(
 			(current, command) => current.ok ? dispatchCommand(current.value, command) : current,
@@ -268,10 +269,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		if (!result.ok) {
 			setCommandError(result.error.message);
-			return;
+			return false;
 		}
 
 		commitHistory(commitTransaction(result.value), nextAssets);
+		return true;
 	};
 
 	const dropAssetOnCanvas = function dropAssetOnCanvas(assetId: string, point: ViewportPoint): void {
@@ -347,6 +349,130 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			?? project.slots.find((slot) => slot.id === selectedEntity.id)?.name
 			?? project.attachments.find((attachment) => attachment.id === selectedEntity.id)?.name
 		: undefined;
+	const selectedBone = selectedEntity?.kind === 'bone'
+		? project.bones.find((bone) => bone.id === selectedEntity.id)
+		: undefined;
+	const renameInputRef = useRef<HTMLInputElement>(null);
+
+	const addChildBone = function addChildBone(): void {
+		if (!selectedBone) {
+			setCommandError('Select a bone before adding a child bone.');
+			return;
+		}
+
+		const id = createEntityId();
+		const added = applyCommand({
+			kind: 'create-bone',
+			id,
+			input: { name: 'bone', parentId: selectedBone.id }
+		});
+
+		if (added) {
+			setSelection([{ kind: 'bone', id }]);
+		}
+	};
+
+	const addSlot = function addSlot(): void {
+		if (!selectedBone) {
+			setCommandError('Select a bone before adding a slot.');
+			return;
+		}
+
+		const id = createEntityId();
+		const added = applyCommand({
+			kind: 'create-slot',
+			id,
+			input: { name: 'slot', boneId: selectedBone.id }
+		});
+
+		if (added) {
+			setSelection([{ kind: 'slot', id }]);
+		}
+	};
+
+	const addPointAttachment = function addPointAttachment(): void {
+		if (!selectedBone) {
+			setCommandError('Select a bone before adding a point attachment.');
+			return;
+		}
+
+		const id = createEntityId();
+		const added = applyCommand({
+			kind: 'create-point-attachment',
+			id,
+			input: { name: 'point', boneId: selectedBone.id }
+		});
+
+		if (added) {
+			setSelection([{ kind: 'attachment', id }]);
+		}
+	};
+
+	const addRectangleAttachment = function addRectangleAttachment(): void {
+		if (!selectedBone) {
+			setCommandError('Select a bone before adding a rectangle attachment.');
+			return;
+		}
+
+		const id = createEntityId();
+		const added = applyCommand({
+			kind: 'create-rectangle-attachment',
+			id,
+			input: { name: 'rectangle', boneId: selectedBone.id, width: 64, height: 64 }
+		});
+
+		if (added) {
+			setSelection([{ kind: 'attachment', id }]);
+		}
+	};
+
+	const renameSelected = function renameSelected(name: string): void {
+		if (!selectedEntity || selectedEntity.kind === 'asset') {
+			return;
+		}
+
+		const command = selectedEntity.kind === 'bone'
+			? { kind: 'rename-bone' as const, boneId: selectedEntity.id, name }
+			: selectedEntity.kind === 'slot'
+				? { kind: 'rename-slot' as const, slotId: selectedEntity.id, name }
+			: { kind: 'rename-attachment' as const, attachmentId: selectedEntity.id, name };
+
+		applyCommand(command);
+	};
+
+	const deleteSelected = function deleteSelected(): void {
+		if (!selectedEntity || selectedEntity.kind === 'asset') {
+			return;
+		}
+
+		const commands: readonly ProjectCommand[] = selectedEntity.kind === 'bone'
+			? [{ kind: 'delete-bone', boneId: selectedEntity.id }]
+			: selectedEntity.kind === 'slot'
+				? [{ kind: 'delete-slot', slotId: selectedEntity.id }]
+				: ((): readonly ProjectCommand[] => {
+				const owningSlot = project.slots.find((slot) => slot.setupAttachmentId === selectedEntity.id);
+
+				return owningSlot
+					? [
+						{ kind: 'assign-slot-attachment' as const, slotId: owningSlot.id, attachmentId: null },
+						{ kind: 'delete-attachment' as const, attachmentId: selectedEntity.id }
+					]
+					: [{ kind: 'delete-attachment' as const, attachmentId: selectedEntity.id }];
+			})();
+
+		if (applyCommandSequence(commands)) {
+			setSelection(createSelection());
+		}
+	};
+
+	const submitRename = function submitRename(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+		const input = renameInputRef.current;
+
+		if (input) {
+			renameSelected(input.value);
+		}
+	};
 	const statusMessage = commandError ?? persistenceError ?? assetError;
 
 	return (
@@ -502,7 +628,18 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 												<span aria-hidden="true">•</span>{attachment.name}
 										</button>
 										))
-										])
+										]),
+										...project.attachments.filter((attachment) => attachment.kind !== 'image' && attachment.boneId === bone.id).map((attachment) => (
+											<button
+												className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'attachment-row is-selected' : 'attachment-row'}
+												key={attachment.id}
+												type="button"
+												onClick={(event) => updateSelection({ kind: 'attachment', id: attachment.id }, event.metaKey || event.ctrlKey)}
+												aria-pressed={isSelected(selection, { kind: 'attachment', id: attachment.id })}
+											>
+												<span aria-hidden="true">◇</span>{attachment.name}
+											</button>
+										))
 									])}
 							</div>
 							)}
@@ -510,7 +647,37 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<section className="panel-section inspector-section">
 						<p className="eyebrow">Inspector</p>
 						<h2>{selectedName ?? 'Nothing selected'}</h2>
-						<p className="muted-copy">{selectedName ? `${selection.length} item${selection.length === 1 ? '' : 's'} selected.` : 'Select a bone, slot, attachment, or image to edit its properties.'}</p>
+						{!selectedEntity ? (
+							<p className="muted-copy">Select a bone, slot, attachment, or image to edit its properties.</p>
+						) : (
+							<>
+								<p className="muted-copy">{`${selection.length} item${selection.length === 1 ? '' : 's'} selected.`}</p>
+								{selectedEntity.kind === 'asset' ? (
+									<p className="muted-copy">Drag this source image into the canvas to create a part.</p>
+								) : (
+									<>
+										<form className="inspector-form" key={`${selectedEntity.kind}:${selectedEntity.id}`} onSubmit={submitRename}>
+											<label>
+												<span className="field-label">Name</span>
+												<input ref={renameInputRef} defaultValue={selectedName ?? ''} aria-label="Selected name" />
+											</label>
+											<div className="inspector-actions">
+												<button className="secondary-button" type="submit">Rename</button>
+												<button className="danger-button" type="button" onClick={deleteSelected}>Delete</button>
+											</div>
+										</form>
+										{selectedBone && (
+											<div className="inspector-actions inspector-create-actions">
+												<button className="secondary-button" type="button" onClick={addChildBone}>Add child bone</button>
+												<button className="secondary-button" type="button" onClick={addSlot}>Add slot</button>
+												<button className="secondary-button" type="button" onClick={addPointAttachment}>Add point</button>
+												<button className="secondary-button" type="button" onClick={addRectangleAttachment}>Add rectangle</button>
+											</div>
+										)}
+									</>
+								)}
+							</>
+						)}
 					</section>
 				</aside>
 			</main>

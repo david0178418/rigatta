@@ -109,3 +109,24 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.keyboard.up('Control');
 	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
 });
+
+test('builds and edits a hierarchy through the inspector', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await expect(page.getByRole('button', { name: 'bone', exact: true })).toBeVisible();
+
+	await page.getByLabel('Selected name').fill('arm');
+	await page.getByRole('button', { name: 'Rename' }).click();
+	await expect(page.getByRole('button', { name: 'arm', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Add slot' }).click();
+	await expect(page.getByRole('button', { name: 'slot', exact: true })).toBeVisible();
+
+	await page.getByRole('button', { name: 'arm', exact: true }).click();
+	await page.getByRole('button', { name: 'Add point' }).click();
+	await expect(page.getByRole('button', { name: 'point', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Delete' }).click();
+	await expect(page.getByRole('button', { name: 'point', exact: true })).toHaveCount(0);
+});
