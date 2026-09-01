@@ -57,6 +57,11 @@ selected-key editor lists the keyed slots and moves a slot earlier or later by
 one position, preserving the key identity and validating that every project
 slot remains present exactly once.
 
+Animation actions that update several keys, such as multi-key deletion, reduce
+through one history transaction. Undo therefore restores the complete prior
+selection in one step, while single-key edits and atomic retiming commands keep
+their own entries.
+
 Auto Key is enabled by default for the editor session. Editing a changed bone
 or attachment transform in Animate mode updates setup data and creates or
 upserts the corresponding numeric key at the current frame in the same
@@ -71,3 +76,7 @@ Inspector property labels expose the state at the active frame: Unkeyed when no
 track or key exists, Pending for an edited-but-unkeyed property, and Keyed when
 a track contains a key at that frame. The same state is computed from the
 active clip and pending edit set so it stays aligned with the timeline.
+
+Browser coverage exercises clip lifecycle, playback, timeline navigation,
+typed-key editing, interpolation and Bezier controls, multi-key retiming and
+deletion, Auto Key, pending edits, slot attachment swaps, and keyed draw order.

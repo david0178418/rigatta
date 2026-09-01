@@ -100,8 +100,8 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P5-13** Build the cubic Bezier graph editor.
 - [x] **P5-14** Implement keyed slot attachment swapping.
 - [x] **P5-15** Implement keyed draw order.
-- [ ] **P5-16** Connect all animation mutations to coherent history transactions.
-- [ ] **P5-17** Add Animate-mode browser tests.
+- [x] **P5-16** Connect all animation mutations to coherent history transactions.
+- [x] **P5-17** Add Animate-mode browser tests.
 
 ## Phase 6: gameplay metadata
 

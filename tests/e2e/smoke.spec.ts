@@ -191,6 +191,28 @@ test('retimes multiple selected animation keys together', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Key frame 3' })).toHaveCount(2);
 });
 
+test('undoes a multi-key animation deletion as one action', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'root · Bone · y' });
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+
+	const keys = page.getByRole('button', { name: 'Key frame 1' });
+	await keys.nth(0).click();
+	await keys.nth(1).click({ modifiers: ['Control'] });
+	await page.getByRole('button', { name: 'Delete selected keys', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(0);
+
+	await page.getByRole('button', { name: 'Undo', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(2);
+});
+
 test('auto-keys changed transform properties by default', async ({ page }) => {
 	await page.goto('/');
 
