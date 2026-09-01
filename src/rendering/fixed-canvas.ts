@@ -1,11 +1,13 @@
 import { Application, Container, Graphics, Matrix, Sprite, Texture } from 'pixi.js';
 import { decodeImageBlob } from '../assets/images.ts';
 import { localTransformToMatrix, multiplyAffine, transformPoint, type AffineMatrix } from '../domain/coordinates.ts';
-import type { Attachment, CanvasSize, ImageAttachment, Project } from '../domain/model.ts';
+import type { CanvasSize, Project } from '../domain/model.ts';
 import type { EntityId } from '../domain/ids.ts';
+import type { EvaluatedPose } from '../domain/pose.ts';
 import { evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import { validateProject } from '../domain/validation.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
+import { poseImageRenderInstances, setupImageRenderInstances, type ImageRenderInstance } from './pose-images.ts';
 
 export type RendererError = Readonly<{
 	code: 'unsupported-browser' | 'invalid-project' | 'invalid-asset' | 'renderer-failure';
@@ -28,12 +30,13 @@ export type FixedCanvasRenderOptions = Readonly<{
 export type FixedCanvasRenderer = Readonly<{
 	canvas: HTMLCanvasElement;
 	renderSetup: (project: Project, assets: ProjectAssetBlobs, options?: FixedCanvasRenderOptions) => Promise<RendererResult<void>>;
+	renderPose: (project: Project, pose: EvaluatedPose, assets: ProjectAssetBlobs) => Promise<RendererResult<void>>;
 	capturePng: () => Promise<RendererResult<Blob>>;
 	destroy: () => void;
 }>;
 
 type PreparedImage = Readonly<{
-	attachment: ImageAttachment;
+	instance: ImageRenderInstance;
 	bitmap: ImageBitmap;
 	texture: Texture;
 }>;
@@ -126,30 +129,17 @@ const drawBones = function drawBones(
 	graphics.fill({ color: 0x9ae8d4, alpha: 0.95 });
 };
 
-const findActiveAttachments = function findActiveAttachments(project: Project): readonly Attachment[] {
-	const attachmentsById = new Map(project.attachments.map((attachment) => [attachment.id, attachment] as const));
-	const slotsById = new Map(project.slots.map((slot) => [slot.id, slot] as const));
-
-	return project.setupDrawOrder.flatMap((slotId) => {
-		const slot = slotsById.get(slotId);
-		const attachment = slot?.setupAttachmentId ? attachmentsById.get(slot.setupAttachmentId) : undefined;
-
-		return attachment ? [attachment] : [];
-	});
-};
-
 const prepareImages = async function prepareImages(
 	project: Project,
 	assets: ProjectAssetBlobs,
-	activeAttachments: readonly Attachment[]
+	instances: readonly ImageRenderInstance[]
 ): Promise<RendererResult<readonly PreparedImage[]>> {
-	const imageAttachments = activeAttachments.flatMap((attachment) => attachment.kind === 'image' ? [attachment] : []);
-	const prepared = await Promise.all(imageAttachments.map(async (attachment): Promise<RendererResult<PreparedImage>> => {
-		const asset = project.assets.find((candidate) => candidate.id === attachment.assetId);
+	const prepared = await Promise.all(instances.map(async (instance): Promise<RendererResult<PreparedImage>> => {
+		const asset = project.assets.find((candidate) => candidate.id === instance.attachment.assetId);
 		const blob = asset ? assets.get(asset.id) : undefined;
 
 		if (!asset || !blob) {
-			return failure('invalid-asset', `Image asset for attachment ${attachment.id} is unavailable.`);
+			return failure('invalid-asset', `Image asset for attachment ${instance.attachment.id} is unavailable.`);
 		}
 
 		const decoded = await decodeImageBlob(blob, asset.mimeType);
@@ -159,7 +149,7 @@ const prepareImages = async function prepareImages(
 		}
 
 		return success({
-			attachment,
+			instance,
 			bitmap: decoded.value.bitmap,
 			texture: Texture.from(decoded.value.bitmap)
 		});
@@ -180,33 +170,19 @@ const prepareImages = async function prepareImages(
 
 const addImageSprites = function addImageSprites(
 	container: Container,
-	preparedImages: readonly PreparedImage[],
-	matrixByBone: ReadonlyMap<string, AffineMatrix>,
-	project: Project
+	preparedImages: readonly PreparedImage[]
 ): void {
-	const slotById = new Map(project.slots.map((slot) => [slot.id, slot] as const));
-
 	preparedImages.forEach((prepared) => {
-		const slot = slotById.get(prepared.attachment.slotId);
-
-		if (!slot) {
-			return;
-		}
-
-		const boneMatrix = matrixByBone.get(slot.boneId);
-
-		if (!boneMatrix) {
-			return;
-		}
-
-		const worldMatrix = multiplyAffine(boneMatrix, localTransformToMatrix(prepared.attachment.transform));
 		const sprite = new Sprite({
 			texture: prepared.texture,
-			anchor: { x: prepared.attachment.pivotX, y: prepared.attachment.pivotY }
+			anchor: {
+				x: prepared.instance.attachment.pivotX,
+				y: prepared.instance.attachment.pivotY
+			}
 		});
 
-		sprite.setFromMatrix(pixiMatrix(worldMatrix));
-		sprite.alpha = prepared.attachment.opacity;
+		sprite.setFromMatrix(pixiMatrix(prepared.instance.worldMatrix));
+		sprite.alpha = prepared.instance.opacity;
 		container.addChild(sprite);
 	});
 };
@@ -456,14 +432,13 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 				return failure('invalid-project', diagnostics[0]?.message ?? 'Project validation failed.');
 			}
 
-			const activeAttachments = findActiveAttachments(project);
-			const prepared = await prepareImages(project, assets, activeAttachments);
+			const evaluation = evaluateBoneWorldMatrices(project);
+			const prepared = await prepareImages(project, assets, setupImageRenderInstances(project, evaluation.matrices));
 
 			if (!prepared.ok) {
 				return prepared;
 			}
 
-			const evaluation = evaluateBoneWorldMatrices(project);
 			const content = replaceContent(application, state);
 			const gridSpacing = options.gridSpacing ?? DEFAULT_GRID_SPACING;
 			const grid = new Graphics();
@@ -475,7 +450,7 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 			content.addChild(grid);
 			const attachments = new Container();
 
-			addImageSprites(attachments, prepared.value, evaluation.matrices, project);
+			addImageSprites(attachments, prepared.value);
 			addGameplayAttachments(attachments, project, evaluation.matrices, options.showGameplay ?? true);
 			content.addChild(attachments);
 
@@ -496,6 +471,38 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 			return success(undefined);
 		};
 
+		const renderPose = async function renderPose(
+			project: Project,
+			pose: EvaluatedPose,
+			assets: ProjectAssetBlobs
+		): Promise<RendererResult<void>> {
+			if (state.destroyed) {
+				return failure('renderer-failure', 'The canvas renderer has been destroyed.');
+			}
+
+			const diagnostics = validateProject(project);
+
+			if (diagnostics.length > 0) {
+				return failure('invalid-project', diagnostics[0]?.message ?? 'Project validation failed.');
+			}
+
+			const prepared = await prepareImages(project, assets, poseImageRenderInstances(project, pose));
+
+			if (!prepared.ok) {
+				return prepared;
+			}
+
+			const content = replaceContent(application, state);
+			const attachments = new Container();
+
+			addImageSprites(attachments, prepared.value);
+			content.addChild(attachments);
+			state.resources = prepared.value;
+			application.render();
+
+			return success(undefined);
+		};
+
 		const destroy = function destroy(): void {
 			if (state.destroyed) {
 				return;
@@ -509,6 +516,7 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 		return success({
 			canvas,
 			renderSetup,
+			renderPose,
 			capturePng: () => captureCanvasPng(canvas),
 			destroy
 		});
