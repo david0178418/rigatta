@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createTransformGesture, isTransformHandleHit, transformGestureCommand } from '../../src/app/transform-gesture.ts';
+import { createTransformGesture, isTransformHandleHit, transformGestureCommand, transformGestureCommands } from '../../src/app/transform-gesture.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
 
 describe('setup transform gestures', () => {
@@ -46,5 +46,25 @@ describe('setup transform gestures', () => {
 		expect(isTransformHandleHit(project, { kind: 'bone', id: fixtureIds.root }, { x: 138, y: 50 }, 'scale')).toBe(true);
 		expect(isTransformHandleHit(project, { kind: 'bone', id: fixtureIds.root }, { x: 122, y: 50 }, 'shear')).toBe(true);
 		expect(isTransformHandleHit(project, { kind: 'bone', id: fixtureIds.root }, { x: 300, y: 300 }, 'rotate')).toBe(false);
+	});
+
+	test('creates one transform command per selected transformable entity', () => {
+		const project = createRigProject();
+		const gesture = createTransformGesture(project, [
+			{ kind: 'attachment', id: fixtureIds.image },
+			{ kind: 'attachment', id: fixtureIds.point }
+		], { x: 200, y: 200 }, 'translate');
+
+		if (!gesture) {
+			throw new Error('A multi-selection transform gesture was not created.');
+		}
+
+		const commands = transformGestureCommands(gesture, { x: 220, y: 210 });
+
+		expect(commands).toHaveLength(2);
+		expect(commands).toMatchObject([
+			{ kind: 'update-attachment-transform', attachmentId: fixtureIds.image },
+			{ kind: 'update-attachment-transform', attachmentId: fixtureIds.point }
+		]);
 	});
 });

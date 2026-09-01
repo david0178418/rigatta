@@ -29,7 +29,7 @@ import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hiera
 import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
-import { createTransformGesture, isTransformHandleHit, transformGestureCommand, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
+import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 
@@ -589,19 +589,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const renameInputRef = useRef<HTMLInputElement>(null);
 
 	const beginCanvasTransform = function beginCanvasTransform(point: ViewportPoint, tool: TransformTool): boolean {
-		const entity = selection.length === 1 ? selection[0] : undefined;
+		const transformableSelection = selection.filter((entity) => entity.kind === 'bone' || entity.kind === 'attachment');
 		const hit = hitTestProject(project, point);
-		const selectedEntityHit = !!entity
-			&& !!hit
-			&& entity.kind === hit.kind
-			&& entity.id === hit.id;
-		const handleHit = !!entity && isTransformHandleHit(project, entity, point, tool);
+		const selectedEntityHit = !!hit && transformableSelection.some((entity) => entity.kind === hit.kind && entity.id === hit.id);
+		const handleHit = transformableSelection.length > 0 && isTransformHandleHit(project, transformableSelection, point, tool);
 
-		if (!entity || (!selectedEntityHit && !handleHit)) {
+		if (transformableSelection.length === 0 || (!selectedEntityHit && !handleHit)) {
 			return false;
 		}
 
-		const gesture = createTransformGesture(project, entity, point, tool);
+		const gesture = createTransformGesture(project, transformableSelection, point, tool);
 
 		if (!gesture) {
 			return false;
@@ -630,13 +627,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			return;
 		}
 
-		const command = transformGestureCommand(session.gesture, point);
+		const commands = transformGestureCommands(session.gesture, point);
 
-		if (!command) {
+		if (!commands) {
 			return;
 		}
 
-		const result = dispatchCommand(session.history, command);
+		const result = commands.reduce<OperationResult<HistoryState>>(
+			(current, command) => current.ok ? dispatchCommand(current.value, command) : current,
+			{ ok: true, value: session.history }
+		);
 
 		if (!result.ok) {
 			setCommandError(result.error.message);

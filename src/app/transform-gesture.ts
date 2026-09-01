@@ -19,13 +19,18 @@ export type TransformPhase = 'update' | 'end' | 'cancel';
 
 type TransformEntity = Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
 
-export type TransformGesture = Readonly<{
+type TransformTarget = Readonly<{
 	entity: TransformEntity;
+	initialTransform: LocalTransform;
+	parentMatrix: AffineMatrix;
+	center: Point;
+}>;
+
+export type TransformGesture = Readonly<{
+	entities: readonly TransformTarget[];
 	tool: TransformTool;
 	startPoint: Point;
 	center: Point;
-	initialTransform: LocalTransform;
-	parentMatrix: AffineMatrix;
 }>;
 
 const attachmentBoneId = function attachmentBoneId(
@@ -77,6 +82,34 @@ const worldMatrixForEntity = function worldMatrixForEntity(
 		: undefined;
 };
 
+const transformTargetForEntity = function transformTargetForEntity(
+	project: Project,
+	entity: TransformEntity,
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+): TransformTarget | undefined {
+	const initialTransform = transformForEntity(project, entity);
+	const parentMatrix = parentMatrixForEntity(project, entity, matrixByBone);
+	const worldMatrix = worldMatrixForEntity(project, entity, matrixByBone);
+
+	return initialTransform && parentMatrix && worldMatrix
+		? {
+			entity,
+			initialTransform,
+			parentMatrix,
+			center: transformPoint(worldMatrix, { x: 0, y: 0 })
+		}
+		: undefined;
+};
+
+const centerForTargets = function centerForTargets(targets: readonly TransformTarget[]): Point {
+	const total = targets.reduce(
+		(sum, target) => ({ x: sum.x + target.center.x, y: sum.y + target.center.y }),
+		{ x: 0, y: 0 }
+	);
+
+	return { x: total.x / targets.length, y: total.y / targets.length };
+};
+
 const shortestAngleDelta = function shortestAngleDelta(start: number, current: number): number {
 	const fullTurn = Math.PI * 2;
 	const delta = ((current - start + Math.PI) % fullTurn + fullTurn) % fullTurn;
@@ -84,56 +117,48 @@ const shortestAngleDelta = function shortestAngleDelta(start: number, current: n
 	return delta - Math.PI;
 };
 
-const localDeltaFor = function localDeltaFor(
+const angleDeltaForGesture = function angleDeltaForGesture(
 	gesture: TransformGesture,
 	point: Point
+): number {
+	const startDistance = Math.hypot(
+		gesture.startPoint.x - gesture.center.x,
+		gesture.startPoint.y - gesture.center.y
+	);
+
+	return startDistance <= 1e-10
+		? 0
+		: shortestAngleDelta(
+			Math.atan2(gesture.startPoint.y - gesture.center.y, gesture.startPoint.x - gesture.center.x),
+			Math.atan2(point.y - gesture.center.y, point.x - gesture.center.x)
+		);
+};
+
+const localDeltaFor = function localDeltaFor(
+	gesture: TransformGesture,
+	target: TransformTarget,
+	point: Point
 ): Point | undefined {
-	const startLocal = worldToLocalPoint(gesture.parentMatrix, gesture.startPoint);
-	const currentLocal = worldToLocalPoint(gesture.parentMatrix, point);
+	const startLocal = worldToLocalPoint(target.parentMatrix, gesture.startPoint);
+	const currentLocal = worldToLocalPoint(target.parentMatrix, point);
 
 	return startLocal && currentLocal
 		? { x: currentLocal.x - startLocal.x, y: currentLocal.y - startLocal.y }
 		: undefined;
 };
 
-const distanceToSegment = function distanceToSegment(
-	point: Point,
-	start: Point,
-	end: Point
-): number {
-	const directionX = end.x - start.x;
-	const directionY = end.y - start.y;
-	const lengthSquared = directionX * directionX + directionY * directionY;
-	const projection = lengthSquared === 0
-		? 0
-		: Math.min(1, Math.max(0, ((point.x - start.x) * directionX + (point.y - start.y) * directionY) / lengthSquared));
-	const closest = {
-		x: start.x + directionX * projection,
-		y: start.y + directionY * projection
-	};
-
-	return Math.hypot(point.x - closest.x, point.y - closest.y);
-};
-
-const transformForGesture = function transformForGesture(
+const transformForTarget = function transformForTarget(
 	gesture: TransformGesture,
+	target: TransformTarget,
 	point: Point
 ): LocalTransform | undefined {
-	const delta = localDeltaFor(gesture, point);
+	const delta = localDeltaFor(gesture, target, point);
 
 	if (!delta) {
 		return undefined;
 	}
 
-	const angleDelta = Math.hypot(
-		gesture.startPoint.x - gesture.center.x,
-		gesture.startPoint.y - gesture.center.y
-	) <= 1e-10
-		? 0
-		: shortestAngleDelta(
-			Math.atan2(gesture.startPoint.y - gesture.center.y, gesture.startPoint.x - gesture.center.x),
-			Math.atan2(point.y - gesture.center.y, point.x - gesture.center.x)
-		);
+	const angleDelta = angleDeltaForGesture(gesture, point);
 	const updates: Record<TransformTool, (transform: LocalTransform) => LocalTransform> = {
 		translate: (transform) => ({ ...transform, x: transform.x + delta.x, y: transform.y + delta.y }),
 		rotate: (transform) => ({ ...transform, rotation: transform.rotation + angleDelta }),
@@ -149,45 +174,48 @@ const transformForGesture = function transformForGesture(
 		})
 	};
 
-	return updates[gesture.tool](gesture.initialTransform);
+	return updates[gesture.tool](target.initialTransform);
+};
+
+const transformEntities = function transformEntities(
+	entities: readonly SelectableEntity[]
+): readonly TransformEntity[] {
+	return entities.filter((entity): entity is TransformEntity => entity.kind === 'bone' || entity.kind === 'attachment');
 };
 
 export const createTransformGesture = function createTransformGesture(
 	project: Project,
-	entity: SelectableEntity,
+	entityOrEntities: SelectableEntity | readonly SelectableEntity[],
 	startPoint: Point,
 	tool: TransformTool
 ): TransformGesture | undefined {
-	if (entity.kind !== 'bone' && entity.kind !== 'attachment') {
-		return undefined;
-	}
-
+	const entities = transformEntities(Array.isArray(entityOrEntities) ? entityOrEntities : [entityOrEntities]);
 	const evaluation = evaluateBoneWorldMatrices(project);
-	const initialTransform = transformForEntity(project, entity);
-	const parentMatrix = parentMatrixForEntity(project, entity, evaluation.matrices);
-	const worldMatrix = worldMatrixForEntity(project, entity, evaluation.matrices);
+	const targets = entities.flatMap((entity) => {
+		const target = transformTargetForEntity(project, entity, evaluation.matrices);
 
-	if (!initialTransform || !parentMatrix || !worldMatrix || !worldToLocalPoint(parentMatrix, startPoint)) {
+		return target ? [target] : [];
+	});
+
+	if (targets.length === 0 || targets.some((target) => !worldToLocalPoint(target.parentMatrix, startPoint))) {
 		return undefined;
 	}
 
 	return {
-		entity,
+		entities: targets,
 		tool,
 		startPoint,
-		center: transformPoint(worldMatrix, { x: 0, y: 0 }),
-		initialTransform,
-		parentMatrix
+		center: centerForTargets(targets)
 	};
 };
 
 export const isTransformHandleHit = function isTransformHandleHit(
 	project: Project,
-	entity: SelectableEntity,
+	entityOrEntities: SelectableEntity | readonly SelectableEntity[],
 	point: Point,
 	tool: TransformTool
 ): boolean {
-	const gesture = createTransformGesture(project, entity, point, tool);
+	const gesture = createTransformGesture(project, entityOrEntities, point, tool);
 
 	if (!gesture) {
 		return false;
@@ -202,34 +230,43 @@ export const isTransformHandleHit = function isTransformHandleHit(
 		return Math.hypot(point.x - (gesture.center.x + 38), point.y - gesture.center.y) <= 10
 			|| Math.hypot(point.x - gesture.center.x, point.y - (gesture.center.y + 38)) <= 10;
 	}
-
 	if (tool === 'shear') {
-		return distanceToSegment(
-			point,
-			{ x: gesture.center.x - 22, y: gesture.center.y },
-			{ x: gesture.center.x + 22, y: gesture.center.y }
-		) <= 8
-			|| distanceToSegment(
-				point,
-				{ x: gesture.center.x, y: gesture.center.y - 22 },
-				{ x: gesture.center.x, y: gesture.center.y + 22 }
-			) <= 8;
+		const horizontalDistance = Math.abs(point.y - gesture.center.y);
+		const verticalDistance = Math.abs(point.x - gesture.center.x);
+
+		return horizontalDistance <= 8 && Math.abs(point.x - gesture.center.x) <= 22
+			|| verticalDistance <= 8 && Math.abs(point.y - gesture.center.y) <= 22;
 	}
 
 	return distance <= 10;
+};
+
+export const transformGestureCommands = function transformGestureCommands(
+	gesture: TransformGesture,
+	point: Point
+): readonly ProjectCommand[] | undefined {
+	const transforms = gesture.entities.map((target) => transformForTarget(gesture, target, point));
+
+	if (transforms.some((transform) => !transform)) {
+		return undefined;
+	}
+
+	return transforms.flatMap((transform, index): readonly ProjectCommand[] => {
+		const target = gesture.entities[index];
+
+		if (!transform || !target) {
+			return [];
+		}
+
+		return target.entity.kind === 'bone'
+			? [{ kind: 'update-bone-transform' as const, boneId: target.entity.id, transform }]
+			: [{ kind: 'update-attachment-transform' as const, attachmentId: target.entity.id, transform }];
+	});
 };
 
 export const transformGestureCommand = function transformGestureCommand(
 	gesture: TransformGesture,
 	point: Point
 ): ProjectCommand | undefined {
-	const transform = transformForGesture(gesture, point);
-
-	if (!transform) {
-		return undefined;
-	}
-
-	return gesture.entity.kind === 'bone'
-		? { kind: 'update-bone-transform', boneId: gesture.entity.id, transform }
-		: { kind: 'update-attachment-transform', attachmentId: gesture.entity.id, transform };
+	return transformGestureCommands(gesture, point)?.[0];
 };

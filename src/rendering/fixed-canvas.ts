@@ -312,35 +312,41 @@ const addTransformHandles = function addTransformHandles(
 	selectedIds: readonly EntityId[],
 	tool: FixedCanvasRenderOptions['transformTool']
 ): void {
-	if (selectedIds.length !== 1 || !tool) {
+	if (selectedIds.length === 0 || !tool) {
 		return;
 	}
 
-	const selectedId = selectedIds[0];
-	const bone = project.bones.find((candidate) => candidate.id === selectedId);
-	const attachment = project.attachments.find((candidate) => candidate.id === selectedId);
-	const centerMatrix = bone
-		? matrixByBone.get(bone.id)
-		: attachment
-			? attachment.kind === 'image'
-			? ((): AffineMatrix | undefined => {
-					const slot = project.slots.find((candidate) => candidate.id === attachment.slotId);
-					const boneMatrix = slot ? matrixByBone.get(slot.boneId) : undefined;
+	const slotsById = new Map(project.slots.map((slot) => [slot.id, slot] as const));
+	const centers = selectedIds.flatMap((selectedId) => {
+		const bone = project.bones.find((candidate) => candidate.id === selectedId);
 
-					return boneMatrix ? multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform)) : undefined;
-				})()
-				: ((): AffineMatrix | undefined => {
-					const boneMatrix = matrixByBone.get(attachment.boneId);
+		if (bone) {
+			const matrix = matrixByBone.get(bone.id);
 
-					return boneMatrix ? multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform)) : undefined;
-				})()
+			return matrix ? [transformPoint(matrix, { x: 0, y: 0 })] : [];
+		}
+
+		const attachment = project.attachments.find((candidate) => candidate.id === selectedId);
+		const boneId = attachment?.kind === 'image'
+			? slotsById.get(attachment.slotId)?.boneId
+			: attachment?.boneId;
+		const boneMatrix = boneId ? matrixByBone.get(boneId) : undefined;
+		const worldMatrix = attachment && boneMatrix
+			? multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform))
 			: undefined;
 
-	if (!centerMatrix) {
+		return worldMatrix ? [transformPoint(worldMatrix, { x: 0, y: 0 })] : [];
+	});
+
+	if (centers.length === 0) {
 		return;
 	}
 
-	const center = transformPoint(centerMatrix, { x: 0, y: 0 });
+	const total = centers.reduce(
+		(sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+		{ x: 0, y: 0 }
+	);
+	const center = { x: total.x / centers.length, y: total.y / centers.length };
 	const handles = new Graphics();
 
 	if (tool === 'translate') {

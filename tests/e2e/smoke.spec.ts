@@ -130,6 +130,22 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.keyboard.up('Shift');
 	await page.keyboard.up('Control');
 	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
+	const multiSelectionX = page.getByRole('spinbutton', { name: 'X', exact: true });
+	const multiSelectionY = page.getByRole('spinbutton', { name: 'Y', exact: true });
+	const originalMultiSelectionX = await multiSelectionX.inputValue();
+	const imageLogicalX = Number(originalMultiSelectionX);
+	const imageLogicalY = Number(await multiSelectionY.inputValue());
+	await page.mouse.move(
+		bounds.x + bounds.width / 2 + (imageLogicalX - 512) * bounds.width / 1024,
+		bounds.y + bounds.height / 2 + (imageLogicalY - 512) * bounds.height / 1024
+	);
+	await page.mouse.down();
+	await page.mouse.move(
+		bounds.x + bounds.width / 2 + (imageLogicalX - 512) * bounds.width / 1024 + 18,
+		bounds.y + bounds.height / 2 + (imageLogicalY - 512) * bounds.height / 1024
+	);
+	await page.mouse.up();
+	await expect(multiSelectionX).not.toHaveValue(originalMultiSelectionX);
 	await page.locator('.slot-row').click();
 	const setupImage = page.getByRole('combobox', { name: 'Setup image' });
 	await expect(setupImage).toHaveValue(/.+/);
@@ -142,7 +158,14 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	}
 
 	await expect(page.getByRole('combobox', { name: 'Setup image' })).toHaveValue(alternateAttachmentId);
-	await page.locator('.attachment-row').filter({ hasText: 'alt.png' }).click();
+	const alternateAttachment = page.locator('.attachment-row').filter({ hasText: 'alt.png' });
+	await alternateAttachment.click();
+	const alternateLocalX = Number(await page.getByRole('spinbutton', { name: 'X', exact: true }).inputValue());
+	const alternateLocalY = Number(await page.getByRole('spinbutton', { name: 'Y', exact: true }).inputValue());
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	const rootX = Number(await page.getByRole('spinbutton', { name: 'X', exact: true }).inputValue());
+	const rootY = Number(await page.getByRole('spinbutton', { name: 'Y', exact: true }).inputValue());
+	await alternateAttachment.click();
 	const xField = page.getByRole('spinbutton', { name: 'X', exact: true });
 	const originalX = await xField.inputValue();
 	const imageBounds = await viewport.boundingBox();
@@ -151,9 +174,13 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 		throw new Error('The viewport bounds are unavailable.');
 	}
 
-	await page.mouse.move(imageBounds.x + imageBounds.width / 2, imageBounds.y + imageBounds.height / 2);
+	const alternateWorldX = rootX + alternateLocalX;
+	const alternateWorldY = rootY + alternateLocalY;
+	const alternateScreenX = imageBounds.x + imageBounds.width / 2 + (alternateWorldX - 512) * imageBounds.width / 1024;
+	const alternateScreenY = imageBounds.y + imageBounds.height / 2 + (alternateWorldY - 512) * imageBounds.height / 1024;
+	await page.mouse.move(alternateScreenX, alternateScreenY);
 	await page.mouse.down();
-	await page.mouse.move(imageBounds.x + imageBounds.width / 2 + 24, imageBounds.y + imageBounds.height / 2);
+	await page.mouse.move(alternateScreenX + 24, alternateScreenY);
 	await page.mouse.up();
 	await expect(xField).not.toHaveValue(originalX);
 });

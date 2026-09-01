@@ -74,7 +74,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P4-08** Build bone, slot, and attachment hierarchy editing.
 - [x] **P4-09** Implement safe hierarchy drag/reparent and reorder. Depends on P2-07.
 - [x] **P4-10** Build translate, rotate, nonuniform scale, and shear handles.
-- [ ] **P4-11** Implement multi-selection transform deltas.
+- [x] **P4-11** Implement multi-selection transform deltas.
 - [x] **P4-12** Build numeric transform and opacity inspectors.
 - [x] **P4-13** Implement fixed pivot editing.
 - [x] **P4-14** Implement slot attachment assignment and setup image swapping.
