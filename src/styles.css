@@ -849,6 +849,59 @@ h2 {
 	margin-top: 6px;
 }
 
+.track-create-form,
+.key-create-form,
+.key-editor,
+.track-edit-toolbar {
+	display: flex;
+	align-items: end;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.track-create-form label {
+	display: grid;
+	flex: 1;
+	min-width: 260px;
+	gap: 4px;
+}
+
+.track-create-form select {
+	width: 100%;
+}
+
+.track-edit-toolbar {
+	align-items: center;
+	justify-content: space-between;
+	padding-top: 2px;
+}
+
+.key-create-form,
+.key-editor {
+	padding: 8px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--surface-hover);
+}
+
+.key-create-form label,
+.key-editor label {
+	display: grid;
+	gap: 4px;
+}
+
+.key-create-form input[type="number"],
+.key-editor input[type="number"] {
+	width: 86px;
+}
+
+.key-boolean-field {
+	display: flex !important;
+	align-items: center;
+	gap: 5px;
+	padding-bottom: 7px;
+}
+
 .timeline-ruler {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
@@ -884,6 +937,11 @@ h2 {
 .track-row {
 	min-height: 36px;
 	border-top: 1px solid var(--border);
+	cursor: pointer;
+}
+
+.track-row.is-selected {
+	background: rgba(111, 212, 189, 0.08);
 }
 
 .track-row-label {
@@ -915,6 +973,7 @@ h2 {
 }
 
 .track-key {
+	padding: 0;
 	position: absolute;
 	top: 50%;
 	width: 9px;
@@ -922,6 +981,13 @@ h2 {
 	border: 1px solid var(--accent-strong);
 	background: var(--accent);
 	transform: translate(-50%, -50%) rotate(45deg);
+	cursor: pointer;
+}
+
+.track-key.is-selected {
+	width: 11px;
+	height: 11px;
+	box-shadow: 0 0 0 2px rgba(240, 184, 109, 0.8);
 }
 
 .dopesheet-empty {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react';
 import { DEFAULT_LOCAL_TRANSFORM, degreesToRadians, radiansToDegrees, type LocalTransform } from '../domain/coordinates.ts';
-import { createEntityId, type EntityId } from '../domain/ids.ts';
+import { createEntityId, parseEntityId, type EntityId } from '../domain/ids.ts';
 import {
 	canRedo,
 	canUndo,
@@ -17,7 +17,7 @@ import {
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { Project } from '../domain/model.ts';
 import type { Clip } from '../domain/model.ts';
-import type { DuplicateClipIds } from '../domain/animation.ts';
+import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, NumberKeyInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
@@ -32,7 +32,7 @@ import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hiera
 import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
-import { buildTimelineTrackRows, createTimelineViewport, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
+import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
@@ -208,6 +208,12 @@ type ClipPlaybackSettings = Readonly<Partial<{
 	loop: boolean;
 }>>;
 
+type AnimationKeyInput =
+	| Readonly<{ kind: 'number'; input: NumberKeyInput }>
+	| Readonly<{ kind: 'attachment'; input: AttachmentKeyInput }>
+	| Readonly<{ kind: 'draw-order'; input: DrawOrderKeyInput }>
+	| Readonly<{ kind: 'boolean'; input: BooleanKeyInput }>;
+
 type AnimateTimelineProps = Readonly<{
 	project: Project;
 	activeClip: Clip | undefined;
@@ -221,6 +227,12 @@ type AnimateTimelineProps = Readonly<{
 	onTogglePlayback: () => void;
 	onStepPlayback: (direction: PlaybackDirection) => void;
 	onSeekPlayback: (frameIndex: number) => void;
+	onCreateTrack: (definition: TrackDefinition) => EntityId | undefined;
+	onDeleteTrack: (trackId: EntityId) => void;
+	onAddKey: (trackId: EntityId, input: AnimationKeyInput) => EntityId | undefined;
+	onMoveKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => void;
+	onCopyKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => EntityId | undefined;
+	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
 }>;
 
 const AnimateTimeline = function AnimateTimeline({
@@ -235,10 +247,19 @@ const AnimateTimeline = function AnimateTimeline({
 	onUpdatePlayback,
 	onTogglePlayback,
 	onStepPlayback,
-	onSeekPlayback
+	onSeekPlayback,
+	onCreateTrack,
+	onDeleteTrack,
+	onAddKey,
+	onMoveKey,
+	onCopyKey,
+	onDeleteKey
 }: AnimateTimelineProps): ReactElement {
 	const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>(createTimelineViewport);
 	const [trackFilter, setTrackFilter] = useState('');
+	const [selectedTrackId, setSelectedTrackId] = useState<EntityId | undefined>(undefined);
+	const [selectedKey, setSelectedKey] = useState<Readonly<{ trackId: EntityId; keyId: EntityId }> | undefined>(undefined);
+	const [trackDefinitionValue, setTrackDefinitionValue] = useState('');
 	const submitClipName = function submitClipName(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 		const name = new FormData(event.currentTarget).get('name');
@@ -263,6 +284,92 @@ const AnimateTimeline = function AnimateTimeline({
 	const timelineRange = timelineFrameRange(timelineViewport, frameCount);
 	const timelineVisibleCount = visibleFrameCount(timelineViewport, frameCount);
 	const trackRows = activeClip ? buildTimelineTrackRows(project, activeClip, trackFilter) : [];
+	const trackOptions = activeClip ? availableTrackDefinitions(project, activeClip) : [];
+	const selectedTrackOption = trackOptions.find((candidate) => candidate.value === trackDefinitionValue) ?? trackOptions[0];
+	const selectedRow = trackRows.find((row) => row.track.id === selectedTrackId) ?? trackRows[0];
+	const selectedTrack = selectedRow?.track;
+	const selectedKeyMarker = selectedRow && selectedKey?.trackId === selectedRow.track.id
+		? selectedRow.keys.find((key) => key.id === selectedKey?.keyId)
+		: undefined;
+	const submitCreateTrack = function submitCreateTrack(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+
+		if (!selectedTrackOption) {
+			return;
+		}
+
+		const id = onCreateTrack(selectedTrackOption.definition);
+
+		if (id) {
+			setSelectedTrackId(id);
+			setSelectedKey(undefined);
+		}
+	};
+	const submitAddKey = function submitAddKey(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+
+		if (!activeClip || !selectedRow) {
+			return;
+		}
+
+		const data = new FormData(event.currentTarget);
+		const timeSeconds = playback.frameIndex / activeClip.fps;
+		const track = selectedRow.track;
+		const added = track.kind === 'bone-transform'
+			|| track.kind === 'attachment-transform'
+			|| track.kind === 'attachment-opacity'
+			|| track.kind === 'rectangle-size'
+			? ((): EntityId | undefined => {
+				const value = formNumber(data, 'value');
+
+				return value === undefined ? undefined : onAddKey(track.id, {
+					kind: 'number',
+					input: { timeSeconds, value, interpolation: 'linear', curve: null }
+				});
+			})()
+			: track.kind === 'slot-attachment'
+				? onAddKey(track.id, {
+					kind: 'attachment',
+									input: {
+										timeSeconds,
+										value: parseEntityId(data.get('attachmentId')) ?? null
+									}
+				})
+				: track.kind === 'slot-draw-order'
+					? onAddKey(track.id, { kind: 'draw-order', input: { timeSeconds, value: project.setupDrawOrder } })
+					: onAddKey(track.id, { kind: 'boolean', input: { timeSeconds, value: data.get('enabled') === 'on' } });
+
+		if (added) {
+			setSelectedKey({ trackId: track.id, keyId: added });
+			setSelectedTrackId(track.id);
+		}
+	};
+	const submitMoveKey = function submitMoveKey(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+
+		if (!selectedRow || !selectedKeyMarker || !activeClip) {
+			return;
+		}
+
+		const frame = formNumber(new FormData(event.currentTarget), 'frame');
+
+		if (frame !== undefined) {
+			onMoveKey(selectedRow.track.id, selectedKeyMarker.id, Math.round(frame) - 1);
+		}
+	};
+	const deleteSelectedKey = function deleteSelectedKey(): void {
+		if (selectedRow && selectedKeyMarker) {
+			onDeleteKey(selectedRow.track.id, selectedKeyMarker.id);
+			setSelectedKey(undefined);
+		}
+	};
+	const deleteSelectedTrack = function deleteSelectedTrack(): void {
+		if (selectedRow) {
+			onDeleteTrack(selectedRow.track.id);
+			setSelectedTrackId(undefined);
+			setSelectedKey(undefined);
+		}
+	};
 
 	return (
 		<>
@@ -324,6 +431,39 @@ const AnimateTimeline = function AnimateTimeline({
 								</label>
 								<span className="timeline-zoom-readout">{Math.round(timelineViewport.pixelsPerFrame / 32 * 100)}%</span>
 							</div>
+							<form className="track-create-form" onSubmit={submitCreateTrack}>
+								<label>
+									<span className="field-label">New track</span>
+									<select aria-label="New track" value={selectedTrackOption?.value ?? ''} onChange={(event) => setTrackDefinitionValue(event.target.value)} disabled={trackOptions.length === 0}>
+										{trackOptions.length === 0 ? <option value="">No available properties</option> : trackOptions.map((candidate) => <option key={candidate.value} value={candidate.value}>{candidate.label}</option>)}
+									</select>
+								</label>
+								<button className="secondary-button" type="submit" disabled={!selectedTrackOption}>Add track</button>
+							</form>
+							{selectedTrack && (
+								<div className="track-edit-toolbar">
+									<span className="muted-copy">Selected: {selectedRow?.label}</span>
+									<button className="danger-button" type="button" onClick={deleteSelectedTrack}>Delete track</button>
+								</div>
+							)}
+							{selectedTrack && (
+								<form className="key-create-form" onSubmit={submitAddKey}>
+									<span className="muted-copy">Add key at frame {playback.frameIndex + 1}</span>
+									{(selectedTrack.kind === 'bone-transform'
+										|| selectedTrack.kind === 'attachment-transform'
+										|| selectedTrack.kind === 'attachment-opacity'
+										|| selectedTrack.kind === 'rectangle-size') && (
+										<label><span className="field-label">Value</span><input name="value" type="number" step="any" defaultValue={selectedTrack.kind === 'attachment-opacity' || selectedTrack.kind === 'rectangle-size' ? 1 : 0} /></label>
+									)}
+									{selectedTrack.kind === 'slot-attachment' && (
+										<label><span className="field-label">Attachment</span><select name="attachmentId" aria-label="Key attachment" defaultValue=""><option value="">None</option>{project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedTrack.targetId).map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}</select></label>
+									)}
+									{(selectedTrack.kind === 'point-enabled' || selectedTrack.kind === 'rectangle-enabled') && (
+										<label className="key-boolean-field"><input name="enabled" type="checkbox" defaultChecked /><span className="field-label">Enabled</span></label>
+									)}
+									<button className="secondary-button" type="submit">Add key</button>
+								</form>
+							)}
 							<div className="timeline-ruler-meta">
 								<span aria-label="Timeline frame range">Frames {timelineRange.startFrame + 1}–{timelineRange.endFrame + 1} of {frameCount}</span>
 								<span className="muted-copy">{trackRows.length} matching track{trackRows.length === 1 ? '' : 's'}</span>
@@ -340,22 +480,44 @@ const AnimateTimeline = function AnimateTimeline({
 								{trackRows.length === 0 ? (
 									<div className="dopesheet-empty">No typed tracks match this filter.</div>
 								) : trackRows.map((row) => (
-									<div className="track-row" data-track-id={row.track.id} key={row.track.id}>
+									<div className={selectedRow?.track.id === row.track.id ? 'track-row is-selected' : 'track-row'} data-track-id={row.track.id} key={row.track.id} onClick={() => { setSelectedTrackId(row.track.id); setSelectedKey(undefined); }}>
 										<div className="track-row-label"><span>{row.label}</span><small>{row.track.kind}</small></div>
 										<div className="track-key-lane">
 											{row.keys.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame).map((key) => (
-												<span
-													aria-label={`Key frame ${key.frameIndex + 1}`}
-													className="track-key"
-													key={key.id}
-													style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
-													title={`Frame ${key.frameIndex + 1}`}
-												/>
+													<button
+														aria-label={`Key frame ${key.frameIndex + 1}`}
+														className={selectedKey?.keyId === key.id && selectedKey.trackId === row.track.id ? 'track-key is-selected' : 'track-key'}
+														key={key.id}
+														onClick={(event) => { event.stopPropagation(); setSelectedTrackId(row.track.id); setSelectedKey({ trackId: row.track.id, keyId: key.id }); }}
+														type="button"
+														style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
+														title={`Frame ${key.frameIndex + 1}`}
+													/>
 											))}
 										</div>
 									</div>
 								))}
 							</div>
+							{selectedKeyMarker && selectedRow && (
+								<form className="key-editor" key={`${selectedKeyMarker.id}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
+									<span className="muted-copy">Key frame {selectedKeyMarker.frameIndex + 1}</span>
+									<label><span className="field-label">Frame</span><input name="frame" type="number" min="1" max={frameCount} step="1" defaultValue={selectedKeyMarker.frameIndex + 1} /></label>
+									<button className="secondary-button" type="submit">Move key</button>
+									<button className="quiet-button" type="button" onClick={(event) => {
+										const form = event.currentTarget.form;
+										const frame = form ? form.elements.namedItem('frame') : undefined;
+
+										if (frame instanceof HTMLInputElement) {
+											const copiedId = onCopyKey(selectedRow.track.id, selectedKeyMarker.id, Math.round(Number(frame.value)) - 1);
+
+											if (copiedId) {
+												setSelectedKey({ trackId: selectedRow.track.id, keyId: copiedId });
+											}
+										}
+									}}>Copy key</button>
+									<button className="danger-button" type="button" onClick={deleteSelectedKey}>Delete key</button>
+								</form>
+							)}
 							<label className="playhead-field">
 								<span className="field-label">Playhead</span>
 								<input
@@ -533,6 +695,64 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const updateActiveClipPlayback = function updateActiveClipPlayback(settings: ClipPlaybackSettings): void {
 		if (activeClip) {
 			applyCommand({ kind: 'update-clip-playback', clipId: activeClip.id, settings });
+		}
+	};
+
+	const createAnimationTrack = function createAnimationTrack(definition: TrackDefinition): EntityId | undefined {
+		if (!activeClip) {
+			return undefined;
+		}
+
+		const id = createEntityId();
+
+		return applyCommand({ kind: 'create-track', id, clipId: activeClip.id, definition }) ? id : undefined;
+	};
+
+	const deleteAnimationTrack = function deleteAnimationTrack(trackId: EntityId): void {
+		if (activeClip) {
+			applyCommand({ kind: 'delete-track', clipId: activeClip.id, trackId });
+		}
+	};
+
+	const addAnimationKey = function addAnimationKey(trackId: EntityId, input: AnimationKeyInput): EntityId | undefined {
+		if (!activeClip) {
+			return undefined;
+		}
+
+		const id = createEntityId();
+
+		if (input.kind === 'number') {
+			return applyCommand({ kind: 'add-number-key', id, clipId: activeClip.id, trackId, input: input.input }) ? id : undefined;
+		}
+		if (input.kind === 'attachment') {
+			return applyCommand({ kind: 'add-attachment-key', id, clipId: activeClip.id, trackId, input: input.input }) ? id : undefined;
+		}
+		if (input.kind === 'draw-order') {
+			return applyCommand({ kind: 'add-draw-order-key', id, clipId: activeClip.id, trackId, input: input.input }) ? id : undefined;
+		}
+
+		return applyCommand({ kind: 'add-boolean-key', id, clipId: activeClip.id, trackId, input: input.input }) ? id : undefined;
+	};
+
+	const moveAnimationKey = function moveAnimationKey(trackId: EntityId, keyId: EntityId, frameIndex: number): void {
+		if (activeClip) {
+			applyCommand({ kind: 'move-key', clipId: activeClip.id, trackId, keyId, timeSeconds: frameIndex / activeClip.fps });
+		}
+	};
+
+	const copyAnimationKey = function copyAnimationKey(trackId: EntityId, keyId: EntityId, frameIndex: number): EntityId | undefined {
+		if (!activeClip) {
+			return undefined;
+		}
+
+		const id = createEntityId();
+
+		return applyCommand({ kind: 'copy-key', id, clipId: activeClip.id, trackId, keyId, timeSeconds: frameIndex / activeClip.fps }) ? id : undefined;
+	};
+
+	const deleteAnimationKey = function deleteAnimationKey(trackId: EntityId, keyId: EntityId): void {
+		if (activeClip) {
+			applyCommand({ kind: 'delete-key', clipId: activeClip.id, trackId, keyId });
 		}
 	};
 
@@ -1489,6 +1709,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onTogglePlayback={toggleActivePlayback}
 						onStepPlayback={stepActivePlayback}
 						onSeekPlayback={seekActivePlayback}
+						onCreateTrack={createAnimationTrack}
+						onDeleteTrack={deleteAnimationTrack}
+						onAddKey={addAnimationKey}
+						onMoveKey={moveAnimationKey}
+						onCopyKey={copyAnimationKey}
+						onDeleteKey={deleteAnimationKey}
 					/>
 				) : (
 					<>

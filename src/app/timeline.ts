@@ -1,5 +1,6 @@
-import type { Clip, Project, Track } from '../domain/model.ts';
+import type { BoneTransformProperty, Clip, Project, Track } from '../domain/model.ts';
 import type { EntityId } from '../domain/ids.ts';
+import type { TrackDefinition } from '../domain/animation.ts';
 
 export type TimelineViewport = Readonly<{
 	startFrame: number;
@@ -10,6 +11,12 @@ export type TimelineTrackRow = Readonly<{
 	track: Track;
 	label: string;
 	keys: readonly Readonly<{ id: EntityId; frameIndex: number }>[];
+}>;
+
+export type TrackDefinitionOption = Readonly<{
+	value: string;
+	label: string;
+	definition: TrackDefinition;
 }>;
 
 export const DEFAULT_TIMELINE_WIDTH = 640;
@@ -140,4 +147,100 @@ export const buildTimelineTrackRows = function buildTimelineTrackRows(
 			label: trackLabel(project, track),
 			keys: track.keys.map((key) => ({ id: key.id, frameIndex: frameIndexForTime(clip, key.timeSeconds) }))
 		}));
+};
+
+const transformProperties: readonly BoneTransformProperty[] = [
+	'x',
+	'y',
+	'rotation',
+	'scaleX',
+	'scaleY',
+	'shearX',
+	'shearY'
+];
+
+const definitionMatchesTrack = function definitionMatchesTrack(
+	track: Track,
+	definition: TrackDefinition
+): boolean {
+	if (track.kind !== definition.kind) {
+		return false;
+	}
+
+	const targetMatches = !('targetId' in definition)
+		|| ('targetId' in track && track.targetId === definition.targetId);
+	const propertyMatches = !('property' in definition)
+		|| ('property' in track && track.property === definition.property);
+
+	return targetMatches && propertyMatches;
+};
+
+const option = function option(
+	value: string,
+	label: string,
+	definition: TrackDefinition
+): TrackDefinitionOption {
+	return { value, label, definition };
+};
+
+export const availableTrackDefinitions = function availableTrackDefinitions(
+	project: Project,
+	clip: Clip
+): readonly TrackDefinitionOption[] {
+	const boneOptions = project.bones.flatMap((bone) => transformProperties.map((property) => option(
+		`bone:${bone.id}:${property}`,
+		`${bone.name} · Bone · ${property}`,
+		{ kind: 'bone-transform', targetId: bone.id, property }
+	)));
+	const imageOptions = project.attachments
+		.filter((attachment) => attachment.kind === 'image')
+		.flatMap((attachment) => [
+			...transformProperties.map((property) => option(
+				`attachment:${attachment.id}:${property}`,
+				`${attachment.name} · Image · ${property}`,
+				{ kind: 'attachment-transform', targetId: attachment.id, property }
+			)),
+			option(
+				`opacity:${attachment.id}`,
+				`${attachment.name} · Image · opacity`,
+				{ kind: 'attachment-opacity', targetId: attachment.id }
+			)
+		]);
+	const slotOptions = project.slots.flatMap((slot) => [option(
+		`slot:${slot.id}`,
+		`${slot.name} · Attachment`,
+		{ kind: 'slot-attachment', targetId: slot.id }
+	)]);
+	const pointOptions = project.attachments
+		.filter((attachment) => attachment.kind === 'point')
+		.map((attachment) => option(
+			`point:${attachment.id}`,
+			`${attachment.name} · Point · enabled`,
+			{ kind: 'point-enabled', targetId: attachment.id }
+		));
+	const rectangleOptions = project.attachments
+		.filter((attachment) => attachment.kind === 'rectangle')
+		.flatMap((attachment) => [
+			option(
+				`rectangle-width:${attachment.id}`,
+				`${attachment.name} · Rectangle · width`,
+				{ kind: 'rectangle-size', targetId: attachment.id, property: 'width' }
+			),
+			option(
+				`rectangle-height:${attachment.id}`,
+				`${attachment.name} · Rectangle · height`,
+				{ kind: 'rectangle-size', targetId: attachment.id, property: 'height' }
+			),
+			option(
+				`rectangle-enabled:${attachment.id}`,
+				`${attachment.name} · Rectangle · enabled`,
+				{ kind: 'rectangle-enabled', targetId: attachment.id }
+			)
+		]);
+	const drawOrderOptions = project.slots.length > 0
+		? [option('draw-order', 'Setup · Draw order', { kind: 'slot-draw-order' })]
+		: [];
+	const options = [...boneOptions, ...imageOptions, ...slotOptions, ...drawOrderOptions, ...pointOptions, ...rectangleOptions];
+
+	return options.filter((candidate) => !clip.tracks.some((track) => definitionMatchesTrack(track, candidate.definition)));
 };

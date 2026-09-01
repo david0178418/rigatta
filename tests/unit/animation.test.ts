@@ -4,11 +4,13 @@ import {
 	addBooleanKey,
 	addDrawOrderKey,
 	addNumberKey,
+	copyKey,
 	createClip,
 	createTrack,
 	deleteKey,
 	deleteTrack,
 	duplicateClip,
+	moveKey,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
@@ -181,5 +183,26 @@ describe('typed animation tracks', () => {
 			expect(duplicated.value.clips[1]).toMatchObject({ name: 'walk copy', tracks: [{ id: keyIds[10], keys: [{ id: keyIds[11], value: 12 }] }] });
 			expect(duplicated.value.clips[0]).toEqual(withKey.clips[0]);
 		}
+	});
+
+	test('moves and copies keys without mutating the source track', () => {
+		const project = withClip();
+		const withTrack = unwrap(createTrack(project, clipId, {
+			kind: 'bone-transform',
+			targetId: fixtureIds.root,
+			property: 'x'
+		}, () => duplicateTrackId));
+		const withKey = unwrap(addNumberKey(withTrack, clipId, duplicateTrackId, {
+			timeSeconds: 0,
+			value: 12
+		}, () => duplicateKeyId));
+		const moved = unwrap(moveKey(withKey, clipId, duplicateTrackId, duplicateKeyId, 0.5));
+		const copied = unwrap(copyKey(moved, clipId, duplicateTrackId, duplicateKeyId, keyIds[2], 1));
+		const track = copied.clips[0]?.tracks[0];
+
+		expect(moved.clips[0]?.tracks[0]?.keys.map((key) => key.timeSeconds)).toEqual([0.5]);
+		expect(track?.keys.map((key) => [key.id, key.timeSeconds])).toEqual([[duplicateKeyId, 0.5], [keyIds[2], 1]]);
+		expect(deleteKey(copied, clipId, duplicateTrackId, keyIds[2]).ok).toBe(true);
+		expect(withKey.clips[0]?.tracks[0]?.keys[0]?.timeSeconds).toBe(0);
 	});
 });

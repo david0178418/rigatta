@@ -389,6 +389,7 @@ export const deleteClip = function deleteClip(
 };
 
 type KeyWithId = Readonly<{ id: EntityId }>;
+type TimedKey = Readonly<{ id: EntityId; timeSeconds: number }>;
 
 const cloneKeys = function cloneKeys<TKey extends KeyWithId>(
 	keys: readonly TKey[],
@@ -429,6 +430,111 @@ const cloneTrack = function cloneTrack(
 	}
 
 	return { ...track, id: trackId, keys: cloneKeys(track.keys, keyIds) };
+};
+
+const movedKeys = function movedKeys<TKey extends TimedKey>(
+	keys: readonly TKey[],
+	keyId: EntityId,
+	timeSeconds: number
+): readonly TKey[] {
+	return keys
+		.map((key) => key.id === keyId ? { ...key, timeSeconds } : key)
+		.sort((left, right) => left.timeSeconds - right.timeSeconds);
+};
+
+const movedTrack = function movedTrack(
+	track: Track,
+	keyId: EntityId,
+	timeSeconds: number
+): Track {
+	if (track.kind === 'bone-transform') {
+		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	}
+	if (track.kind === 'attachment-transform') {
+		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	}
+	if (track.kind === 'attachment-opacity') {
+		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	}
+	if (track.kind === 'slot-attachment') {
+		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	}
+	if (track.kind === 'slot-draw-order') {
+		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	}
+	if (track.kind === 'point-enabled') {
+		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	}
+	if (track.kind === 'rectangle-size') {
+		return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+	}
+
+	return { ...track, keys: movedKeys(track.keys, keyId, timeSeconds) };
+};
+
+const copiedKeys = function copiedKeys<TKey extends TimedKey>(
+	keys: readonly TKey[],
+	keyId: EntityId,
+	newId: EntityId,
+	timeSeconds: number
+): readonly TKey[] | undefined {
+	const source = keys.find((key) => key.id === keyId);
+
+	if (!source) {
+		return undefined;
+	}
+
+	const key: TKey = { ...source, id: newId, timeSeconds };
+
+	return insertKeyByTime(keys, key);
+};
+
+const copiedTrack = function copiedTrack(
+	track: Track,
+	keyId: EntityId,
+	newId: EntityId,
+	timeSeconds: number
+): Track | undefined {
+	if (track.kind === 'bone-transform') {
+		const keys = copiedKeys(track.keys, keyId, newId, timeSeconds);
+
+		return keys ? { ...track, keys } : undefined;
+	}
+	if (track.kind === 'attachment-transform') {
+		const keys = copiedKeys(track.keys, keyId, newId, timeSeconds);
+
+		return keys ? { ...track, keys } : undefined;
+	}
+	if (track.kind === 'attachment-opacity') {
+		const keys = copiedKeys(track.keys, keyId, newId, timeSeconds);
+
+		return keys ? { ...track, keys } : undefined;
+	}
+	if (track.kind === 'slot-attachment') {
+		const keys = copiedKeys(track.keys, keyId, newId, timeSeconds);
+
+		return keys ? { ...track, keys } : undefined;
+	}
+	if (track.kind === 'slot-draw-order') {
+		const source = track.keys.find((key) => key.id === keyId);
+		const keys = source ? insertKeyByTime(track.keys, { ...source, id: newId, timeSeconds, value: [...source.value] }) : undefined;
+
+		return keys ? { ...track, keys } : undefined;
+	}
+	if (track.kind === 'point-enabled') {
+		const keys = copiedKeys(track.keys, keyId, newId, timeSeconds);
+
+		return keys ? { ...track, keys } : undefined;
+	}
+	if (track.kind === 'rectangle-size') {
+		const keys = copiedKeys(track.keys, keyId, newId, timeSeconds);
+
+		return keys ? { ...track, keys } : undefined;
+	}
+
+	const keys = copiedKeys(track.keys, keyId, newId, timeSeconds);
+
+	return keys ? { ...track, keys } : undefined;
 };
 
 export const duplicateClip = function duplicateClip(
@@ -478,6 +584,60 @@ export const duplicateClip = function duplicateClip(
 	};
 
 	return success({ ...project, clips: [...project.clips, duplicate] });
+};
+
+export const moveKey = function moveKey(
+	project: Project,
+	clipId: EntityId,
+	trackId: EntityId,
+	keyId: EntityId,
+	timeSeconds: number
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+
+	if (!clip || !track || !track.keys.some((key) => key.id === keyId)) {
+		return failure('not-found', 'Animation key does not exist.');
+	}
+	if (!isValidKeyTime(clip, timeSeconds)) {
+		return failure('invalid-value', 'Key time must be inside the clip duration.');
+	}
+	if (track.keys.some((key) => key.id !== keyId && key.timeSeconds === timeSeconds)) {
+		return failure('invalid-value', 'A track may contain only one key at a given time.');
+	}
+
+	return updateTrack(project, clipId, trackId, (currentTrack) => movedTrack(currentTrack, keyId, timeSeconds));
+};
+
+export const copyKey = function copyKey(
+	project: Project,
+	clipId: EntityId,
+	trackId: EntityId,
+	keyId: EntityId,
+	newId: EntityId,
+	timeSeconds: number
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+
+	if (!clip || !track || !track.keys.some((key) => key.id === keyId)) {
+		return failure('not-found', 'Animation key does not exist.');
+	}
+	if (!isEntityId(newId) || allEntityIds(project).includes(newId)) {
+		return failure('duplicate-id', 'Copied animation keys require a unique unused UUID v4 ID.');
+	}
+	if (!isValidKeyTime(clip, timeSeconds)) {
+		return failure('invalid-value', 'Key time must be inside the clip duration.');
+	}
+	if (track.keys.some((key) => key.timeSeconds === timeSeconds)) {
+		return failure('invalid-value', 'A track may contain only one key at a given time.');
+	}
+
+	const copied = copiedTrack(track, keyId, newId, timeSeconds);
+
+	return copied
+		? updateTrack(project, clipId, trackId, () => copied)
+		: failure('not-found', 'Animation key does not exist.');
 };
 
 export const createTrack = function createTrack(

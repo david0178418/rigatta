@@ -27,3 +27,8 @@ the track filter is case-insensitive and matches the typed track label.
 Typed tracks are represented as dopesheet rows. Each row includes the target
 and property label, the track kind, and key markers snapped to the nearest
 integer frame. Markers outside the current navigated frame window are hidden.
+
+Available typed properties can be added as tracks. The selected track accepts
+keys at the current playhead frame, and selected key markers can be moved,
+copied to another frame, or deleted. Numeric, boolean, slot-attachment, and
+draw-order key inputs use the corresponding typed domain command.

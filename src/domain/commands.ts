@@ -10,7 +10,9 @@ import {
 	deleteClip,
 	deleteKey,
 	deleteTrack,
+	copyKey,
 	duplicateClip,
+	moveKey,
 	renameClip,
 	updateClipPlayback
 } from './animation.ts';
@@ -91,6 +93,8 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'add-attachment-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: AttachmentKeyInput }>
 	| Readonly<{ kind: 'add-draw-order-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: DrawOrderKeyInput }>
 	| Readonly<{ kind: 'add-boolean-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: BooleanKeyInput }>
+	| Readonly<{ kind: 'move-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
+	| Readonly<{ kind: 'copy-key'; id: EntityId; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'delete-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId }>;
 
 const invalidCommand = function invalidCommand(message: string): OperationResult<never> {
@@ -199,6 +203,12 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'add-boolean-key') {
 		return addBooleanKey(project, command.clipId, command.trackId, command.input, () => command.id);
+	}
+	if (command.kind === 'move-key') {
+		return moveKey(project, command.clipId, command.trackId, command.keyId, command.timeSeconds);
+	}
+	if (command.kind === 'copy-key') {
+		return copyKey(project, command.clipId, command.trackId, command.keyId, command.id, command.timeSeconds);
 	}
 	if (command.kind === 'delete-key') {
 		return deleteKey(project, command.clipId, command.trackId, command.keyId);

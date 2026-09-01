@@ -91,7 +91,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P5-04** Build playhead scrubbing and timeline frame snapping.
 - [x] **P5-05** Build timeline pan, zoom, and row filtering.
 - [x] **P5-06** Build dopesheet rows from typed tracks.
-- [ ] **P5-07** Implement key creation, deletion, copying, and movement.
+- [x] **P5-07** Implement key creation, deletion, copying, and movement.
 - [ ] **P5-08** Implement multi-key selection and retiming.
 - [ ] **P5-09** Implement Auto Key, enabled by default.
 - [ ] **P5-10** Implement edited-but-unkeyed state and explicit key-edited action.
