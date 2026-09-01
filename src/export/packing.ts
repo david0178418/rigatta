@@ -62,6 +62,29 @@ const validNonnegativeInteger = function validNonnegativeInteger(value: number):
 	return Number.isInteger(value) && value >= 0;
 };
 
+const packInputError = function packInputError(
+	items: readonly PackRectangle[],
+	size: PackSize,
+	padding: number
+): string | undefined {
+	if (!validPositiveInteger(size.width) || !validPositiveInteger(size.height)) {
+		return 'Atlas dimensions must be positive integers.';
+	}
+	if (!validNonnegativeInteger(padding)) {
+		return 'Atlas padding must be a nonnegative integer.';
+	}
+	if (items.some((item) => item.key.trim().length === 0)) {
+		return 'Packed rectangle keys must be non-empty.';
+	}
+	if (new Set(items.map((item) => item.key)).size !== items.length) {
+		return 'Packed rectangle keys must be unique.';
+	}
+
+	return items.some((item) => !validPositiveInteger(item.width) || !validPositiveInteger(item.height))
+		? 'Packed rectangle dimensions must be positive integers.'
+		: undefined;
+};
+
 const compareStrings = function compareStrings(left: string, right: string): number {
 	return left === right ? 0 : left < right ? -1 : 1;
 };
@@ -188,25 +211,56 @@ const placeItem = function placeItem(
 	});
 };
 
+const rectangleForPlacement = function rectangleForPlacement(
+	placement: PackedRectangle
+): PackRectangle {
+	return {
+		key: placement.key,
+		width: placement.width,
+		height: placement.height
+	};
+};
+
+const addToFirstPage = function addToFirstPage(
+	pages: readonly PackedAtlas[],
+	item: PackRectangle,
+	size: PackSize,
+	padding: number
+): PackingResult<readonly PackedAtlas[]> {
+	const attempted = pages.reduce<Readonly<{ placed: boolean; pages: readonly PackedAtlas[] }>>((state, page, pageIndex) => {
+		if (state.placed) {
+			return state;
+		}
+
+		const repacked = packMaxRects(
+			[...page.placements.map(rectangleForPlacement), item],
+			size,
+			padding
+		);
+
+		return repacked.ok
+			? { placed: true, pages: pages.map((current, index) => index === pageIndex ? repacked.value : current) }
+			: state;
+	}, { placed: false, pages });
+
+	if (attempted.placed) {
+		return success(attempted.pages);
+	}
+
+	const newPage = packMaxRects([item], size, padding);
+
+	return newPage.ok ? success([...pages, newPage.value]) : newPage;
+};
+
 export const packMaxRects = function packMaxRects(
 	items: readonly PackRectangle[],
 	size: PackSize,
 	padding: number = 0
 ): PackingResult<PackedAtlas> {
-	if (!validPositiveInteger(size.width) || !validPositiveInteger(size.height)) {
-		return failure('Atlas dimensions must be positive integers.');
-	}
-	if (!validNonnegativeInteger(padding)) {
-		return failure('Atlas padding must be a nonnegative integer.');
-	}
-	if (items.some((item) => item.key.trim().length === 0)) {
-		return failure('Packed rectangle keys must be non-empty.');
-	}
-	if (new Set(items.map((item) => item.key)).size !== items.length) {
-		return failure('Packed rectangle keys must be unique.');
-	}
-	if (items.some((item) => !validPositiveInteger(item.width) || !validPositiveInteger(item.height))) {
-		return failure('Packed rectangle dimensions must be positive integers.');
+	const inputError = packInputError(items, size, padding);
+
+	if (inputError) {
+		return failure(inputError);
 	}
 
 	const sortedItems = [...items].sort((left, right) => compareStrings(left.key, right.key));
@@ -222,4 +276,24 @@ export const packMaxRects = function packMaxRects(
 	return packed.ok
 		? success({ size, padding, placements: packed.value.placements })
 		: packed;
+};
+
+export const packMaxRectsPages = function packMaxRectsPages(
+	items: readonly PackRectangle[],
+	size: PackSize,
+	padding: number = 0
+): PackingResult<readonly PackedAtlas[]> {
+	const inputError = packInputError(items, size, padding);
+
+	if (inputError) {
+		return failure(inputError);
+	}
+
+	const sortedItems = [...items].sort((left, right) => compareStrings(left.key, right.key));
+	const packed = sortedItems.reduce<PackingResult<readonly PackedAtlas[]>>(
+		(pages, item) => pages.ok ? addToFirstPage(pages.value, item, size, padding) : pages,
+		success([])
+	);
+
+	return packed;
 };
