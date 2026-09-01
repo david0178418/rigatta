@@ -17,6 +17,7 @@ import {
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { BoneTransformProperty, Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
+import { validateProject, type ValidationDiagnostic } from '../domain/validation.ts';
 import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, EventKeyInput, EventKeyUpdate, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
@@ -1181,6 +1182,37 @@ const ShortcutReference = function ShortcutReference({ onClose }: Readonly<{ onC
 	);
 };
 
+const ValidationDiagnostics = function ValidationDiagnostics({ diagnostics }: Readonly<{ diagnostics: readonly ValidationDiagnostic[] }>): ReactElement | null {
+	if (diagnostics.length === 0) {
+		return null;
+	}
+
+	const visibleDiagnostics = diagnostics.slice(0, 8);
+
+	return (
+		<section className="diagnostics-panel" aria-label="Project diagnostics" role="alert">
+			<div className="diagnostics-heading">
+				<div>
+					<p className="eyebrow">Validation</p>
+					<h2>Project diagnostics</h2>
+				</div>
+				<span className="diagnostics-count">{diagnostics.length} issue{diagnostics.length === 1 ? '' : 's'}</span>
+			</div>
+			<ul className="diagnostics-list">
+				{visibleDiagnostics.map((item) => (
+					<li key={`${item.code}:${item.path}:${item.message}`}>
+						<code>{item.code}</code>
+						<span>{item.path}: {item.message}</span>
+					</li>
+				))}
+			</ul>
+			{diagnostics.length > visibleDiagnostics.length && (
+				<p className="muted-copy diagnostics-overflow">Showing the first {visibleDiagnostics.length} issues.</p>
+			)}
+		</section>
+	);
+};
+
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
@@ -1209,6 +1241,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		onError: (error) => setPersistenceError(error.message)
 	}), [startup.repository]);
 	const project = currentProject(history);
+	const projectDiagnostics = validateProject(project);
 	const activeClip = project.clips.find((clip) => clip.id === activeClipId) ?? project.clips[0];
 	const activePlayback = activeClip && playback?.clipId === activeClip.id
 		? playback.state
@@ -2623,6 +2656,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						<div className="timeline-empty">Create an animation clip when the rig is ready.</div>
 					</>
 				)}
+				<ValidationDiagnostics diagnostics={projectDiagnostics} />
 				{statusMessage && <div className="status-strip" role="status">{statusMessage}</div>}
 			</footer>
 		</div>
