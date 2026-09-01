@@ -15,3 +15,13 @@ Rendering is manual (`autoStart: false`) so a pose update is an explicit
 render boundary. PNG extraction reads the fixed renderer canvas after a render,
 and renderer destruction releases Pixi resources and decoded bitmaps. The
 browser harness verifies the 1024 by 1024 default canvas and its PNG data URL.
+
+## Loading workflow
+
+The adapter resolves each image attachment's asset ID against the supplied
+local blob map, validates the blob signature and catalog dimensions, decodes it
+with `createImageBitmap`, and creates a Pixi texture. A missing blob, failed
+decode, invalid project, or destroyed renderer returns a typed failure. The
+adapter releases prepared textures and bitmaps whenever content is replaced or
+the viewport is unmounted, so a stale directory handle is never required for
+rendering.

@@ -12,3 +12,7 @@ The editor provides these global shortcuts:
 Shortcuts are ignored while focus is in an input, textarea, select, or editable
 element. The `?` button in the top toolbar opens the same reference without a
 keyboard.
+
+The reference is available from Setup and Animate mode. Undo and redo operate
+on the same bounded history as the toolbar buttons. Playback shortcuts affect
+only the active clip; when no clip exists they do nothing.

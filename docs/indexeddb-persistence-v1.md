@@ -34,3 +34,13 @@ debounce window and exposes an explicit `flush` operation for page lifecycle
 handling. Storage persistence requests and quota estimates are separate
 capability calls so unsupported APIs and quota failures can be shown to the
 user instead of being hidden.
+
+## Recovery workflow
+
+After startup opens the database, recent stable and recovery records are
+merged by project ID and ordered by update time. A newer recovery record is
+opened automatically for the most recent project. The editor continues to use
+the recovery record while the user verifies the restored work; the next stable
+save replaces the stable metadata and asset records and clears that recovery
+record. A malformed project or asset record stops startup with a fatal message
+rather than replacing the open state with unvalidated data.
