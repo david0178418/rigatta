@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { localTransformToMatrix, multiplyAffine, transformPoint } from '../../src/domain/coordinates.ts';
+import { evaluateBoneWorldMatrices } from '../../src/domain/transforms.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommand, transformGestureCommands } from '../../src/app/transform-gesture.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
 
@@ -66,5 +68,36 @@ describe('setup transform gestures', () => {
 			{ kind: 'update-attachment-transform', attachmentId: fixtureIds.image },
 			{ kind: 'update-attachment-transform', attachmentId: fixtureIds.point }
 		]);
+	});
+
+	test('resizes rectangle dimensions from rectangle-specific scale handles', () => {
+		const project = createRigProject();
+		const rectangle = project.attachments.find((attachment) => attachment.id === fixtureIds.rectangle);
+
+		if (!rectangle || rectangle.kind !== 'rectangle') {
+			throw new Error('The fixture rectangle is unavailable.');
+		}
+
+		const boneMatrix = evaluateBoneWorldMatrices(project).matrices.get(rectangle.boneId);
+
+		if (!boneMatrix) {
+			throw new Error('The fixture rectangle bone matrix is unavailable.');
+		}
+
+		const rectangleWorldMatrix = multiplyAffine(boneMatrix, localTransformToMatrix(rectangle.transform));
+		const startPoint = transformPoint(rectangleWorldMatrix, { x: rectangle.width / 2, y: 0 });
+		const gesture = createTransformGesture(project, { kind: 'attachment', id: fixtureIds.rectangle }, startPoint, 'scale');
+
+		if (!gesture) {
+			throw new Error('The rectangle resize gesture was not created.');
+		}
+
+		expect(isTransformHandleHit(project, { kind: 'attachment', id: fixtureIds.rectangle }, startPoint, 'scale')).toBe(true);
+		expect(transformGestureCommand(gesture, transformPoint(rectangleWorldMatrix, { x: rectangle.width / 2 + 5, y: 0 }))).toMatchObject({
+			kind: 'update-rectangle-size',
+			attachmentId: fixtureIds.rectangle,
+			width: 30,
+			height: 30
+		});
 	});
 });

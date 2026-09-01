@@ -15,3 +15,8 @@ Point transforms are available as numeric attachment tracks for every local
 transform property, and point enabled state is a discrete boolean track. New
 keys use the current setup value as their boolean default and participate in
 the same immutable clip history as other animation keys.
+
+Rectangle guides show their transformed bounds. With the Scale tool active,
+the selected rectangle exposes handles on its local right and bottom edges;
+dragging those handles emits an immutable rectangle-size command while keeping
+the attachment transform unchanged.

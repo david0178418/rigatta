@@ -350,6 +350,20 @@ const addTransformHandles = function addTransformHandles(
 	);
 	const center = { x: total.x / centers.length, y: total.y / centers.length };
 	const handles = new Graphics();
+	const selectedAttachment = selectedIds.length === 1
+		? project.attachments.find((attachment) => attachment.id === selectedIds[0])
+		: undefined;
+	const selectedRectangle = selectedAttachment?.kind === 'rectangle' ? selectedAttachment : undefined;
+	const rectangleBoneMatrix = selectedRectangle ? matrixByBone.get(selectedRectangle.boneId) : undefined;
+	const rectangleWorldMatrix = selectedRectangle && rectangleBoneMatrix
+		? multiplyAffine(rectangleBoneMatrix, localTransformToMatrix(selectedRectangle.transform))
+		: undefined;
+	const rectangleHandlePoints = selectedRectangle && rectangleWorldMatrix
+		? {
+			right: transformPoint(rectangleWorldMatrix, { x: selectedRectangle.width / 2, y: 0 }),
+			bottom: transformPoint(rectangleWorldMatrix, { x: 0, y: selectedRectangle.height / 2 })
+		}
+		: undefined;
 
 	if (tool === 'translate') {
 		handles.moveTo(center.x - 18, center.y).lineTo(center.x + 18, center.y)
@@ -357,6 +371,11 @@ const addTransformHandles = function addTransformHandles(
 			.circle(center.x, center.y, 5);
 	} else if (tool === 'rotate') {
 		handles.circle(center.x, center.y, 30).circle(center.x, center.y, 5);
+	} else if (tool === 'scale' && rectangleHandlePoints) {
+		handles.moveTo(center.x, center.y).lineTo(rectangleHandlePoints.right.x, rectangleHandlePoints.right.y)
+			.moveTo(center.x, center.y).lineTo(rectangleHandlePoints.bottom.x, rectangleHandlePoints.bottom.y)
+			.circle(rectangleHandlePoints.right.x, rectangleHandlePoints.right.y, 6)
+			.circle(rectangleHandlePoints.bottom.x, rectangleHandlePoints.bottom.y, 6);
 	} else if (tool === 'scale') {
 		handles.moveTo(center.x, center.y).lineTo(center.x + 38, center.y)
 			.moveTo(center.x, center.y).lineTo(center.x, center.y + 38)

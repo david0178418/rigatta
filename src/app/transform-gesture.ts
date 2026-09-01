@@ -18,12 +18,20 @@ export type TransformTool = 'translate' | 'rotate' | 'scale' | 'shear';
 export type TransformPhase = 'update' | 'end' | 'cancel';
 
 type TransformEntity = Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
+type RectangleResizeAxis = 'width' | 'height';
+
+type RectangleSize = Readonly<{
+	width: number;
+	height: number;
+}>;
 
 type TransformTarget = Readonly<{
 	entity: TransformEntity;
 	initialTransform: LocalTransform;
 	parentMatrix: AffineMatrix;
+	worldMatrix: AffineMatrix;
 	center: Point;
+	rectangleSize: RectangleSize | undefined;
 }>;
 
 export type TransformGesture = Readonly<{
@@ -31,6 +39,7 @@ export type TransformGesture = Readonly<{
 	tool: TransformTool;
 	startPoint: Point;
 	center: Point;
+	rectangleResizeAxis: RectangleResizeAxis | undefined;
 }>;
 
 const attachmentBoneId = function attachmentBoneId(
@@ -90,15 +99,41 @@ const transformTargetForEntity = function transformTargetForEntity(
 	const initialTransform = transformForEntity(project, entity);
 	const parentMatrix = parentMatrixForEntity(project, entity, matrixByBone);
 	const worldMatrix = worldMatrixForEntity(project, entity, matrixByBone);
+	const attachment = entity.kind === 'attachment'
+		? project.attachments.find((candidate) => candidate.id === entity.id)
+		: undefined;
+	const rectangleSize = attachment?.kind === 'rectangle'
+		? { width: attachment.width, height: attachment.height }
+		: undefined;
 
 	return initialTransform && parentMatrix && worldMatrix
 		? {
 			entity,
 			initialTransform,
 			parentMatrix,
-			center: transformPoint(worldMatrix, { x: 0, y: 0 })
+			worldMatrix,
+			center: transformPoint(worldMatrix, { x: 0, y: 0 }),
+			rectangleSize
 		}
 		: undefined;
+};
+
+const rectangleResizeAxisFor = function rectangleResizeAxisFor(
+	target: TransformTarget,
+	point: Point
+): RectangleResizeAxis | undefined {
+	const size = target.rectangleSize;
+
+	if (!size) {
+		return undefined;
+	}
+
+	const handles: readonly Readonly<{ axis: RectangleResizeAxis; point: Point }>[] = [
+		{ axis: 'width', point: transformPoint(target.worldMatrix, { x: size.width / 2, y: 0 }) },
+		{ axis: 'height', point: transformPoint(target.worldMatrix, { x: 0, y: size.height / 2 }) }
+	];
+
+	return handles.find((handle) => Math.hypot(point.x - handle.point.x, point.y - handle.point.y) <= 10)?.axis;
 };
 
 const centerForTargets = function centerForTargets(targets: readonly TransformTarget[]): Point {
@@ -177,6 +212,30 @@ const transformForTarget = function transformForTarget(
 	return updates[gesture.tool](target.initialTransform);
 };
 
+const rectangleSizeForTarget = function rectangleSizeForTarget(
+	gesture: TransformGesture,
+	target: TransformTarget,
+	point: Point
+): RectangleSize | undefined {
+	const axis = gesture.rectangleResizeAxis;
+	const initialSize = target.rectangleSize;
+
+	if (!axis || !initialSize) {
+		return undefined;
+	}
+
+	const startLocal = worldToLocalPoint(target.worldMatrix, gesture.startPoint);
+	const currentLocal = worldToLocalPoint(target.worldMatrix, point);
+
+	if (!startLocal || !currentLocal) {
+		return undefined;
+	}
+
+	return axis === 'width'
+		? { width: Math.max(1, initialSize.width + (currentLocal.x - startLocal.x) * 2), height: initialSize.height }
+		: { width: initialSize.width, height: Math.max(1, initialSize.height + (currentLocal.y - startLocal.y) * 2) };
+};
+
 const transformEntities = function transformEntities(
 	entities: readonly SelectableEntity[]
 ): readonly TransformEntity[] {
@@ -200,12 +259,16 @@ export const createTransformGesture = function createTransformGesture(
 	if (targets.length === 0 || targets.some((target) => !worldToLocalPoint(target.parentMatrix, startPoint))) {
 		return undefined;
 	}
+	const rectangleResizeAxis = tool === 'scale' && targets.length === 1 && targets[0]
+		? rectangleResizeAxisFor(targets[0], startPoint)
+		: undefined;
 
 	return {
 		entities: targets,
 		tool,
 		startPoint,
-		center: centerForTargets(targets)
+		center: centerForTargets(targets),
+		rectangleResizeAxis
 	};
 };
 
@@ -227,6 +290,10 @@ export const isTransformHandleHit = function isTransformHandleHit(
 		return Math.abs(distance - 30) <= 9;
 	}
 	if (tool === 'scale') {
+		if (gesture.rectangleResizeAxis) {
+			return true;
+		}
+
 		return Math.hypot(point.x - (gesture.center.x + 38), point.y - gesture.center.y) <= 10
 			|| Math.hypot(point.x - gesture.center.x, point.y - (gesture.center.y + 38)) <= 10;
 	}
@@ -245,6 +312,18 @@ export const transformGestureCommands = function transformGestureCommands(
 	gesture: TransformGesture,
 	point: Point
 ): readonly ProjectCommand[] | undefined {
+	if (gesture.rectangleResizeAxis) {
+		const rectangleCommands = gesture.entities.flatMap((target): readonly ProjectCommand[] => {
+			const size = rectangleSizeForTarget(gesture, target, point);
+
+			return size && target.entity.kind === 'attachment'
+				? [{ kind: 'update-rectangle-size', attachmentId: target.entity.id, ...size }]
+				: [];
+		});
+
+		return rectangleCommands.length === gesture.entities.length ? rectangleCommands : undefined;
+	}
+
 	const transforms = gesture.entities.map((target) => transformForTarget(gesture, target, point));
 
 	if (transforms.some((transform) => !transform)) {
