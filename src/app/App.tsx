@@ -5,6 +5,7 @@ import {
 	canRedo,
 	canUndo,
 	beginTransaction,
+	cancelTransaction,
 	commitTransaction,
 	createHistory,
 	currentProject,
@@ -25,10 +26,18 @@ import { loadEditorStartup } from './startup.ts';
 import { buildAssetLibraryEntries } from './asset-library.ts';
 import { entitiesInBounds, hitTestProject } from './hit-testing.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
+import { createTransformGesture, isTransformHandleHit, transformGestureCommand, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 
 type EditorMode = 'setup' | 'animate';
+
+const transformToolLabels: Record<TransformTool, string> = {
+	translate: 'Move',
+	rotate: 'Rotate',
+	scale: 'Scale',
+	shear: 'Shear'
+};
 
 const modeLabels: Record<EditorMode, string> = {
 	setup: 'Setup',
@@ -180,6 +189,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [commandError, setCommandError] = useState<string | undefined>(undefined);
 	const [assetError, setAssetError] = useState<string | undefined>(undefined);
 	const [selection, setSelection] = useState<Selection>(createSelection);
+	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
+	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
 	const [assetBlobs, setAssetBlobs] = useState<ProjectAssetBlobs>(startup.assets);
@@ -417,6 +428,65 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		: undefined;
 	const selectedTransform = selectedBone?.transform ?? selectedAttachment?.transform;
 	const renameInputRef = useRef<HTMLInputElement>(null);
+
+	const beginCanvasTransform = function beginCanvasTransform(point: ViewportPoint, tool: TransformTool): boolean {
+		const entity = selection.length === 1 ? selection[0] : undefined;
+		const hit = hitTestProject(project, point);
+		const selectedEntityHit = !!entity
+			&& !!hit
+			&& entity.kind === hit.kind
+			&& entity.id === hit.id;
+		const handleHit = !!entity && isTransformHandleHit(project, entity, point, tool);
+
+		if (!entity || (!selectedEntityHit && !handleHit)) {
+			return false;
+		}
+
+		const gesture = createTransformGesture(project, entity, point, tool);
+
+		if (!gesture) {
+			return false;
+		}
+
+		const started = beginTransaction(history);
+		transformSessionRef.current = { gesture, history: started };
+		setHistory(started);
+		return true;
+	};
+
+	const updateCanvasTransform = function updateCanvasTransform(point: ViewportPoint, phase: TransformPhase): void {
+		const session = transformSessionRef.current;
+
+		if (!session) {
+			return;
+		}
+		if (phase === 'cancel') {
+			transformSessionRef.current = undefined;
+			setHistory(cancelTransaction(session.history));
+			return;
+		}
+		if (phase === 'end') {
+			transformSessionRef.current = undefined;
+			commitHistory(commitTransaction(session.history));
+			return;
+		}
+
+		const command = transformGestureCommand(session.gesture, point);
+
+		if (!command) {
+			return;
+		}
+
+		const result = dispatchCommand(session.history, command);
+
+		if (!result.ok) {
+			setCommandError(result.error.message);
+			return;
+		}
+
+		transformSessionRef.current = { ...session, history: result.value };
+		setHistory(result.value);
+	};
 
 	const addChildBone = function addChildBone(): void {
 		if (!selectedBone) {
@@ -687,6 +757,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							onCanvasSelect={selectCanvasPoint}
 							onCanvasMarquee={selectCanvasMarquee}
 							selection={selection}
+							transformTool={transformTool}
+							onCanvasTransformStart={beginCanvasTransform}
+							onCanvasTransform={updateCanvasTransform}
 						/>
 						{project.bones.length === 0 && project.assets.length === 0 && (
 							<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
@@ -804,15 +877,28 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 														<label><span className="field-label">Pivot Y</span><input name="pivotY" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotY} /></label>
 													</div>
 												)}
-												{selectedAttachment?.kind === 'rectangle' && (
+														{selectedAttachment?.kind === 'rectangle' && (
 													<div className="transform-grid compact-grid">
 														<label><span className="field-label">Width</span><input name="width" type="number" min="0" step="any" defaultValue={selectedAttachment.width} /></label>
 														<label><span className="field-label">Height</span><input name="height" type="number" min="0" step="any" defaultValue={selectedAttachment.height} /></label>
 													</div>
-												)}
-												<button className="secondary-button" type="submit">Apply values</button>
-											</form>
-										)}
+														)}
+														<button className="secondary-button" type="submit">Apply values</button>
+													</form>
+													)}
+										<div className="transform-tools" aria-label="Transform tools">
+											{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
+												<button
+													className={transformTool === tool ? 'tool-button is-active' : 'tool-button'}
+													key={tool}
+													type="button"
+													onClick={() => setTransformTool(tool)}
+													aria-pressed={transformTool === tool}
+												>
+													{transformToolLabels[tool]}
+												</button>
+											))}
+										</div>
 										{selectedBone && (
 											<div className="inspector-actions inspector-create-actions">
 												<button className="secondary-button" type="button" onClick={addChildBone}>Add child bone</button>

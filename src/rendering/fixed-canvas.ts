@@ -22,6 +22,7 @@ export type FixedCanvasRenderOptions = Readonly<{
 	showBones?: boolean;
 	showGameplay?: boolean;
 	selectedIds?: readonly EntityId[];
+	transformTool?: 'translate' | 'rotate' | 'scale' | 'shear';
 }>;
 
 export type FixedCanvasRenderer = Readonly<{
@@ -304,6 +305,64 @@ const addSelectionGuides = function addSelectionGuides(
 	});
 };
 
+const addTransformHandles = function addTransformHandles(
+	container: Container,
+	project: Project,
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	selectedIds: readonly EntityId[],
+	tool: FixedCanvasRenderOptions['transformTool']
+): void {
+	if (selectedIds.length !== 1 || !tool) {
+		return;
+	}
+
+	const selectedId = selectedIds[0];
+	const bone = project.bones.find((candidate) => candidate.id === selectedId);
+	const attachment = project.attachments.find((candidate) => candidate.id === selectedId);
+	const centerMatrix = bone
+		? matrixByBone.get(bone.id)
+		: attachment
+			? attachment.kind === 'image'
+			? ((): AffineMatrix | undefined => {
+					const slot = project.slots.find((candidate) => candidate.id === attachment.slotId);
+					const boneMatrix = slot ? matrixByBone.get(slot.boneId) : undefined;
+
+					return boneMatrix ? multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform)) : undefined;
+				})()
+				: ((): AffineMatrix | undefined => {
+					const boneMatrix = matrixByBone.get(attachment.boneId);
+
+					return boneMatrix ? multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform)) : undefined;
+				})()
+			: undefined;
+
+	if (!centerMatrix) {
+		return;
+	}
+
+	const center = transformPoint(centerMatrix, { x: 0, y: 0 });
+	const handles = new Graphics();
+
+	if (tool === 'translate') {
+		handles.moveTo(center.x - 18, center.y).lineTo(center.x + 18, center.y)
+			.moveTo(center.x, center.y - 18).lineTo(center.x, center.y + 18)
+			.circle(center.x, center.y, 5);
+	} else if (tool === 'rotate') {
+		handles.circle(center.x, center.y, 30).circle(center.x, center.y, 5);
+	} else if (tool === 'scale') {
+		handles.moveTo(center.x, center.y).lineTo(center.x + 38, center.y)
+			.moveTo(center.x, center.y).lineTo(center.x, center.y + 38)
+			.rect(center.x + 32, center.y - 6, 12, 12)
+			.rect(center.x - 6, center.y + 32, 12, 12);
+	} else {
+		handles.moveTo(center.x - 22, center.y).lineTo(center.x + 22, center.y)
+			.moveTo(center.x, center.y - 22).lineTo(center.x, center.y + 22);
+	}
+
+	handles.stroke({ width: 2, color: 0x9ae8d4, alpha: 0.95 });
+	container.addChild(handles);
+};
+
 const captureCanvasPng = async function captureCanvasPng(
 	canvas: HTMLCanvasElement
 ): Promise<RendererResult<Blob>> {
@@ -401,6 +460,7 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 
 			const selection = new Container();
 			addSelectionGuides(selection, project, evaluation.matrices, options.selectedIds ?? []);
+			addTransformHandles(selection, project, evaluation.matrices, options.selectedIds ?? [], options.transformTool);
 			content.addChild(selection);
 
 			state.resources = prepared.value;

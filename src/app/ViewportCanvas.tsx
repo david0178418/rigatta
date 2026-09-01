@@ -5,6 +5,7 @@ import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
 import type { Selection } from './selection.ts';
+import type { TransformPhase, TransformTool } from './transform-gesture.ts';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -12,7 +13,7 @@ type PointerSession = Readonly<{
 	y: number;
 	startX: number;
 	startY: number;
-	mode: 'pan' | 'marquee';
+	mode: 'pan' | 'marquee' | 'transform';
 }>;
 
 export const ViewportCanvas = function ViewportCanvas({
@@ -21,7 +22,10 @@ export const ViewportCanvas = function ViewportCanvas({
 	onAssetDrop,
 	onCanvasSelect,
 	onCanvasMarquee,
-	selection
+	selection,
+	transformTool,
+	onCanvasTransformStart,
+	onCanvasTransform
 }: Readonly<{
 	project: Project;
 	assets: ProjectAssetBlobs;
@@ -29,6 +33,9 @@ export const ViewportCanvas = function ViewportCanvas({
 	onCanvasSelect?: (point: ViewportPoint, additive: boolean) => void;
 	onCanvasMarquee?: (bounds: LogicalBounds, additive: boolean) => void;
 	selection?: Selection;
+	transformTool?: TransformTool;
+	onCanvasTransformStart?: (point: ViewportPoint, tool: TransformTool) => boolean;
+	onCanvasTransform?: (point: ViewportPoint, phase: TransformPhase) => void;
 }>): ReactElement {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
@@ -42,10 +49,16 @@ export const ViewportCanvas = function ViewportCanvas({
 	const projectRef = useRef(project);
 	const canvasSelectRef = useRef(onCanvasSelect);
 	const canvasMarqueeRef = useRef(onCanvasMarquee);
+	const transformStartRef = useRef(onCanvasTransformStart);
+	const transformRef = useRef(onCanvasTransform);
+	const transformToolRef = useRef<TransformTool>(transformTool ?? 'translate');
 	viewportStateRef.current = viewport;
 	projectRef.current = project;
 	canvasSelectRef.current = onCanvasSelect;
 	canvasMarqueeRef.current = onCanvasMarquee;
+	transformStartRef.current = onCanvasTransformStart;
+	transformRef.current = onCanvasTransform;
+	transformToolRef.current = transformTool ?? 'translate';
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -76,7 +89,10 @@ export const ViewportCanvas = function ViewportCanvas({
 
 				const renderer = created.value;
 				lifecycle.renderer = renderer;
-				const rendered = await renderer.renderSetup(project, assets, { selectedIds: selection?.map((entity) => entity.id) });
+				const rendered = await renderer.renderSetup(project, assets, {
+					selectedIds: selection?.map((entity) => entity.id),
+					transformTool
+				});
 
 				if (!rendered.ok && !lifecycle.cancelled) {
 					setError(rendered.error.message);
@@ -92,7 +108,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			lifecycle.cancelled = true;
 			lifecycle.renderer?.destroy();
 		};
-	}, [assets, project, selection]);
+	}, [assets, project, selection, transformTool]);
 
 	const beginPan = function beginPan(event: PointerEvent): void {
 		if (event.button !== 0) {
@@ -100,13 +116,28 @@ export const ViewportCanvas = function ViewportCanvas({
 		}
 
 		didPanRef.current = false;
+		const stage = viewportRef.current?.getBoundingClientRect();
+		const startPoint = stage
+			? screenToLogicalPoint(
+				{ x: event.clientX, y: event.clientY },
+				stage,
+				viewportStateRef.current,
+				projectRef.current.logicalCanvas
+			)
+			: undefined;
+		const transformStart = transformStartRef.current;
+		const transformClaimed = !event.shiftKey
+			&& !!startPoint
+			&& !!transformStart
+			&& transformStart(startPoint, transformToolRef.current);
+
 		pointerSessionRef.current = {
 			id: event.pointerId,
 			x: event.clientX,
 			y: event.clientY,
 			startX: event.clientX,
 			startY: event.clientY,
-			mode: event.shiftKey ? 'marquee' : 'pan'
+			mode: transformClaimed ? 'transform' : event.shiftKey ? 'marquee' : 'pan'
 		};
 		setMarquee(undefined);
 		hostRef.current?.setPointerCapture(event.pointerId);
@@ -126,7 +157,19 @@ export const ViewportCanvas = function ViewportCanvas({
 			didPanRef.current = true;
 		}
 
-		if (session.mode === 'marquee') {
+		if (session.mode === 'transform') {
+			const stage = viewportRef.current?.getBoundingClientRect();
+			const onTransform = transformRef.current;
+
+			if (stage && onTransform) {
+				onTransform(screenToLogicalPoint(
+					{ x: event.clientX, y: event.clientY },
+					stage,
+					viewportStateRef.current,
+					projectRef.current.logicalCanvas
+				), 'update');
+			}
+		} else if (session.mode === 'marquee') {
 			const stage = viewportRef.current?.getBoundingClientRect();
 
 			if (stage) {
@@ -150,8 +193,19 @@ export const ViewportCanvas = function ViewportCanvas({
 		const stage = viewportRef.current?.getBoundingClientRect();
 		const onSelect = canvasSelectRef.current;
 		const onMarquee = canvasMarqueeRef.current;
+		const onTransform = transformRef.current;
+		const currentPoint = stage
+			? screenToLogicalPoint(
+				{ x: event.clientX, y: event.clientY },
+				stage,
+				viewportStateRef.current,
+				projectRef.current.logicalCanvas
+			)
+			: undefined;
 
-		if (select && session.mode === 'marquee' && didPanRef.current && stage && onMarquee) {
+		if (session.mode === 'transform' && onTransform && currentPoint) {
+			onTransform(currentPoint, select ? 'end' : 'cancel');
+		} else if (select && session.mode === 'marquee' && didPanRef.current && stage && onMarquee) {
 			onMarquee(screenRectangleToLogicalBounds(
 				{ x: session.startX, y: session.startY },
 				{ x: event.clientX, y: event.clientY },

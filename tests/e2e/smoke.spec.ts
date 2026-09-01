@@ -108,6 +108,20 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.keyboard.up('Shift');
 	await page.keyboard.up('Control');
 	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
+	await page.locator('.attachment-row').click();
+	const xField = page.getByRole('spinbutton', { name: 'X', exact: true });
+	const originalX = await xField.inputValue();
+	const imageBounds = await viewport.boundingBox();
+
+	if (!imageBounds) {
+		throw new Error('The viewport bounds are unavailable.');
+	}
+
+	await page.mouse.move(imageBounds.x + imageBounds.width / 2, imageBounds.y + imageBounds.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(imageBounds.x + imageBounds.width / 2 + 24, imageBounds.y + imageBounds.height / 2);
+	await page.mouse.up();
+	await expect(xField).not.toHaveValue(originalX);
 });
 
 test('builds and edits a hierarchy through the inspector', async ({ page }) => {

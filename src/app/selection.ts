@@ -1,9 +1,10 @@
 import type { EntityId } from '../domain/ids.ts';
 
-export type SelectableEntity = Readonly<{
-	kind: 'asset' | 'bone' | 'slot' | 'attachment';
-	id: EntityId;
-}>;
+export type SelectableEntity =
+	| Readonly<{ kind: 'asset'; id: EntityId }>
+	| Readonly<{ kind: 'bone'; id: EntityId }>
+	| Readonly<{ kind: 'slot'; id: EntityId }>
+	| Readonly<{ kind: 'attachment'; id: EntityId }>;
 
 export type Selection = readonly SelectableEntity[];
 
