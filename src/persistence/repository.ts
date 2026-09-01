@@ -464,7 +464,7 @@ const createRepository = function createRepository(
 				project: parsedProject.value,
 				createdAt: recordCreatedAt([previousRecovery?.createdAt, previousProject?.createdAt], timestamp),
 				updatedAt: timestamp,
-				lastOpenedAt: previousRecovery?.lastOpenedAt ?? timestamp
+				lastOpenedAt: recordCreatedAt([previousRecovery?.lastOpenedAt], timestamp)
 			};
 
 			await Promise.all([

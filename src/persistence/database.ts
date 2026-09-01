@@ -74,13 +74,13 @@ const migrateDatabase = function migrateDatabase(
 	const assetStore = transaction.objectStore('assets');
 	const recoveryStore = transaction.objectStore('recoveries');
 
-	if (oldVersion < 1 && !projectStore.indexNames.contains('by-updated-at')) {
+	if (!projectStore.indexNames.contains('by-updated-at')) {
 		projectStore.createIndex('by-updated-at', 'updatedAt');
 	}
-	if (oldVersion < 1 && !assetStore.indexNames.contains('by-snapshot-key')) {
+	if (!assetStore.indexNames.contains('by-snapshot-key')) {
 		assetStore.createIndex('by-snapshot-key', 'snapshotKey');
 	}
-	if (oldVersion < 1 && !recoveryStore.indexNames.contains('by-updated-at')) {
+	if (!recoveryStore.indexNames.contains('by-updated-at')) {
 		recoveryStore.createIndex('by-updated-at', 'updatedAt');
 	}
 };
