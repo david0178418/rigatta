@@ -4,8 +4,8 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 
 ## Phase 0: specification and prototypes
 
-- [ ] **P0-01** Define the coordinate system, canvas origin, angle units, and affine transform order.
-- [ ] **P0-02** Define project schema version 1 and stable entity ID rules. Depends on P0-01.
+- [x] **P0-01** Define the coordinate system, canvas origin, angle units, and affine transform order.
+- [x] **P0-02** Define project schema version 1 and stable entity ID rules. Depends on P0-01.
 - [ ] **P0-03** Define the `.boneanim` manifest and archive layout. Depends on P0-02.
 - [ ] **P0-04** Define standard PixiJS atlas output and companion gameplay metadata schemas. Depends on P0-01.
 - [ ] **P0-05** Prototype PixiJS fixed-canvas rendering and PNG extraction. Depends on P0-01.
@@ -30,11 +30,11 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 
 ## Phase 2: domain model and history
 
-- [ ] **P2-01** Implement opaque IDs and immutable project constructors. Depends on P0-02.
+- [x] **P2-01** Implement opaque IDs and immutable project constructors. Depends on P0-02.
 - [ ] **P2-02** Implement bones, slots, image attachments, point attachments, and rectangle attachments.
-- [ ] **P2-03** Implement hierarchy and reference validation.
+- [x] **P2-03** Implement hierarchy and reference validation.
 - [ ] **P2-04** Implement immutable create, rename, delete, reorder, and reparent operations. Depends on P2-03.
-- [ ] **P2-05** Implement local affine transform construction. Depends on P0-01.
+- [x] **P2-05** Implement local affine transform construction. Depends on P0-01.
 - [ ] **P2-06** Implement local-to-world and world-to-local transforms. Depends on P2-05.
 - [ ] **P2-07** Implement world-pose-preserving reparenting. Depends on P2-04 and P2-06.
 - [ ] **P2-08** Implement clips, typed property tracks, and keys.
