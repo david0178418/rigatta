@@ -18,6 +18,7 @@ import {
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { BoneTransformProperty, Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
 import { validateProject, type ValidationDiagnostic } from '../domain/validation.ts';
+import { canvasWarningsForSetup, type CanvasWarning } from '../domain/canvas-warnings.ts';
 import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, EventKeyInput, EventKeyUpdate, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
@@ -1213,6 +1214,25 @@ const ValidationDiagnostics = function ValidationDiagnostics({ diagnostics }: Re
 	);
 };
 
+const CanvasWarnings = function CanvasWarnings({ warnings }: Readonly<{ warnings: readonly CanvasWarning[] }>): ReactElement | null {
+	if (warnings.length === 0) {
+		return null;
+	}
+
+	return (
+		<div className="canvas-warning-panel" role="status" aria-label="Canvas overflow warnings">
+			<div className="canvas-warning-heading">
+				<span>Canvas bounds</span>
+				<strong>{warnings.length} warning{warnings.length === 1 ? '' : 's'}</strong>
+			</div>
+			<ul>
+				{warnings.map((warning) => <li key={`${warning.attachmentId}:${warning.code}`}>{warning.message}</li>)}
+			</ul>
+			<p>Fixed-canvas export clips content outside the logical canvas.</p>
+		</div>
+	);
+};
+
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
@@ -1242,6 +1262,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	}), [startup.repository]);
 	const project = currentProject(history);
 	const projectDiagnostics = validateProject(project);
+	const canvasWarnings = canvasWarningsForSetup(project);
 	const activeClip = project.clips.find((clip) => clip.id === activeClipId) ?? project.clips[0];
 	const activePlayback = activeClip && playback?.clipId === activeClip.id
 		? playback.state
@@ -2390,9 +2411,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								/>
 								<span>Snap</span>
 							</label>
+							</div>
 						</div>
-					</div>
-					<div className="viewport-stage">
+						<CanvasWarnings warnings={canvasWarnings} />
+						<div className="viewport-stage">
 						<ViewportCanvas
 							project={project}
 							assets={assetBlobs}
