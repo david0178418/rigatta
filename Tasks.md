@@ -96,7 +96,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P5-09** Implement Auto Key, enabled by default.
 - [x] **P5-10** Implement edited-but-unkeyed state and explicit key-edited action.
 - [x] **P5-11** Add unkeyed, edited, and keyed visual states.
-- [ ] **P5-12** Implement interpolation selection per segment.
+- [x] **P5-12** Implement interpolation selection per segment.
 - [ ] **P5-13** Build the cubic Bezier graph editor.
 - [ ] **P5-14** Implement keyed slot attachment swapping.
 - [ ] **P5-15** Implement keyed draw order.

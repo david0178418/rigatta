@@ -79,6 +79,11 @@ export type NumberKeyInput = Readonly<{
 	curve?: CubicBezier | null;
 }>;
 
+export type NumberKeyInterpolationInput = Readonly<{
+	interpolation: Interpolation;
+	curve?: CubicBezier | null;
+}>;
+
 export type AttachmentKeyInput = Readonly<{
 	timeSeconds: number;
 	value: EntityId | null;
@@ -308,6 +313,17 @@ const isFiniteCurve = function isFiniteCurve(curve: CubicBezier): boolean {
 		&& curve.x1 <= 1
 		&& curve.x2 >= 0
 		&& curve.x2 <= 1;
+};
+
+export const DEFAULT_BEZIER_CURVE = {
+	x1: 0.25,
+	y1: 0.25,
+	x2: 0.75,
+	y2: 0.75
+} as const satisfies CubicBezier;
+
+const isInterpolation = function isInterpolation(value: Interpolation): boolean {
+	return value === 'stepped' || value === 'linear' || value === 'bezier';
 };
 
 const isValidKeyTime = function isValidKeyTime(clip: Clip, timeSeconds: number): boolean {
@@ -818,6 +834,53 @@ export const upsertNumberKey = function upsertNumberKey(
 	return updateTrack(project, clipId, trackId, (currentTrack) => (
 		isNumberTrack(currentTrack)
 			? { ...currentTrack, keys: currentTrack.keys.map((candidate) => candidate.id === existing.id ? key.value : candidate) }
+			: currentTrack
+	));
+};
+
+export const setNumberKeyInterpolation = function setNumberKeyInterpolation(
+	project: Project,
+	clipId: EntityId,
+	trackId: EntityId,
+	keyId: EntityId,
+	input: NumberKeyInterpolationInput
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+
+	if (!clip || !track) {
+		return failure('not-found', 'Animation track does not exist.');
+	}
+	if (!isNumberTrack(track)) {
+		return failure('invalid-value', 'Only numeric keys support interpolation.');
+	}
+	if (!isInterpolation(input.interpolation)) {
+		return failure('invalid-value', 'Animation keys use stepped, linear, or Bezier interpolation.');
+	}
+
+	const existing = track.keys.find((key) => key.id === keyId);
+
+	if (!existing) {
+		return failure('not-found', 'Animation key does not exist.');
+	}
+
+	const curve = input.interpolation === 'bezier' && input.curve === undefined
+		? existing.curve ?? DEFAULT_BEZIER_CURVE
+		: input.curve ?? null;
+	const updated = createNumberKey(existing.id, {
+		timeSeconds: existing.timeSeconds,
+		value: existing.value,
+		interpolation: input.interpolation,
+		curve
+	});
+
+	if (!updated.ok) {
+		return updated;
+	}
+
+	return updateTrack(project, clipId, trackId, (currentTrack) => (
+		isNumberTrack(currentTrack)
+			? { ...currentTrack, keys: currentTrack.keys.map((key) => key.id === keyId ? updated.value : key) }
 			: currentTrack
 	));
 };

@@ -15,8 +15,8 @@ import {
 	type HistoryState
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
-import type { BoneTransformProperty, Clip, Project, Track } from '../domain/model.ts';
-import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, KeyTimeChange, NumberKeyInput, TrackDefinition } from '../domain/animation.ts';
+import type { BoneTransformProperty, Clip, Interpolation, Project, Track } from '../domain/model.ts';
+import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
@@ -312,6 +312,7 @@ type AnimateTimelineProps = Readonly<{
 	onAddKey: (trackId: EntityId, input: AnimationKeyInput) => EntityId | undefined;
 	onMoveKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => void;
 	onCopyKey: (trackId: EntityId, keyId: EntityId, frameIndex: number) => EntityId | undefined;
+	onUpdateInterpolation: (trackId: EntityId, keyId: EntityId, input: NumberKeyInterpolationInput) => void;
 	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 	onAutoKeyChange: (enabled: boolean) => void;
@@ -338,6 +339,7 @@ const AnimateTimeline = function AnimateTimeline({
 	onAddKey,
 	onMoveKey,
 	onCopyKey,
+	onUpdateInterpolation,
 	onDeleteKey,
 	onRetimeKeys,
 	onAutoKeyChange,
@@ -383,6 +385,13 @@ const AnimateTimeline = function AnimateTimeline({
 		return key ? [{ ...reference, frameIndex: key.frameIndex }] : [];
 	});
 	const selectedKeyMarker = selectedKeyMarkers.length === 1 ? selectedKeyMarkers[0] : undefined;
+	const selectedNumberKey = selectedKeyMarker && selectedRow
+		&& (selectedRow.track.kind === 'bone-transform'
+			|| selectedRow.track.kind === 'attachment-transform'
+			|| selectedRow.track.kind === 'attachment-opacity'
+			|| selectedRow.track.kind === 'rectangle-size')
+		? selectedRow.track.keys.find((key) => key.id === selectedKeyMarker.keyId)
+		: undefined;
 	const submitCreateTrack = function submitCreateTrack(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 
@@ -456,6 +465,23 @@ const AnimateTimeline = function AnimateTimeline({
 		if (offsetFrames !== undefined && selectedKeys.length > 1) {
 			onRetimeKeys(selectedKeys, Math.round(offsetFrames));
 		}
+	};
+	const updateSelectedInterpolation = function updateSelectedInterpolation(value: string): void {
+		if (!selectedRow || !selectedKeyMarker || !selectedNumberKey) {
+			return;
+		}
+
+		const interpolation: Interpolation | undefined = value === 'stepped' || value === 'linear' || value === 'bezier'
+			? value
+			: undefined;
+
+		if (!interpolation) {
+			return;
+		}
+
+		onUpdateInterpolation(selectedRow.track.id, selectedKeyMarker.keyId, interpolation === 'bezier'
+			? { interpolation }
+			: { interpolation, curve: null });
 	};
 	const selectAnimationKey = function selectAnimationKey(
 		trackId: EntityId,
@@ -629,6 +655,17 @@ const AnimateTimeline = function AnimateTimeline({
 								<form className="key-editor" key={`${selectedKeyMarker.keyId}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
 									<span className="muted-copy">Key frame {selectedKeyMarker.frameIndex + 1}</span>
 									<label><span className="field-label">Frame</span><input name="frame" type="number" min="1" max={frameCount} step="1" defaultValue={selectedKeyMarker.frameIndex + 1} /></label>
+									{selectedNumberKey && (
+										<label>
+											<span className="field-label">Interpolation to next key</span>
+											<select aria-label="Interpolation" value={selectedNumberKey.interpolation} onChange={(event) => updateSelectedInterpolation(event.currentTarget.value)}>
+												<option value="stepped">Stepped</option>
+												<option value="linear">Linear</option>
+												<option value="bezier">Cubic Bezier</option>
+											</select>
+											{selectedNumberKey.interpolation === 'bezier' && <small className="muted-copy">Curve controls are available in the graph editor.</small>}
+										</label>
+									)}
 									<button className="secondary-button" type="submit">Move key</button>
 									<button className="quiet-button" type="button" onClick={(event) => {
 										const form = event.currentTarget.form;
@@ -877,6 +914,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const id = createEntityId();
 
 		return applyCommand({ kind: 'copy-key', id, clipId: activeClip.id, trackId, keyId, timeSeconds: frameIndex / activeClip.fps }) ? id : undefined;
+	};
+
+	const updateAnimationInterpolation = function updateAnimationInterpolation(
+		trackId: EntityId,
+		keyId: EntityId,
+		input: NumberKeyInterpolationInput
+	): void {
+		if (activeClip) {
+			applyCommand({ kind: 'set-number-key-interpolation', clipId: activeClip.id, trackId, keyId, input });
+		}
 	};
 
 	const deleteAnimationKey = function deleteAnimationKey(trackId: EntityId, keyId: EntityId): void {
@@ -1969,6 +2016,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onAddKey={addAnimationKey}
 						onMoveKey={moveAnimationKey}
 						onCopyKey={copyAnimationKey}
+						onUpdateInterpolation={updateAnimationInterpolation}
 						onDeleteKey={deleteAnimationKey}
 						onRetimeKeys={retimeAnimationKeys}
 						onAutoKeyChange={setAutoKey}

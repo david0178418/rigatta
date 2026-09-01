@@ -148,6 +148,25 @@ test('creates, moves, copies, and deletes typed animation keys', async ({ page }
 	await expect(page.getByRole('button', { name: 'Key frame 4' })).toHaveCount(0);
 });
 
+test('changes interpolation for a selected numeric key', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Add track' }).click();
+	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('button', { name: 'Key frame 1' }).click();
+	const interpolation = page.getByRole('combobox', { name: 'Interpolation' });
+
+	await expect(interpolation).toHaveValue('linear');
+	await interpolation.selectOption('bezier');
+	await expect(interpolation).toHaveValue('bezier');
+	await expect(page.getByText('Curve controls are available in the graph editor.', { exact: true })).toBeVisible();
+	await interpolation.selectOption('stepped');
+	await expect(interpolation).toHaveValue('stepped');
+});
+
 test('retimes multiple selected animation keys together', async ({ page }) => {
 	await page.goto('/');
 

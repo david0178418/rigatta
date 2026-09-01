@@ -14,6 +14,7 @@ import {
 	duplicateClip,
 	moveKey,
 	retimeKeys,
+	setNumberKeyInterpolation,
 	renameClip,
 	upsertNumberKey,
 	updateClipPlayback
@@ -23,6 +24,7 @@ import type {
 	BooleanKeyInput,
 	DrawOrderKeyInput,
 	NumberKeyInput,
+	NumberKeyInterpolationInput,
 	KeyTimeChange,
 	TrackDefinition
 } from './animation.ts';
@@ -97,6 +99,7 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'add-draw-order-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: DrawOrderKeyInput }>
 	| Readonly<{ kind: 'add-boolean-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: BooleanKeyInput }>
 	| Readonly<{ kind: 'set-number-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: NumberKeyInput }>
+	| Readonly<{ kind: 'set-number-key-interpolation'; clipId: EntityId; trackId: EntityId; keyId: EntityId; input: NumberKeyInterpolationInput }>
 	| Readonly<{ kind: 'move-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'copy-key'; id: EntityId; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'retime-keys'; clipId: EntityId; changes: readonly KeyTimeChange[] }>
@@ -211,6 +214,9 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'set-number-key') {
 		return upsertNumberKey(project, command.clipId, command.trackId, command.input, () => command.id);
+	}
+	if (command.kind === 'set-number-key-interpolation') {
+		return setNumberKeyInterpolation(project, command.clipId, command.trackId, command.keyId, command.input);
 	}
 	if (command.kind === 'move-key') {
 		return moveKey(project, command.clipId, command.trackId, command.keyId, command.timeSeconds);

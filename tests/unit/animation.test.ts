@@ -12,6 +12,7 @@ import {
 	duplicateClip,
 	moveKey,
 	retimeKeys,
+	setNumberKeyInterpolation,
 	upsertNumberKey,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
@@ -179,6 +180,34 @@ describe('typed animation tracks', () => {
 
 		expect(updated.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: duplicateKeyId, value: 30 }]);
 		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: duplicateKeyId, value: 12 }]);
+	});
+
+	test('updates numeric key interpolation without mutating the source project', () => {
+		const project = withClip();
+		const withTrack = unwrap(createTrack(project, clipId, {
+			kind: 'bone-transform',
+			targetId: fixtureIds.root,
+			property: 'x'
+		}, () => duplicateTrackId));
+		const withKey = unwrap(addNumberKey(withTrack, clipId, duplicateTrackId, {
+			timeSeconds: 0,
+			value: 12
+		}, () => duplicateKeyId));
+		const bezier = unwrap(setNumberKeyInterpolation(withKey, clipId, duplicateTrackId, duplicateKeyId, { interpolation: 'bezier' }));
+		const stepped = unwrap(setNumberKeyInterpolation(bezier, clipId, duplicateTrackId, duplicateKeyId, { interpolation: 'stepped' }));
+		const invalidCurve = setNumberKeyInterpolation(withKey, clipId, duplicateTrackId, duplicateKeyId, {
+			interpolation: 'bezier',
+			curve: { x1: 1.1, y1: 0, x2: 0.5, y2: 1 }
+		});
+
+		expect(bezier.clips[0]?.tracks[0]?.keys).toMatchObject([{
+			id: duplicateKeyId,
+			interpolation: 'bezier',
+			curve: { x1: 0.25, y1: 0.25, x2: 0.75, y2: 0.75 }
+		}]);
+		expect(stepped.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: duplicateKeyId, interpolation: 'stepped', curve: null }]);
+		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: duplicateKeyId, interpolation: 'linear', curve: null }]);
+		expect(invalidCurve).toMatchObject({ ok: false, error: { code: 'invalid-value' } });
 	});
 
 	test('duplicates a clip with fresh nested IDs and retained content', () => {
