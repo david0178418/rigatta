@@ -122,7 +122,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P7-04** Implement full-cell grid layout and PNG encoding.
 - [x] **P7-05** Generate grid frame and animation JSON.
 - [x] **P7-06** Implement transparent-pixel bounds scanning.
-- [ ] **P7-07** Implement deterministic MaxRects packing with padding.
+- [x] **P7-07** Implement deterministic MaxRects packing with padding.
 - [ ] **P7-08** Implement multipage splitting at the configured texture limit.
 - [ ] **P7-09** Implement optional atlas edge extrusion.
 - [ ] **P7-10** Composite packed atlas pages.
