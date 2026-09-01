@@ -549,6 +549,16 @@ test('builds and edits a hierarchy through the inspector', async ({ page }) => {
 	await page.getByRole('button', { name: 'arm', exact: true }).click();
 	await page.getByRole('button', { name: 'Add point' }).click();
 	await expect(page.getByRole('button', { name: 'point', exact: true })).toBeVisible();
+	page.once('dialog', async (dialog) => {
+		expect(dialog.type()).toBe('confirm');
+		await dialog.dismiss();
+	});
+	await page.getByRole('button', { name: 'Delete' }).click();
+	await expect(page.getByRole('button', { name: 'point', exact: true })).toBeVisible();
+	page.once('dialog', async (dialog) => {
+		expect(dialog.type()).toBe('confirm');
+		await dialog.accept();
+	});
 	await page.getByRole('button', { name: 'Delete' }).click();
 	await expect(page.getByRole('button', { name: 'point', exact: true })).toHaveCount(0);
 });

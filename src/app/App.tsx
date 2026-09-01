@@ -1466,7 +1466,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 
 	const deleteActiveClip = function deleteActiveClip(): void {
-		if (!activeClip || !applyCommand({ kind: 'delete-clip', clipId: activeClip.id })) {
+		if (!activeClip || !window.confirm(`Delete animation clip “${activeClip.name}” and all of its keys?`)) {
+			return;
+		}
+		if (!applyCommand({ kind: 'delete-clip', clipId: activeClip.id })) {
 			return;
 		}
 
@@ -2172,7 +2175,14 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						{ kind: 'delete-attachment' as const, attachmentId: selectedEntity.id }
 					]
 					: [{ kind: 'delete-attachment' as const, attachmentId: selectedEntity.id }];
-			})();
+				})();
+		const entityLabel = selectedEntity.kind === 'bone'
+			? 'bone'
+			: selectedEntity.kind === 'slot' ? 'slot' : 'attachment';
+
+		if (!window.confirm(`Delete ${entityLabel} “${selectedName ?? selectedEntity.id}”?`)) {
+			return;
+		}
 
 		if (applyCommandSequence(commands)) {
 			setSelection(createSelection());
