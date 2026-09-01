@@ -19,3 +19,7 @@ and can be restarted with Play.
 The playhead is a one-based display over a zero-based frame index. Its range
 input only accepts integer frame positions, and seeking clears the sub-frame
 remainder and pauses playback so the selected frame remains stable.
+
+The timeline navigation keeps a clamped frame window over longer clips. Zoom
+uses the active frame as its anchor, pan moves by visible pixel distance, and
+the track filter is case-insensitive and matches the typed track label.

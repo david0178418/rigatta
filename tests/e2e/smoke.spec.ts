@@ -110,6 +110,22 @@ test('plays, pauses, and steps the active animation clip by frame', async ({ pag
 	await expect(page.getByRole('button', { name: 'Play animation' })).toBeVisible();
 });
 
+test('navigates and filters the animation timeline', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByLabel('Duration (sec)').fill('3');
+	await page.getByRole('button', { name: 'Apply playback', exact: true }).click();
+	await expect(page.getByLabel('Timeline frame range')).toHaveText('Frames 1–20 of 36');
+	await page.getByRole('button', { name: 'Zoom timeline in' }).click();
+	await expect(page.getByText('125%', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Pan timeline right' }).click();
+	await expect(page.getByLabel('Timeline frame range')).toHaveText('Frames 9–24 of 36');
+	await page.getByLabel('Filter tracks').fill('bone');
+	await expect(page.getByText('0 matching tracks', { exact: true })).toBeVisible();
+});
+
 test('imports an image directory and creates a dropped image part', async ({ page }) => {
 	await page.addInitScript(() => {
 		const pngBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAEAAAABAAQMAAACQp+OdAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkBBxAXAvkWQwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0wMVQwNzoxNjoyMyswMDowMMxohAEAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMDFUMDc6MTY6MjMrMDA6MDC9NTy9AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTAxVDA3OjE2OjIzKzAwOjAw6iAdYgAAAA9JREFUKM9jYBgFo4B8AAACQAABjMWrdwAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));

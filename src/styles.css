@@ -812,6 +812,156 @@ h2 {
 	font-variant-numeric: tabular-nums;
 }
 
+.timeline-navigation {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.timeline-navigation-actions {
+	display: flex;
+	gap: 3px;
+}
+
+.timeline-navigation-actions .quiet-button {
+	min-width: 27px;
+	padding: 5px 6px;
+}
+
+.timeline-filter-field {
+	flex: 1;
+}
+
+.timeline-filter-field input {
+	width: 100%;
+}
+
+.timeline-zoom-readout,
+.timeline-ruler-meta {
+	color: var(--muted);
+	font-size: 10px;
+	font-variant-numeric: tabular-nums;
+}
+
+.timeline-ruler-meta {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 6px;
+}
+
+.timeline-ruler {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+	min-height: 28px;
+	margin-top: 3px;
+	border-bottom: 1px solid var(--border);
+	background: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 1px), rgba(111, 212, 189, 0.14) 5%);
+}
+
+.timeline-tick {
+	position: relative;
+	padding-top: 8px;
+	text-align: center;
+	color: var(--muted);
+	font-size: 9px;
+	font-variant-numeric: tabular-nums;
+}
+
+.timeline-tick::before {
+	position: absolute;
+	top: 0;
+	left: 50%;
+	width: 1px;
+	height: 6px;
+	background: var(--border);
+	content: '';
+}
+
+.timeline-tick.is-playhead {
+	color: var(--accent-strong);
+}
+
+.timeline-tick.is-playhead::before {
+	width: 2px;
+	height: 9px;
+	background: var(--accent-strong);
+}
+
+.timeline-navigation {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.timeline-navigation-actions {
+	display: flex;
+	gap: 3px;
+}
+
+.timeline-navigation-actions .quiet-button {
+	min-width: 27px;
+	padding: 5px 6px;
+}
+
+.timeline-filter-field {
+	flex: 1;
+}
+
+.timeline-filter-field input {
+	width: 100%;
+}
+
+.timeline-zoom-readout,
+.timeline-ruler-meta {
+	color: var(--muted);
+	font-size: 10px;
+	font-variant-numeric: tabular-nums;
+}
+
+.timeline-ruler-meta {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 6px;
+}
+
+.timeline-ruler {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+	min-height: 28px;
+	margin-top: 3px;
+	border-bottom: 1px solid var(--border);
+	background: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 1px), rgba(111, 212, 189, 0.14) 5%);
+}
+
+.timeline-tick {
+	position: relative;
+	padding-top: 8px;
+	text-align: center;
+	color: var(--muted);
+	font-size: 9px;
+	font-variant-numeric: tabular-nums;
+}
+
+.timeline-tick::before {
+	position: absolute;
+	top: 0;
+	left: 50%;
+	width: 1px;
+	height: 6px;
+	background: var(--border-strong);
+	content: '';
+}
+
+.timeline-tick.is-playhead {
+	color: var(--accent-strong);
+}
+
+.timeline-tick.is-playhead::before {
+	width: 2px;
+	height: 9px;
+	background: var(--accent-strong);
+}
+
 .playhead-field {
 	display: grid;
 	gap: 4px;
