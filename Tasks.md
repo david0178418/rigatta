@@ -119,7 +119,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P7-01** Build clip selection and combined/per-clip export controls.
 - [x] **P7-02** Implement deterministic clip frame sampling.
 - [x] **P7-03** Render sampled poses to transparent fixed-size canvases.
-- [ ] **P7-04** Implement full-cell grid layout and PNG encoding.
+- [x] **P7-04** Implement full-cell grid layout and PNG encoding.
 - [ ] **P7-05** Generate grid frame and animation JSON.
 - [ ] **P7-06** Implement transparent-pixel bounds scanning.
 - [ ] **P7-07** Implement deterministic MaxRects packing with padding.
