@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import { DEFAULT_LOCAL_TRANSFORM, degreesToRadians, radiansToDegrees, type LocalTransform } from '../domain/coordinates.ts';
 import { createEntityId, parseEntityId, type EntityId } from '../domain/ids.ts';
 import {
@@ -15,7 +15,7 @@ import {
 	type HistoryState
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
-import type { BoneTransformProperty, Clip, Interpolation, Project, Track } from '../domain/model.ts';
+import type { BoneTransformProperty, Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
 import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
@@ -291,6 +291,117 @@ type AnimationKeyInput =
 	| Readonly<{ kind: 'attachment'; input: AttachmentKeyInput }>
 	| Readonly<{ kind: 'draw-order'; input: DrawOrderKeyInput }>
 	| Readonly<{ kind: 'boolean'; input: BooleanKeyInput }>;
+
+type BezierPoint = 'first' | 'second';
+type BezierCoordinate = 'x' | 'y';
+
+const graphY = function graphY(value: number): number {
+	return 1 - value;
+};
+
+const clampBezierY = function clampBezierY(value: number): number {
+	return Math.max(-0.5, Math.min(1.5, value));
+};
+
+const BezierGraphEditor = function BezierGraphEditor({
+	curve,
+	onChange
+}: Readonly<{ curve: CubicBezier; onChange: (curve: CubicBezier) => void }>): ReactElement {
+	const [draftCurve, setDraftCurve] = useState<CubicBezier>(() => curve);
+	const [dragging, setDragging] = useState<BezierPoint | undefined>(undefined);
+	const commitCurve = function commitCurve(): void {
+		onChange(draftCurve);
+	};
+	const updateDraftCoordinate = function updateDraftCoordinate(
+		point: BezierPoint,
+		coordinate: BezierCoordinate,
+		value: string
+	): void {
+		const number = Number(value);
+
+		if (!Number.isFinite(number)) {
+			return;
+		}
+
+		const property = point === 'first'
+			? coordinate === 'x' ? 'x1' : 'y1'
+			: coordinate === 'x' ? 'x2' : 'y2';
+
+		setDraftCurve((current) => ({ ...current, [property]: number }));
+	};
+	const updateDraftFromPointer = function updateDraftFromPointer(event: ReactPointerEvent<SVGSVGElement>): void {
+		if (!dragging) {
+			return;
+		}
+
+		const bounds = event.currentTarget.getBoundingClientRect();
+		const x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+		const screenY = (event.clientY - bounds.top) / bounds.height * 2 - 0.5;
+		const value = clampBezierY(1 - screenY);
+		const property = dragging === 'first'
+			? 'x1'
+			: 'x2';
+		const yProperty = dragging === 'first' ? 'y1' : 'y2';
+
+		setDraftCurve((current) => ({ ...current, [property]: x, [yProperty]: value }));
+	};
+	const endPointerDrag = function endPointerDrag(): void {
+		if (!dragging) {
+			return;
+		}
+
+		setDragging(undefined);
+		commitCurve();
+	};
+	const beginPointerDrag = function beginPointerDrag(point: BezierPoint, event: ReactPointerEvent<SVGCircleElement>): void {
+		event.preventDefault();
+		event.currentTarget.setPointerCapture(event.pointerId);
+		setDragging(point);
+	};
+
+	return (
+		<div className="bezier-editor">
+			<div className="bezier-graph-wrap">
+				<svg
+					aria-label="Bezier curve editor"
+					className="bezier-graph"
+					role="img"
+					viewBox="0 -0.5 1 2"
+					onPointerMove={updateDraftFromPointer}
+					onPointerUp={endPointerDrag}
+					onPointerCancel={endPointerDrag}
+				>
+					<rect className="bezier-graph-background" x="0" y="-0.5" width="1" height="2" />
+					<path className="bezier-graph-grid" d="M 0 1 H 1 M 0 0.5 H 1 M 0 0 H 1 M 0 1 V 0" />
+					<line className="bezier-control-line" x1="0" y1="1" x2={draftCurve.x1} y2={graphY(draftCurve.y1)} />
+					<line className="bezier-control-line" x1="1" y1="0" x2={draftCurve.x2} y2={graphY(draftCurve.y2)} />
+					<path className="bezier-curve" d={`M 0 1 C ${draftCurve.x1} ${graphY(draftCurve.y1)}, ${draftCurve.x2} ${graphY(draftCurve.y2)}, 1 0`} />
+					<circle
+						className="bezier-control-point"
+						cx={draftCurve.x1}
+						cy={graphY(draftCurve.y1)}
+						r="0.045"
+						onPointerDown={(event) => beginPointerDrag('first', event)}
+					/>
+					<circle
+						className="bezier-control-point"
+						cx={draftCurve.x2}
+						cy={graphY(draftCurve.y2)}
+						r="0.045"
+						onPointerDown={(event) => beginPointerDrag('second', event)}
+					/>
+				</svg>
+			</div>
+			<div className="bezier-controls">
+				<label><span className="field-label">P1 X</span><input aria-label="P1 X" type="number" min="0" max="1" step="0.01" value={draftCurve.x1} onChange={(event) => updateDraftCoordinate('first', 'x', event.currentTarget.value)} onBlur={commitCurve} /></label>
+				<label><span className="field-label">P1 Y</span><input aria-label="P1 Y" type="number" step="0.01" value={draftCurve.y1} onChange={(event) => updateDraftCoordinate('first', 'y', event.currentTarget.value)} onBlur={commitCurve} /></label>
+				<label><span className="field-label">P2 X</span><input aria-label="P2 X" type="number" min="0" max="1" step="0.01" value={draftCurve.x2} onChange={(event) => updateDraftCoordinate('second', 'x', event.currentTarget.value)} onBlur={commitCurve} /></label>
+				<label><span className="field-label">P2 Y</span><input aria-label="P2 Y" type="number" step="0.01" value={draftCurve.y2} onChange={(event) => updateDraftCoordinate('second', 'y', event.currentTarget.value)} onBlur={commitCurve} /></label>
+				<button className="quiet-button" type="button" onClick={commitCurve}>Apply curve</button>
+			</div>
+		</div>
+	);
+};
 
 type AnimateTimelineProps = Readonly<{
 	project: Project;
@@ -660,13 +771,20 @@ const AnimateTimeline = function AnimateTimeline({
 											<span className="field-label">Interpolation to next key</span>
 											<select aria-label="Interpolation" value={selectedNumberKey.interpolation} onChange={(event) => updateSelectedInterpolation(event.currentTarget.value)}>
 												<option value="stepped">Stepped</option>
-												<option value="linear">Linear</option>
-												<option value="bezier">Cubic Bezier</option>
-											</select>
-											{selectedNumberKey.interpolation === 'bezier' && <small className="muted-copy">Curve controls are available in the graph editor.</small>}
-										</label>
-									)}
-									<button className="secondary-button" type="submit">Move key</button>
+																				<option value="linear">Linear</option>
+																				<option value="bezier">Cubic Bezier</option>
+																			</select>
+																			{selectedNumberKey.interpolation === 'bezier' && <small className="muted-copy">Curve controls are available in the graph editor.</small>}
+																	</label>
+																)}
+																{selectedNumberKey?.interpolation === 'bezier' && selectedNumberKey.curve && (
+																	<BezierGraphEditor
+																		key={`${selectedKeyMarker.keyId}:${selectedNumberKey.curve.x1}:${selectedNumberKey.curve.y1}:${selectedNumberKey.curve.x2}:${selectedNumberKey.curve.y2}`}
+																		curve={selectedNumberKey.curve}
+																		onChange={(curve) => onUpdateInterpolation(selectedRow.track.id, selectedKeyMarker.keyId, { interpolation: 'bezier', curve })}
+																	/>
+																)}
+																<button className="secondary-button" type="submit">Move key</button>
 									<button className="quiet-button" type="button" onClick={(event) => {
 										const form = event.currentTarget.form;
 										const frame = form ? form.elements.namedItem('frame') : undefined;

@@ -921,6 +921,82 @@ h2 {
 	width: 86px;
 }
 
+.bezier-editor {
+	flex: 1 1 100%;
+	min-width: 260px;
+	padding-top: 4px;
+}
+
+.bezier-graph-wrap {
+	max-width: 280px;
+	height: 132px;
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	background: var(--surface);
+	overflow: hidden;
+}
+
+.bezier-graph {
+	display: block;
+	width: 100%;
+	height: 100%;
+	touch-action: none;
+}
+
+.bezier-graph-background {
+	fill: var(--surface);
+}
+
+.bezier-graph-grid {
+	fill: none;
+	stroke: var(--border);
+	stroke-width: 0.008;
+	vector-effect: non-scaling-stroke;
+}
+
+.bezier-control-line {
+	stroke: var(--muted);
+	stroke-width: 0.012;
+	stroke-dasharray: 0.025 0.02;
+	vector-effect: non-scaling-stroke;
+}
+
+.bezier-curve {
+	fill: none;
+	stroke: var(--accent-strong);
+	stroke-width: 0.02;
+	vector-effect: non-scaling-stroke;
+}
+
+.bezier-control-point {
+	fill: var(--accent);
+	stroke: var(--surface);
+	stroke-width: 0.01;
+	cursor: grab;
+	vector-effect: non-scaling-stroke;
+}
+
+.bezier-control-point:active {
+	cursor: grabbing;
+}
+
+.bezier-controls {
+	display: flex;
+	align-items: end;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
+}
+
+.bezier-controls label {
+	display: grid;
+	gap: 3px;
+}
+
+.bezier-controls input[type="number"] {
+	width: 64px;
+}
+
 .key-boolean-field {
 	display: flex !important;
 	align-items: center;

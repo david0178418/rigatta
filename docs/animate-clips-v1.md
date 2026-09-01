@@ -42,6 +42,11 @@ segment leading to the next key. The selected-key editor can choose Stepped,
 Linear, or Cubic Bezier interpolation; selecting Bezier creates normalized
 default control points that the graph editor can refine later.
 
+Bezier keys expose a graph with draggable control points and P1/P2 coordinate
+inputs. X coordinates are constrained to the normalized segment range, while
+Y coordinates can represent overshoot. Curve edits are drafted locally and
+committed as a single key update when the drag or Apply curve action ends.
+
 Auto Key is enabled by default for the editor session. Editing a changed bone
 or attachment transform in Animate mode updates setup data and creates or
 upserts the corresponding numeric key at the current frame in the same

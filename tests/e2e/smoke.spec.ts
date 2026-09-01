@@ -163,6 +163,10 @@ test('changes interpolation for a selected numeric key', async ({ page }) => {
 	await interpolation.selectOption('bezier');
 	await expect(interpolation).toHaveValue('bezier');
 	await expect(page.getByText('Curve controls are available in the graph editor.', { exact: true })).toBeVisible();
+	await expect(page.getByRole('img', { name: 'Bezier curve editor' })).toBeVisible();
+	await page.getByLabel('P1 X').fill('0.4');
+	await page.getByRole('button', { name: 'Apply curve', exact: true }).click();
+	await expect(page.getByLabel('P1 X')).toHaveValue('0.4');
 	await interpolation.selectOption('stepped');
 	await expect(interpolation).toHaveValue('stepped');
 });
