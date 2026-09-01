@@ -138,7 +138,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P8-01** Add keyboard shortcuts and a discoverable shortcut reference.
 - [x] **P8-02** Add missing-asset, duplicate-name, and invalid-reference diagnostics.
 - [x] **P8-03** Add logical-canvas clipping and overflow warnings.
-- [ ] **P8-04** Add atlas-size, storage-quota, and export-memory diagnostics.
+- [x] **P8-04** Add atlas-size, storage-quota, and export-memory diagnostics.
 - [ ] **P8-05** Add destructive-operation confirmation where history cannot recover data.
 - [ ] **P8-06** Add a small built-in example project and export fixture.
 - [ ] **P8-07** Document project and export schemas.

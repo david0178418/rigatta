@@ -1469,6 +1469,60 @@ h2 {
 	margin: 16px 0 0;
 }
 
+.export-diagnostics {
+	margin-top: 16px;
+	padding: 10px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--canvas);
+}
+
+.export-diagnostics-heading {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.export-diagnostics-heading strong {
+	color: var(--accent-strong);
+	font-size: 10px;
+	font-weight: 500;
+}
+
+.export-diagnostics ul {
+	display: grid;
+	gap: 6px;
+	margin: 9px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.export-diagnostics li {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 7px;
+	font-size: 10px;
+	line-height: 1.4;
+}
+
+.export-diagnostics li code {
+	color: var(--warning);
+}
+
+.export-diagnostic-error span {
+	color: var(--warning);
+}
+
+.export-diagnostic-warning span {
+	color: var(--muted);
+}
+
+.export-diagnostics > p {
+	margin: 9px 0 0;
+	font-size: 10px;
+}
+
 .shortcut-panel-overlay {
 	position: fixed;
 	inset: 68px 0 0;

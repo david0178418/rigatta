@@ -25,6 +25,7 @@ import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transfor
 import type { OperationResult } from '../domain/operations.ts';
 import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
 import { createAutosaveScheduler } from '../persistence/autosave.ts';
+import { estimateStorage, type StorageReport } from '../persistence/storage.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { ReadyStartup, StartupState } from './startup.ts';
 import { loadEditorStartup } from './startup.ts';
@@ -39,6 +40,7 @@ import { createTransformGesture, isTransformHandleHit, transformGestureCommands,
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
+import { createExportDiagnostics, formatByteCount } from '../export/diagnostics.ts';
 import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
 
 type EditorMode = 'setup' | 'animate';
@@ -1071,6 +1073,8 @@ const AnimateTimeline = function AnimateTimeline({
 type ExportControlsProps = Readonly<{
 	project: Project;
 	selection: ExportClipSelection;
+	storageReport?: StorageReport;
+	requiredStorageBytes: number;
 	onChange: (selection: ExportClipSelection) => void;
 	onClose: () => void;
 }>;
@@ -1078,11 +1082,17 @@ type ExportControlsProps = Readonly<{
 const ExportControls = function ExportControls({
 	project,
 	selection,
+	storageReport,
+	requiredStorageBytes,
 	onChange,
 	onClose
 }: ExportControlsProps): ReactElement {
 	const selectedClipIds = normalizeExportClipIds(project, selection.clipIds);
 	const allClipsSelected = project.clips.length > 0 && selectedClipIds.length === project.clips.length;
+	const preflight = createExportDiagnostics(project, { ...selection, clipIds: selectedClipIds }, {
+		storageReport,
+		requiredStorageBytes
+	});
 
 	return (
 		<div className="export-panel-overlay">
@@ -1140,10 +1150,27 @@ const ExportControls = function ExportControls({
 						</label>
 					))}
 				</div>
-				<p className="muted-copy export-selection-count" aria-live="polite">
-					{selectedClipIds.length} of {project.clips.length} clips selected{allClipsSelected ? ' · all clips' : ''}.
-				</p>
-				<p className="muted-copy export-status">Rendering and download controls will appear after the export pipeline is connected.</p>
+					<p className="muted-copy export-selection-count" aria-live="polite">
+						{selectedClipIds.length} of {project.clips.length} clips selected{allClipsSelected ? ' · all clips' : ''}.
+					</p>
+					<section className="export-diagnostics" aria-label="Export diagnostics">
+						<div className="export-diagnostics-heading">
+							<span className="field-label">Preflight</span>
+							<strong>{preflight.diagnostics.length === 0 ? 'Ready' : `${preflight.diagnostics.length} issue${preflight.diagnostics.length === 1 ? '' : 's'}`}</strong>
+						</div>
+						{preflight.diagnostics.length > 0 && (
+							<ul>
+								{preflight.diagnostics.map((item, index) => (
+									<li className={`export-diagnostic-${item.severity}`} key={`${item.code}:${item.path}:${index}`}>
+										<code>{item.code}</code>
+										<span>{item.message}</span>
+									</li>
+								))}
+							</ul>
+						)}
+						<p className="muted-copy">Estimated peak memory: {formatByteCount(preflight.memory.totalBytes)}.</p>
+					</section>
+					<p className="muted-copy export-status">Rendering and download controls will appear after the export pipeline is connected.</p>
 			</section>
 		</div>
 	);
@@ -1253,6 +1280,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [exportPanelOpen, setExportPanelOpen] = useState(false);
 	const [exportSelection, setExportSelection] = useState<ExportClipSelection>({ mode: 'combined', clipIds: [] });
 	const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
+	const [storageReport, setStorageReport] = useState<StorageReport | undefined>(undefined);
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
@@ -1263,6 +1291,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const project = currentProject(history);
 	const projectDiagnostics = validateProject(project);
 	const canvasWarnings = canvasWarningsForSetup(project);
+	const requiredStorageBytes = Array.from(assetBlobs.values()).reduce((total, blob) => total + blob.size, 0);
 	const activeClip = project.clips.find((clip) => clip.id === activeClipId) ?? project.clips[0];
 	const activePlayback = activeClip && playback?.clipId === activeClip.id
 		? playback.state
@@ -1283,6 +1312,22 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			autosave.cancel();
 		};
 	}, [autosave]);
+
+	useEffect(() => {
+		const lifecycle = { cancelled: false };
+
+		void estimateStorage().then((result) => {
+			if (lifecycle.cancelled || !result.ok) {
+				return;
+			}
+
+			setStorageReport(result.value);
+		});
+
+		return function cleanup(): void {
+			lifecycle.cancelled = true;
+		};
+	}, []);
 
 	useEffect(() => {
 		const clip = activeClip;
@@ -2312,10 +2357,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				</div>
 			</header>
 			{exportPanelOpen && (
-				<ExportControls
-					project={project}
-					selection={exportSelection}
-					onChange={setExportSelection}
+					<ExportControls
+						project={project}
+						selection={exportSelection}
+						storageReport={storageReport}
+						requiredStorageBytes={requiredStorageBytes}
+						onChange={setExportSelection}
 					onClose={() => setExportPanelOpen(false)}
 				/>
 			)}
