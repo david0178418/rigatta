@@ -4,20 +4,24 @@ import {
 	addAttachmentKey,
 	addBooleanKey,
 	addDrawOrderKey,
+	addEvent,
 	addNumberKey,
 	createClip,
 	createTrack,
 	deleteClip,
+	deleteEvent,
 	deleteKey,
 	deleteTrack,
 	copyKey,
 	duplicateClip,
 	moveKey,
+	moveEvent,
 	retimeKeys,
 	setNumberKeyInterpolation,
 	renameClip,
 	updateAttachmentKey,
 	updateDrawOrderKey,
+	updateEvent,
 	upsertNumberKey,
 	updateClipPlayback
 } from './animation.ts';
@@ -25,6 +29,8 @@ import type {
 	AttachmentKeyInput,
 	BooleanKeyInput,
 	DrawOrderKeyInput,
+	EventKeyInput,
+	EventKeyUpdate,
 	NumberKeyInput,
 	NumberKeyInterpolationInput,
 	KeyTimeChange,
@@ -94,6 +100,10 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'delete-clip'; clipId: EntityId }>
 	| Readonly<{ kind: 'duplicate-clip'; clipId: EntityId; ids: DuplicateClipIds }>
 	| Readonly<{ kind: 'update-clip-playback'; clipId: EntityId; settings: Readonly<Partial<{ durationSeconds: number; fps: number; loop: boolean }>> }>
+	| Readonly<{ kind: 'add-event'; id: EntityId; clipId: EntityId; input: EventKeyInput }>
+	| Readonly<{ kind: 'update-event'; clipId: EntityId; eventId: EntityId; input: EventKeyUpdate }>
+	| Readonly<{ kind: 'move-event'; clipId: EntityId; eventId: EntityId; timeSeconds: number }>
+	| Readonly<{ kind: 'delete-event'; clipId: EntityId; eventId: EntityId }>
 	| Readonly<{ kind: 'create-track'; id: EntityId; clipId: EntityId; definition: TrackDefinition }>
 	| Readonly<{ kind: 'delete-track'; clipId: EntityId; trackId: EntityId }>
 	| Readonly<{ kind: 'add-number-key'; id: EntityId; clipId: EntityId; trackId: EntityId; input: NumberKeyInput }>
@@ -197,6 +207,18 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'update-clip-playback') {
 		return updateClipPlayback(project, command.clipId, command.settings);
+	}
+	if (command.kind === 'add-event') {
+		return addEvent(project, command.clipId, command.input, () => command.id);
+	}
+	if (command.kind === 'update-event') {
+		return updateEvent(project, command.clipId, command.eventId, command.input);
+	}
+	if (command.kind === 'move-event') {
+		return moveEvent(project, command.clipId, command.eventId, command.timeSeconds);
+	}
+	if (command.kind === 'delete-event') {
+		return deleteEvent(project, command.clipId, command.eventId);
 	}
 	if (command.kind === 'create-track') {
 		return createTrack(project, command.clipId, command.definition, () => command.id);

@@ -129,7 +129,7 @@ export const trackLabel = function trackLabel(project: Project, track: Track): s
 	return `${labels[track.kind]}${property}${target}`;
 };
 
-const frameIndexForTime = function frameIndexForTime(clip: Clip, timeSeconds: number): number {
+export const frameIndexForTime = function frameIndexForTime(clip: Clip, timeSeconds: number): number {
 	return clamp(Math.round(timeSeconds * clip.fps), 0, Math.max(0, Math.ceil(clip.durationSeconds * clip.fps) - 1));
 };
 

@@ -148,6 +148,24 @@ test('creates, moves, copies, and deletes typed animation keys', async ({ page }
 	await expect(page.getByRole('button', { name: 'Key frame 4' })).toHaveCount(0);
 });
 
+test('creates and edits timeline events', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Add event', exact: true }).click();
+	await page.getByRole('button', { name: 'Event event at frame 1', exact: true }).click();
+	await page.getByLabel('Event name').fill('impact');
+	await page.getByLabel('Payload JSON').fill('{"damage":4,"tags":["hit"]}');
+	await page.getByRole('button', { name: 'Apply event', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Event impact at frame 1', exact: true })).toBeVisible();
+	await page.getByRole('spinbutton', { name: 'Event frame', exact: true }).fill('3');
+	await page.getByRole('button', { name: 'Move event', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Event impact at frame 3', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Delete event', exact: true }).click();
+	await expect(page.locator('.event-key')).toHaveCount(0);
+});
+
 test('changes interpolation for a selected numeric key', async ({ page }) => {
 	await page.goto('/');
 

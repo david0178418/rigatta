@@ -1,4 +1,5 @@
 import { DEFAULT_LOCAL_TRANSFORM, type LocalTransform } from './coordinates.ts';
+import { isEventPayload, normalizeEventName } from './events.ts';
 import { createEntityId, isEntityId, type EntityId } from './ids.ts';
 import { insertKeyByTime } from './interpolation.ts';
 import type {
@@ -10,6 +11,8 @@ import type {
 	Clip,
 	CubicBezier,
 	DiscreteKey,
+	EventKey,
+	EventPayload,
 	Interpolation,
 	NumberKey,
 	PointEnabledTrack,
@@ -97,6 +100,17 @@ export type DrawOrderKeyInput = Readonly<{
 export type BooleanKeyInput = Readonly<{
 	timeSeconds: number;
 	value: boolean;
+}>;
+
+export type EventKeyInput = Readonly<{
+	timeSeconds: number;
+	name: string;
+	payload: EventPayload;
+}>;
+
+export type EventKeyUpdate = Readonly<{
+	name?: string;
+	payload?: EventPayload;
 }>;
 
 export type KeyTimeChange = Readonly<{
@@ -224,6 +238,10 @@ const updateTrack = function updateTrack(
 		...currentClip,
 		tracks: currentClip.tracks.map((track) => track.id === trackId ? update(track) : track)
 	}));
+};
+
+const sortedEvents = function sortedEvents(events: readonly EventKey[]): readonly EventKey[] {
+	return [...events].sort((left, right) => left.timeSeconds - right.timeSeconds);
 };
 
 const isTargetDefinition = function isTargetDefinition(
@@ -422,6 +440,119 @@ export const renameClip = function renameClip(
 	}
 
 	return updateClip(project, clipId, (clip) => ({ ...clip, name: normalized }));
+};
+
+export const addEvent = function addEvent(
+	project: Project,
+	clipId: EntityId,
+	input: EventKeyInput,
+	idFactory: () => EntityId = createEntityId
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const name = normalizeEventName(input.name);
+
+	if (!clip) {
+		return failure('not-found', 'Animation clip does not exist.');
+	}
+	if (!name) {
+		return failure('invalid-name', 'Event names must be non-empty and no longer than 64 characters.');
+	}
+	if (!isValidKeyTime(clip, input.timeSeconds)) {
+		return failure('invalid-value', 'Event time must be inside the clip duration.');
+	}
+	if (!isEventPayload(input.payload)) {
+		return failure('invalid-value', 'Event payloads must contain only bounded JSON values.');
+	}
+
+	const id = allocateId(project, idFactory);
+
+	if (!id.ok) {
+		return id;
+	}
+
+	const event: EventKey = {
+		id: id.value,
+		timeSeconds: input.timeSeconds,
+		name,
+		payload: input.payload
+	};
+
+	return updateClip(project, clipId, (currentClip) => ({
+		...currentClip,
+		events: sortedEvents([...currentClip.events, event])
+	}));
+};
+
+export const updateEvent = function updateEvent(
+	project: Project,
+	clipId: EntityId,
+	eventId: EntityId,
+	input: EventKeyUpdate
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const event = clip?.events.find((candidate) => candidate.id === eventId);
+
+	if (!clip || !event) {
+		return failure('not-found', 'Animation event does not exist.');
+	}
+
+	const name = normalizeEventName(input.name ?? event.name);
+	const payload = input.payload ?? event.payload;
+
+	if (!name) {
+		return failure('invalid-name', 'Event names must be non-empty and no longer than 64 characters.');
+	}
+	if (!isEventPayload(payload)) {
+		return failure('invalid-value', 'Event payloads must contain only bounded JSON values.');
+	}
+
+	return updateClip(project, clipId, (currentClip) => ({
+		...currentClip,
+		events: sortedEvents(currentClip.events.map((candidate) => candidate.id === eventId
+			? { ...candidate, name, payload }
+			: candidate))
+	}));
+};
+
+export const moveEvent = function moveEvent(
+	project: Project,
+	clipId: EntityId,
+	eventId: EntityId,
+	timeSeconds: number
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const event = clip?.events.find((candidate) => candidate.id === eventId);
+
+	if (!clip || !event) {
+		return failure('not-found', 'Animation event does not exist.');
+	}
+	if (!isValidKeyTime(clip, timeSeconds)) {
+		return failure('invalid-value', 'Event time must be inside the clip duration.');
+	}
+
+	return updateClip(project, clipId, (currentClip) => ({
+		...currentClip,
+		events: sortedEvents(currentClip.events.map((candidate) => candidate.id === eventId
+			? { ...candidate, timeSeconds }
+			: candidate))
+	}));
+};
+
+export const deleteEvent = function deleteEvent(
+	project: Project,
+	clipId: EntityId,
+	eventId: EntityId
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+
+	if (!clip || !clip.events.some((event) => event.id === eventId)) {
+		return failure('not-found', 'Animation event does not exist.');
+	}
+
+	return updateClip(project, clipId, (currentClip) => ({
+		...currentClip,
+		events: currentClip.events.filter((event) => event.id !== eventId)
+	}));
 };
 
 export const deleteClip = function deleteClip(

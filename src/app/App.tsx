@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import { DEFAULT_LOCAL_TRANSFORM, degreesToRadians, radiansToDegrees, type LocalTransform } from '../domain/coordinates.ts';
+import { isEventPayload } from '../domain/events.ts';
 import { createEntityId, parseEntityId, type EntityId } from '../domain/ids.ts';
 import {
 	canRedo,
@@ -16,7 +17,7 @@ import {
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { BoneTransformProperty, Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
-import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
+import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, EventKeyInput, EventKeyUpdate, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
@@ -31,7 +32,7 @@ import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hiera
 import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
-import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
+import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, frameIndexForTime, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
@@ -440,6 +441,10 @@ type AnimateTimelineProps = Readonly<{
 	onDuplicateClip: () => void;
 	onRenameClip: (name: string) => void;
 	onDeleteClip: () => void;
+	onAddEvent: (input: EventKeyInput) => EntityId | undefined;
+	onUpdateEvent: (eventId: EntityId, input: EventKeyUpdate) => void;
+	onMoveEvent: (eventId: EntityId, timeSeconds: number) => void;
+	onDeleteEvent: (eventId: EntityId) => void;
 	onUpdatePlayback: (settings: ClipPlaybackSettings) => void;
 	onTogglePlayback: () => void;
 	onStepPlayback: (direction: PlaybackDirection) => void;
@@ -469,6 +474,10 @@ const AnimateTimeline = function AnimateTimeline({
 	onDuplicateClip,
 	onRenameClip,
 	onDeleteClip,
+	onAddEvent,
+	onUpdateEvent,
+	onMoveEvent,
+	onDeleteEvent,
 	onUpdatePlayback,
 	onTogglePlayback,
 	onStepPlayback,
@@ -491,6 +500,8 @@ const AnimateTimeline = function AnimateTimeline({
 	const [selectedTrackId, setSelectedTrackId] = useState<EntityId | undefined>(undefined);
 	const [selectedKeys, setSelectedKeys] = useState<readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[]>([]);
 	const [trackDefinitionValue, setTrackDefinitionValue] = useState('');
+	const [selectedEventId, setSelectedEventId] = useState<EntityId | undefined>(undefined);
+	const [eventError, setEventError] = useState<string | undefined>(undefined);
 	const submitClipName = function submitClipName(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 		const name = new FormData(event.currentTarget).get('name');
@@ -498,6 +509,79 @@ const AnimateTimeline = function AnimateTimeline({
 		if (typeof name === 'string') {
 			onRenameClip(name);
 		}
+	};
+	const addTimelineEvent = function addTimelineEvent(): void {
+		if (!activeClip) {
+			return;
+		}
+
+		const id = onAddEvent({
+			timeSeconds: playback.frameIndex / activeClip.fps,
+			name: 'event',
+			payload: {}
+		});
+
+		if (id) {
+			setSelectedEventId(id);
+			setEventError(undefined);
+		}
+	};
+	const submitEventDetails = function submitEventDetails(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+
+		if (!selectedEvent) {
+			return;
+		}
+
+		const data = new FormData(event.currentTarget);
+		const name = data.get('eventName');
+		const payloadText = data.get('eventPayload');
+
+		if (typeof name !== 'string' || typeof payloadText !== 'string') {
+			return;
+		}
+
+		let payload: unknown;
+
+		try {
+			payload = JSON.parse(payloadText);
+		} catch {
+			setEventError('Event payload must be valid JSON.');
+			return;
+		}
+		if (!isEventPayload(payload)) {
+			setEventError('Event payload must be a bounded JSON object.');
+			return;
+		}
+
+		onUpdateEvent(selectedEvent.id, { name, payload });
+		setEventError(undefined);
+	};
+	const submitEventMove = function submitEventMove(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+
+		if (!activeClip || !selectedEvent) {
+			return;
+		}
+
+		const frame = formNumber(new FormData(event.currentTarget), 'eventFrame');
+
+		if (frame === undefined || frame < 1 || frame > frameCount || !Number.isInteger(frame)) {
+			setEventError(`Event frame must be an integer between 1 and ${frameCount}.`);
+			return;
+		}
+
+		onMoveEvent(selectedEvent.id, (frame - 1) / activeClip.fps);
+		setEventError(undefined);
+	};
+	const deleteTimelineEvent = function deleteTimelineEvent(): void {
+		if (!selectedEvent) {
+			return;
+		}
+
+		onDeleteEvent(selectedEvent.id);
+		setSelectedEventId(undefined);
+		setEventError(undefined);
 	};
 	const submitPlayback = function submitPlayback(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
@@ -540,6 +624,7 @@ const AnimateTimeline = function AnimateTimeline({
 	const selectedDrawOrderKey = selectedKeyMarker && selectedRow?.track.kind === 'slot-draw-order'
 		? selectedRow.track.keys.find((key) => key.id === selectedKeyMarker.keyId)
 		: undefined;
+	const selectedEvent = activeClip?.events.find((event) => event.id === selectedEventId);
 	const submitCreateTrack = function submitCreateTrack(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 
@@ -751,6 +836,10 @@ const AnimateTimeline = function AnimateTimeline({
 								</label>
 								<button className="secondary-button" type="submit" disabled={!selectedTrackOption}>Add track</button>
 							</form>
+							<div className="event-toolbar">
+								<span className="muted-copy">{activeClip.events.length} event{activeClip.events.length === 1 ? '' : 's'}</span>
+								<button className="secondary-button" type="button" onClick={addTimelineEvent}>Add event</button>
+							</div>
 							{selectedTrack && (
 								<div className="track-edit-toolbar">
 									<span className="muted-copy">Selected: {selectedRow?.label}</span>
@@ -808,8 +897,52 @@ const AnimateTimeline = function AnimateTimeline({
 										</div>
 									</div>
 								))}
-							</div>
-							{selectedKeyMarkers.length > 1 && (
+																						</div>
+																				<div className="event-track" aria-label="Animation events">
+																					<div className="track-row-label"><span>Events</span><small>event</small></div>
+																					<div className="track-key-lane">
+																						{activeClip.events
+																							.filter((event) => {
+																								const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
+
+																								return frameIndex >= timelineRange.startFrame && frameIndex <= timelineRange.endFrame;
+																							})
+																							.map((event) => {
+																								const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
+
+																								return (
+																									<button
+																									aria-label={`Event ${event.name} at frame ${frameIndex + 1}`}
+																									className={selectedEventId === event.id ? 'event-key is-selected' : 'event-key'}
+																									key={event.id}
+																									onClick={() => { setSelectedEventId(event.id); setEventError(undefined); }}
+																									type="button"
+																									style={{ left: `${((frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
+																									title={`${event.name} · frame ${frameIndex + 1}`}
+																								/>
+																								);
+																					})}
+																					</div>
+																				</div>
+																				{selectedEvent && (
+																					<>
+																							<form className="event-editor" key={`${selectedEvent.id}:${selectedEvent.name}:${JSON.stringify(selectedEvent.payload)}`} onSubmit={submitEventDetails}>
+																							<div className="event-editor-heading">
+																								<span className="muted-copy">Selected event</span>
+																								<button className="danger-button" type="button" onClick={deleteTimelineEvent}>Delete event</button>
+																							</div>
+																							<label><span className="field-label">Event name</span><input name="eventName" defaultValue={selectedEvent.name} /></label>
+																							<label><span className="field-label">Payload JSON</span><textarea name="eventPayload" rows={4} defaultValue={JSON.stringify(selectedEvent.payload, null, 2)} /></label>
+																							<button className="secondary-button" type="submit">Apply event</button>
+																						</form>
+																						<form className="event-editor event-move-form" onSubmit={submitEventMove}>
+																							<label><span className="field-label">Event frame</span><input name="eventFrame" type="number" min="1" max={frameCount} step="1" defaultValue={frameIndexForTime(activeClip, selectedEvent.timeSeconds) + 1} /></label>
+																							<button className="secondary-button" type="submit">Move event</button>
+																						</form>
+																							{eventError && <p className="form-error" role="alert">{eventError}</p>}
+																						</>
+																				)}
+																				{selectedKeyMarkers.length > 1 && (
 								<form className="key-editor" onSubmit={submitRetimeKeys}>
 									<span className="muted-copy">{selectedKeyMarkers.length} keys selected</span>
 									<label><span className="field-label">Offset frames</span><input name="offsetFrames" type="number" step="1" defaultValue="0" /></label>
@@ -1065,6 +1198,34 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const updateActiveClipPlayback = function updateActiveClipPlayback(settings: ClipPlaybackSettings): void {
 		if (activeClip) {
 			applyCommand({ kind: 'update-clip-playback', clipId: activeClip.id, settings });
+		}
+	};
+
+	const addAnimationEvent = function addAnimationEvent(input: EventKeyInput): EntityId | undefined {
+		if (!activeClip) {
+			return undefined;
+		}
+
+		const id = createEntityId();
+
+		return applyCommand({ kind: 'add-event', id, clipId: activeClip.id, input }) ? id : undefined;
+	};
+
+	const updateAnimationEvent = function updateAnimationEvent(eventId: EntityId, input: EventKeyUpdate): void {
+		if (activeClip) {
+			applyCommand({ kind: 'update-event', clipId: activeClip.id, eventId, input });
+		}
+	};
+
+	const moveAnimationEvent = function moveAnimationEvent(eventId: EntityId, timeSeconds: number): void {
+		if (activeClip) {
+			applyCommand({ kind: 'move-event', clipId: activeClip.id, eventId, timeSeconds });
+		}
+	};
+
+	const deleteAnimationEvent = function deleteAnimationEvent(eventId: EntityId): void {
+		if (activeClip) {
+			applyCommand({ kind: 'delete-event', clipId: activeClip.id, eventId });
 		}
 	};
 
@@ -2240,6 +2401,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onDuplicateClip={duplicateActiveClip}
 						onRenameClip={renameActiveClip}
 						onDeleteClip={deleteActiveClip}
+						onAddEvent={addAnimationEvent}
+						onUpdateEvent={updateAnimationEvent}
+						onMoveEvent={moveAnimationEvent}
+						onDeleteEvent={deleteAnimationEvent}
 						onUpdatePlayback={updateActiveClipPlayback}
 						onTogglePlayback={toggleActivePlayback}
 						onStepPlayback={stepActivePlayback}

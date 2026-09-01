@@ -106,7 +106,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 ## Phase 6: gameplay metadata
 
 - [x] **P6-01** Define and validate event names and structured payload values.
-- [ ] **P6-02** Build event-track creation, editing, movement, and deletion.
+- [x] **P6-02** Build event-track creation, editing, movement, and deletion.
 - [ ] **P6-03** Implement point attachment editor visualization and selection.
 - [ ] **P6-04** Implement keyable point transform and enabled state.
 - [ ] **P6-05** Implement rectangle attachment editor visualization and handles.

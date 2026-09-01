@@ -14,3 +14,8 @@ The project parser applies structural and semantic validation. Invalid event
 names, times, non-finite numbers, unsupported values, empty payload keys, and
 overly deep or large payload structures are rejected before the project is
 accepted.
+
+The Animate timeline exposes events as a dedicated stepped lane. New events
+are created at the playhead, then selected events can be renamed, edited with
+JSON payload text, moved to another frame, or deleted. Event markers use their
+stable IDs and remain sorted by time after each operation.
