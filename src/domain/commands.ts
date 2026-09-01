@@ -38,7 +38,10 @@ import {
 	reorderBone,
 	reorderSlot,
 	reparentBone,
-	updateBoneSetupTransform
+	updateBoneSetupTransform,
+	updateAttachmentSetupTransform,
+	updateImageAttachmentProperties,
+	updateRectangleAttachmentSize
 } from './operations.ts';
 import type {
 	CreateBoneInput,
@@ -62,6 +65,9 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'reparent-bone-preserving-world'; boneId: EntityId; parentId: EntityId | null }>
 	| Readonly<{ kind: 'reorder-bone'; boneId: EntityId; targetSiblingIndex: number }>
 	| Readonly<{ kind: 'update-bone-transform'; boneId: EntityId; transform: LocalTransform }>
+	| Readonly<{ kind: 'update-attachment-transform'; attachmentId: EntityId; transform: LocalTransform }>
+	| Readonly<{ kind: 'update-image-properties'; attachmentId: EntityId; properties: Readonly<Partial<{ opacity: number; pivotX: number; pivotY: number }>> }>
+	| Readonly<{ kind: 'update-rectangle-size'; attachmentId: EntityId; width: number; height: number }>
 	| Readonly<{ kind: 'create-slot'; id: EntityId; input: CreateSlotInput }>
 	| Readonly<{ kind: 'rename-slot'; slotId: EntityId; name: string }>
 	| Readonly<{ kind: 'delete-slot'; slotId: EntityId }>
@@ -118,6 +124,15 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'update-bone-transform') {
 		return updateBoneSetupTransform(project, command.boneId, command.transform);
+	}
+	if (command.kind === 'update-attachment-transform') {
+		return updateAttachmentSetupTransform(project, command.attachmentId, command.transform);
+	}
+	if (command.kind === 'update-image-properties') {
+		return updateImageAttachmentProperties(project, command.attachmentId, command.properties);
+	}
+	if (command.kind === 'update-rectangle-size') {
+		return updateRectangleAttachmentSize(project, command.attachmentId, command.width, command.height);
 	}
 	if (command.kind === 'create-slot') {
 		return createSlot(project, command.input, () => command.id);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react';
-import { DEFAULT_LOCAL_TRANSFORM } from '../domain/coordinates.ts';
+import { DEFAULT_LOCAL_TRANSFORM, degreesToRadians, radiansToDegrees, type LocalTransform } from '../domain/coordinates.ts';
 import { createEntityId, type EntityId } from '../domain/ids.ts';
 import {
 	canRedo,
@@ -44,6 +44,66 @@ const blobForImage = function blobForImage(image: ImportedImage): Blob {
 	new Uint8Array(buffer).set(image.bytes);
 
 	return new Blob([buffer], { type: image.mimeType });
+};
+
+const formNumber = function formNumber(data: FormData, name: string): number | undefined {
+	const value = data.get(name);
+
+	if (typeof value !== 'string' || value.trim().length === 0) {
+		return undefined;
+	}
+
+	const number = Number(value);
+
+	return Number.isFinite(number) ? number : undefined;
+};
+
+const transformFromForm = function transformFromForm(
+	data: FormData,
+	current: LocalTransform
+): LocalTransform | undefined {
+	const x = formNumber(data, 'x');
+	const y = formNumber(data, 'y');
+	const rotation = formNumber(data, 'rotation');
+	const scaleX = formNumber(data, 'scaleX');
+	const scaleY = formNumber(data, 'scaleY');
+	const shearX = formNumber(data, 'shearX');
+	const shearY = formNumber(data, 'shearY');
+
+	if ([x, y, rotation, scaleX, scaleY, shearX, shearY].some((value) => value === undefined)) {
+		return undefined;
+	}
+
+	return {
+		x: x ?? current.x,
+		y: y ?? current.y,
+		rotation: degreesToRadians(rotation ?? radiansToDegrees(current.rotation)),
+		scaleX: scaleX ?? current.scaleX,
+		scaleY: scaleY ?? current.scaleY,
+		shearX: degreesToRadians(shearX ?? radiansToDegrees(current.shearX)),
+		shearY: degreesToRadians(shearY ?? radiansToDegrees(current.shearY))
+	};
+};
+
+const imagePropertiesFromForm = function imagePropertiesFromForm(
+	data: FormData
+): Readonly<{ opacity: number; pivotX: number; pivotY: number }> | undefined {
+	const opacity = formNumber(data, 'opacity');
+	const pivotX = formNumber(data, 'pivotX');
+	const pivotY = formNumber(data, 'pivotY');
+
+	return opacity === undefined || pivotX === undefined || pivotY === undefined
+		? undefined
+		: { opacity, pivotX, pivotY };
+};
+
+const rectangleSizeFromForm = function rectangleSizeFromForm(
+	data: FormData
+): Readonly<{ width: number; height: number }> | undefined {
+	const width = formNumber(data, 'width');
+	const height = formNumber(data, 'height');
+
+	return width === undefined || height === undefined ? undefined : { width, height };
 };
 
 const blobsForProject = function blobsForProject(
@@ -352,6 +412,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const selectedBone = selectedEntity?.kind === 'bone'
 		? project.bones.find((bone) => bone.id === selectedEntity.id)
 		: undefined;
+	const selectedAttachment = selectedEntity?.kind === 'attachment'
+		? project.attachments.find((attachment) => attachment.id === selectedEntity.id)
+		: undefined;
+	const selectedTransform = selectedBone?.transform ?? selectedAttachment?.transform;
 	const renameInputRef = useRef<HTMLInputElement>(null);
 
 	const addChildBone = function addChildBone(): void {
@@ -472,6 +536,57 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		if (input) {
 			renameSelected(input.value);
 		}
+	};
+
+	const submitTransform = function submitTransform(event: FormEvent<HTMLFormElement>): void {
+		event.preventDefault();
+		const entity = selectedEntity;
+		const currentTransform = selectedBone?.transform ?? selectedAttachment?.transform;
+
+		if (!entity || entity.kind === 'asset' || entity.kind === 'slot' || !currentTransform) {
+			return;
+		}
+
+		const data = new FormData(event.currentTarget);
+		const transform = transformFromForm(data, currentTransform);
+
+		if (!transform) {
+			setCommandError('Transform fields must contain finite numbers.');
+			return;
+		}
+
+		const transformCommand: ProjectCommand = entity.kind === 'bone'
+			? { kind: 'update-bone-transform', boneId: entity.id, transform }
+			: { kind: 'update-attachment-transform', attachmentId: entity.id, transform };
+		const imageProperties = selectedAttachment?.kind === 'image'
+			? imagePropertiesFromForm(data)
+			: undefined;
+		const rectangleSize = selectedAttachment?.kind === 'rectangle'
+			? rectangleSizeFromForm(data)
+			: undefined;
+
+		if (selectedAttachment?.kind === 'image' && !imageProperties) {
+			setCommandError('Opacity and pivot fields must contain finite numbers.');
+			return;
+		}
+		if (selectedAttachment?.kind === 'rectangle' && !rectangleSize) {
+			setCommandError('Rectangle dimensions must contain finite numbers.');
+			return;
+		}
+
+		const imageCommand: ProjectCommand | undefined = imageProperties
+			? { kind: 'update-image-properties', attachmentId: entity.id, properties: imageProperties }
+			: undefined;
+		const rectangleCommand: ProjectCommand | undefined = rectangleSize
+			? { kind: 'update-rectangle-size', attachmentId: entity.id, ...rectangleSize }
+			: undefined;
+		const commands: readonly ProjectCommand[] = [
+			transformCommand,
+			...(imageCommand ? [imageCommand] : []),
+			...(rectangleCommand ? [rectangleCommand] : [])
+		];
+
+		applyCommandSequence(commands);
 	};
 	const statusMessage = commandError ?? persistenceError ?? assetError;
 
@@ -667,6 +782,37 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 												<button className="danger-button" type="button" onClick={deleteSelected}>Delete</button>
 											</div>
 										</form>
+										{selectedTransform && (
+											<form
+												className="inspector-form transform-form"
+												key={`${selectedEntity.kind}:${selectedEntity.id}:${selectedTransform.x}:${selectedTransform.y}:${selectedTransform.rotation}:${selectedTransform.scaleX}:${selectedTransform.scaleY}:${selectedTransform.shearX}:${selectedTransform.shearY}`}
+												onSubmit={submitTransform}
+											>
+												<div className="transform-grid">
+													<label><span className="field-label">X</span><input name="x" type="number" step="any" defaultValue={selectedTransform.x} /></label>
+													<label><span className="field-label">Y</span><input name="y" type="number" step="any" defaultValue={selectedTransform.y} /></label>
+													<label><span className="field-label">Rotation (deg)</span><input name="rotation" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.rotation)} /></label>
+													<label><span className="field-label">Scale X</span><input name="scaleX" type="number" step="any" defaultValue={selectedTransform.scaleX} /></label>
+													<label><span className="field-label">Scale Y</span><input name="scaleY" type="number" step="any" defaultValue={selectedTransform.scaleY} /></label>
+													<label><span className="field-label">Shear X (deg)</span><input name="shearX" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearX)} /></label>
+													<label><span className="field-label">Shear Y (deg)</span><input name="shearY" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearY)} /></label>
+												</div>
+												{selectedAttachment?.kind === 'image' && (
+													<div className="transform-grid compact-grid">
+														<label><span className="field-label">Opacity</span><input name="opacity" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.opacity} /></label>
+														<label><span className="field-label">Pivot X</span><input name="pivotX" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotX} /></label>
+														<label><span className="field-label">Pivot Y</span><input name="pivotY" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotY} /></label>
+													</div>
+												)}
+												{selectedAttachment?.kind === 'rectangle' && (
+													<div className="transform-grid compact-grid">
+														<label><span className="field-label">Width</span><input name="width" type="number" min="0" step="any" defaultValue={selectedAttachment.width} /></label>
+														<label><span className="field-label">Height</span><input name="height" type="number" min="0" step="any" defaultValue={selectedAttachment.height} /></label>
+													</div>
+												)}
+												<button className="secondary-button" type="submit">Apply values</button>
+											</form>
+										)}
 										{selectedBone && (
 											<div className="inspector-actions inspector-create-actions">
 												<button className="secondary-button" type="button" onClick={addChildBone}>Add child bone</button>

@@ -117,6 +117,10 @@ test('builds and edits a hierarchy through the inspector', async ({ page }) => {
 	await page.getByRole('button', { name: 'root', exact: true }).click();
 	await page.getByRole('button', { name: 'Add child bone' }).click();
 	await expect(page.getByRole('button', { name: 'bone', exact: true })).toBeVisible();
+	await page.getByRole('spinbutton', { name: 'X', exact: true }).fill('24');
+	await page.getByLabel('Rotation (deg)', { exact: true }).fill('15');
+	await page.getByRole('button', { name: 'Apply values' }).click();
+	await expect(page.getByRole('spinbutton', { name: 'X', exact: true })).toHaveValue('24');
 
 	await page.getByLabel('Selected name').fill('arm');
 	await page.getByRole('button', { name: 'Rename' }).click();

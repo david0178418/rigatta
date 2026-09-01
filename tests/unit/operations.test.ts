@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { DEFAULT_LOCAL_TRANSFORM } from '../../src/domain/coordinates.ts';
 import {
 	createBone,
 	createImageAsset,
@@ -16,7 +17,10 @@ import {
 	renameSlot,
 	reorderBone,
 	reorderSlot,
-	reparentBone
+	reparentBone,
+	updateAttachmentSetupTransform,
+	updateImageAttachmentProperties,
+	updateRectangleAttachmentSize
 } from '../../src/domain/operations.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
 import { createEmptyProject } from '../../src/domain/model.ts';
@@ -116,6 +120,21 @@ describe('immutable project operations', () => {
 			ok: false,
 			error: { code: 'invalid-reference' }
 		});
+		const updatedImage = updateAttachmentSetupTransform(imageWithAsset.value, fixtureIds.image, {
+			...DEFAULT_LOCAL_TRANSFORM,
+			x: 12,
+			y: 8
+		});
+		expect(updatedImage.ok).toBe(true);
+		if (updatedImage.ok) {
+			const properties = updateImageAttachmentProperties(updatedImage.value, fixtureIds.image, {
+				opacity: 0.5,
+				pivotX: 0.25,
+				pivotY: 0.75
+			});
+
+			expect(properties.ok).toBe(true);
+		}
 
 		const point = createPointAttachment(imageWithAsset.value, {
 			name: 'muzzle',
@@ -130,6 +149,9 @@ describe('immutable project operations', () => {
 
 		expect(point.ok).toBe(true);
 		expect(rectangle.ok).toBe(true);
+		if (rectangle.ok) {
+			expect(updateRectangleAttachmentSize(rectangle.value, fixtureIds.rectangle, 40, 50)).toMatchObject({ ok: true });
+		}
 	});
 
 	test('renames entities immutably and trims labels', () => {

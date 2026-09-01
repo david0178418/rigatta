@@ -764,3 +764,75 @@ export const updateBoneSetupTransform = function updateBoneSetupTransform(
 		bones: project.bones.map((bone) => bone.id === boneId ? { ...bone, transform } : bone)
 	});
 };
+
+export const updateAttachmentSetupTransform = function updateAttachmentSetupTransform(
+	project: Project,
+	attachmentId: EntityId,
+	transform: LocalTransform
+): OperationResult<Project> {
+	if (!findAttachment(project, attachmentId)) {
+		return failure('not-found', 'Attachment does not exist.');
+	}
+	if (!isFiniteLocalTransform(transform)) {
+		return failure('invalid-value', 'Attachment transforms must contain finite numbers.');
+	}
+
+	return success({
+		...project,
+		attachments: project.attachments.map((attachment) => attachment.id === attachmentId
+			? { ...attachment, transform }
+			: attachment)
+	});
+};
+
+export const updateImageAttachmentProperties = function updateImageAttachmentProperties(
+	project: Project,
+	attachmentId: EntityId,
+	properties: Readonly<Partial<Pick<ImageAttachment, 'opacity' | 'pivotX' | 'pivotY'>>>
+): OperationResult<Project> {
+	const attachment = findAttachment(project, attachmentId);
+
+	if (!attachment) {
+		return failure('not-found', 'Attachment does not exist.');
+	}
+	if (attachment.kind !== 'image') {
+		return failure('invalid-value', 'Only image attachments have opacity and pivots.');
+	}
+
+	const next = { ...attachment, ...properties };
+
+	if (!isUnitInterval(next.opacity) || !isUnitInterval(next.pivotX) || !isUnitInterval(next.pivotY)) {
+		return failure('invalid-value', 'Image opacity and pivots must be within [0, 1].');
+	}
+
+	return success({
+		...project,
+		attachments: project.attachments.map((candidate) => candidate.id === attachmentId ? next : candidate)
+	});
+};
+
+export const updateRectangleAttachmentSize = function updateRectangleAttachmentSize(
+	project: Project,
+	attachmentId: EntityId,
+	width: number,
+	height: number
+): OperationResult<Project> {
+	const attachment = findAttachment(project, attachmentId);
+
+	if (!attachment) {
+		return failure('not-found', 'Attachment does not exist.');
+	}
+	if (attachment.kind !== 'rectangle') {
+		return failure('invalid-value', 'Only rectangle attachments have editable dimensions.');
+	}
+	if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
+		return failure('invalid-value', 'Rectangle dimensions must be positive finite numbers.');
+	}
+
+	return success({
+		...project,
+		attachments: project.attachments.map((candidate) => candidate.id === attachmentId
+			? { ...candidate, width, height }
+			: candidate)
+	});
+};
