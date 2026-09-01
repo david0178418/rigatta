@@ -1,9 +1,9 @@
 export type EntityId = string;
 
-const entityIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export const ENTITY_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export const isEntityId = function isEntityId(value: unknown): value is EntityId {
-	return typeof value === 'string' && entityIdPattern.test(value);
+	return typeof value === 'string' && ENTITY_ID_PATTERN.test(value);
 };
 
 const randomUuid = function randomUuid(): string {
