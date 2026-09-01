@@ -1383,3 +1383,88 @@ h2 {
 	white-space: nowrap;
 	border: 0;
 }
+
+.export-panel-overlay {
+	position: fixed;
+	inset: 68px 0 0;
+	z-index: 10;
+	display: flex;
+	justify-content: flex-end;
+	padding: 18px 22px;
+	background: rgba(5, 8, 12, 0.48);
+}
+
+.export-panel {
+	width: min(360px, calc(100vw - 44px));
+	height: fit-content;
+	max-height: calc(100vh - 104px);
+	overflow: auto;
+	padding: 18px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--surface-raised);
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
+}
+
+.export-description,
+.export-status {
+	font-size: 11px;
+	line-height: 1.5;
+}
+
+.export-mode-fieldset {
+	display: grid;
+	gap: 8px;
+	margin: 18px 0;
+	padding: 12px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+}
+
+.export-mode-fieldset legend {
+	padding: 0 4px;
+	color: var(--muted);
+	font-size: 10px;
+	text-transform: uppercase;
+}
+
+.export-mode-fieldset label,
+.export-clip-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--text);
+	font-size: 12px;
+}
+
+.export-mode-fieldset input,
+.export-clip-option input {
+	margin: 0;
+	accent-color: var(--accent);
+}
+
+.export-clip-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.export-clip-list {
+	display: grid;
+	gap: 8px;
+	margin-top: 8px;
+	padding: 10px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--canvas);
+}
+
+.export-selection-count {
+	margin: 9px 0 0;
+	font-size: 10px;
+}
+
+.export-status {
+	margin: 16px 0 0;
+}

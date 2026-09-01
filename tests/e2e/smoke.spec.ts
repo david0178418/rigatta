@@ -91,6 +91,30 @@ test('creates, duplicates, renames, and configures animation clips', async ({ pa
 	await expect(page.getByLabel('Loop')).not.toBeChecked();
 });
 
+test('selects clips and output grouping for export', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: '+ Clip', exact: true }).click();
+	await page.getByRole('button', { name: 'Export', exact: true }).click();
+
+	await expect(page.getByRole('region', { name: 'Export controls' })).toBeVisible();
+	await expect(page.getByRole('radio', { name: 'Combined output' })).toBeChecked();
+	await expect(page.getByRole('checkbox', { name: 'Export clip clip 1' })).toBeChecked();
+	await expect(page.getByRole('checkbox', { name: 'Export clip clip 2' })).toBeChecked();
+	await page.getByRole('checkbox', { name: 'Export clip clip 1' }).uncheck();
+	await expect(page.getByText('1 of 2 clips selected.', { exact: true })).toBeVisible();
+	await page.getByRole('radio', { name: 'One output per clip' }).check();
+	await expect(page.getByRole('radio', { name: 'One output per clip' })).toBeChecked();
+	await page.getByRole('button', { name: 'Clear', exact: true }).click();
+	await expect(page.getByText('0 of 2 clips selected.', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Select all', exact: true }).click();
+	await expect(page.getByText('2 of 2 clips selected · all clips.', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Close export controls' }).click();
+	await expect(page.getByRole('region', { name: 'Export controls' })).toHaveCount(0);
+});
+
 test('plays, pauses, and steps the active animation clip by frame', async ({ page }) => {
 	await page.goto('/');
 

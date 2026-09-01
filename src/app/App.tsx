@@ -36,6 +36,7 @@ import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewpo
 import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
+import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -1064,6 +1065,87 @@ const AnimateTimeline = function AnimateTimeline({
 	);
 };
 
+type ExportControlsProps = Readonly<{
+	project: Project;
+	selection: ExportClipSelection;
+	onChange: (selection: ExportClipSelection) => void;
+	onClose: () => void;
+}>;
+
+const ExportControls = function ExportControls({
+	project,
+	selection,
+	onChange,
+	onClose
+}: ExportControlsProps): ReactElement {
+	const selectedClipIds = normalizeExportClipIds(project, selection.clipIds);
+	const allClipsSelected = project.clips.length > 0 && selectedClipIds.length === project.clips.length;
+
+	return (
+		<div className="export-panel-overlay">
+			<section className="export-panel" aria-label="Export controls">
+				<div className="panel-heading">
+					<div>
+						<p className="eyebrow">Output</p>
+						<h2>Export animation</h2>
+					</div>
+					<button className="quiet-button" type="button" aria-label="Close export controls" onClick={onClose}>Close</button>
+				</div>
+				<p className="muted-copy export-description">Choose the clips and file grouping for the next export.</p>
+				<fieldset className="export-mode-fieldset">
+					<legend>File grouping</legend>
+					<label>
+						<input
+							type="radio"
+							name="export-mode"
+							value="combined"
+							checked={selection.mode === 'combined'}
+							onChange={() => onChange(setExportOutputMode(selection, 'combined'))}
+						/>
+						<span>Combined output</span>
+					</label>
+					<label>
+						<input
+							type="radio"
+							name="export-mode"
+							value="per-clip"
+							checked={selection.mode === 'per-clip'}
+							onChange={() => onChange(setExportOutputMode(selection, 'per-clip'))}
+						/>
+						<span>One output per clip</span>
+					</label>
+				</fieldset>
+				<div className="export-clip-heading">
+					<span className="field-label">Clips</span>
+					<div className="inspector-actions">
+						<button className="quiet-button" type="button" onClick={() => onChange({ ...selection, clipIds: clipIdsForProject(project) })}>Select all</button>
+						<button className="quiet-button" type="button" onClick={() => onChange({ ...selection, clipIds: [] })}>Clear</button>
+					</div>
+				</div>
+				<div className="export-clip-list" aria-label="Export clips">
+					{project.clips.length === 0 ? (
+						<span className="muted-copy">Create a clip before exporting.</span>
+					) : project.clips.map((clip) => (
+						<label className="export-clip-option" key={clip.id}>
+							<input
+								type="checkbox"
+								aria-label={`Export clip ${clip.name}`}
+								checked={selectedClipIds.includes(clip.id)}
+								onChange={() => onChange(toggleExportClip(project, selection, clip.id))}
+							/>
+							<span>{clip.name}</span>
+						</label>
+					))}
+				</div>
+				<p className="muted-copy export-selection-count" aria-live="polite">
+					{selectedClipIds.length} of {project.clips.length} clips selected{allClipsSelected ? ' · all clips' : ''}.
+				</p>
+				<p className="muted-copy export-status">Rendering and download controls will appear after the export pipeline is connected.</p>
+			</section>
+		</div>
+	);
+};
+
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
@@ -1081,6 +1163,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
 	const [slotOrderDropPreview, setSlotOrderDropPreview] = useState<Readonly<{ slotId: EntityId; zone: SlotDropZone }> | undefined>(undefined);
+	const [exportPanelOpen, setExportPanelOpen] = useState(false);
+	const [exportSelection, setExportSelection] = useState<ExportClipSelection>({ mode: 'combined', clipIds: [] });
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
@@ -1097,6 +1181,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	playbackRef.current = playback;
 	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
 	const libraryEntries = buildAssetLibraryEntries(project.assets, assetQuery);
+	const openExportPanel = function openExportPanel(): void {
+		setExportSelection((current) => current.clipIds.length === 0
+			? createExportClipSelection(project, current.mode)
+			: { ...current, clipIds: normalizeExportClipIds(project, current.clipIds) });
+		setExportPanelOpen(true);
+	};
 
 	useEffect(() => {
 		return function cleanup(): void {
@@ -2089,9 +2179,17 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				<div className="toolbar-actions">
 					<button className="quiet-button" type="button" disabled={!canUndo(history)} onClick={() => stepHistory(undo(history))}>Undo</button>
 					<button className="quiet-button" type="button" disabled={!canRedo(history)} onClick={() => stepHistory(redo(history))}>Redo</button>
-					<button className="primary-button" type="button" disabled>Export</button>
+					<button className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel}>Export</button>
 				</div>
 			</header>
+			{exportPanelOpen && (
+				<ExportControls
+					project={project}
+					selection={exportSelection}
+					onChange={setExportSelection}
+					onClose={() => setExportPanelOpen(false)}
+				/>
+			)}
 
 			<main className="workspace" data-mode={mode}>
 				<aside className="panel library-panel" aria-label="Image library" onDragOver={dragOverLibrary} onDrop={dropOnLibrary}>
