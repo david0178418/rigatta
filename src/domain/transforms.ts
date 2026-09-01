@@ -6,6 +6,7 @@ import {
 	multiplyAffine,
 	transformPoint,
 	type AffineMatrix,
+	type LocalTransform,
 	worldToLocalPoint,
 	type Point
 } from './coordinates.ts';
@@ -29,7 +30,8 @@ const findBone = function findBone(project: Project, boneId: EntityId): Bone | u
 const calculateBoneWorldMatrix = function calculateBoneWorldMatrix(
 	project: Project,
 	boneId: EntityId,
-	ancestors: ReadonlySet<EntityId>
+	ancestors: ReadonlySet<EntityId>,
+	localTransforms: ReadonlyMap<EntityId, LocalTransform>
 ): AffineMatrix | undefined {
 	if (ancestors.has(boneId)) {
 		return undefined;
@@ -41,7 +43,7 @@ const calculateBoneWorldMatrix = function calculateBoneWorldMatrix(
 		return undefined;
 	}
 
-	const localMatrix = localTransformToMatrix(bone.transform);
+	const localMatrix = localTransformToMatrix(localTransforms.get(bone.id) ?? bone.transform);
 
 	if (bone.parentId === null) {
 		return localMatrix;
@@ -50,19 +52,21 @@ const calculateBoneWorldMatrix = function calculateBoneWorldMatrix(
 	const parentWorldMatrix = calculateBoneWorldMatrix(
 		project,
 		bone.parentId,
-		new Set([...ancestors, boneId])
+		new Set([...ancestors, boneId]),
+		localTransforms
 	);
 
 	return parentWorldMatrix ? multiplyAffine(parentWorldMatrix, localMatrix) : undefined;
 };
 
 export const evaluateBoneWorldMatrices = function evaluateBoneWorldMatrices(
-	project: Project
+	project: Project,
+	localTransforms: ReadonlyMap<EntityId, LocalTransform> = new Map()
 ): TransformEvaluation {
 	const diagnostics = validateProject(project);
 	const matrices = new Map(
 		project.bones.flatMap((bone) => {
-			const matrix = calculateBoneWorldMatrix(project, bone.id, new Set());
+			const matrix = calculateBoneWorldMatrix(project, bone.id, new Set(), localTransforms);
 			return matrix ? [[bone.id, matrix] as const] : [];
 		})
 	);

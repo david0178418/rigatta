@@ -37,11 +37,11 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P2-05** Implement local affine transform construction. Depends on P0-01.
 - [x] **P2-06** Implement local-to-world and world-to-local transforms. Depends on P2-05.
 - [x] **P2-07** Implement world-pose-preserving reparenting. Depends on P2-04 and P2-06.
-- [ ] **P2-08** Implement clips, typed property tracks, and keys.
-- [ ] **P2-09** Implement stepped and linear interpolation.
-- [ ] **P2-10** Implement cubic Bezier evaluation and segment metadata.
-- [ ] **P2-11** Implement discrete attachment, visibility, and draw-order tracks.
-- [ ] **P2-12** Implement the pure pose evaluator. Depends on P2-02 and P2-08 through P2-11.
+- [x] **P2-08** Implement clips, typed property tracks, and keys.
+- [x] **P2-09** Implement stepped and linear interpolation.
+- [x] **P2-10** Implement cubic Bezier evaluation and segment metadata.
+- [x] **P2-11** Implement discrete attachment, visibility, and draw-order tracks.
+- [x] **P2-12** Implement the pure pose evaluator. Depends on P2-02 and P2-08 through P2-11.
 - [ ] **P2-13** Implement typed project commands and pure command reduction.
 - [ ] **P2-14** Implement bounded undo/redo history.
 - [ ] **P2-15** Implement continuous-gesture transaction grouping. Depends on P2-14.

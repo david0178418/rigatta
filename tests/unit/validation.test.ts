@@ -9,6 +9,11 @@ const rootId = '123e4567-e89b-42d3-a456-426614174002';
 const slotId = '123e4567-e89b-42d3-a456-426614174003';
 const assetId = '123e4567-e89b-42d3-a456-426614174004';
 const attachmentId = '123e4567-e89b-42d3-a456-426614174005';
+const clipId = '123e4567-e89b-42d3-a456-426614174006';
+const trackId = '123e4567-e89b-42d3-a456-426614174007';
+const duplicateTrackId = '123e4567-e89b-42d3-a456-426614174008';
+const keyId = '123e4567-e89b-42d3-a456-426614174009';
+const secondKeyId = '123e4567-e89b-42d3-a456-42661417400a';
 
 const validProject = function validProject(): Project {
 	return {
@@ -20,14 +25,15 @@ const validProject = function validProject(): Project {
 			mimeType: 'image/png',
 			width: 64,
 			height: 64
-		}],
-		bones: [{
+			}],
+			bones: [{
 			id: rootId,
 			name: 'root',
 			parentId: null,
-			transform: DEFAULT_LOCAL_TRANSFORM
-		}],
-		slots: [{
+				transform: DEFAULT_LOCAL_TRANSFORM
+			}],
+			boneOrder: [rootId],
+			slots: [{
 			id: slotId,
 			name: 'body',
 			boneId: rootId,
@@ -100,5 +106,44 @@ describe('project validation', () => {
 
 		expect(codes).toContain('duplicate-id');
 		expect(codes).toContain('invalid-attachment');
+	});
+
+	test('validates track targets, key order, and duplicate track definitions', () => {
+		const project = validProject();
+		const invalidProject = {
+			...project,
+			clips: [{
+				id: clipId,
+				name: 'walk',
+				durationSeconds: 1,
+				fps: 12,
+				loop: true,
+				tracks: [
+					{
+						id: trackId,
+						kind: 'bone-transform' as const,
+						targetId: '123e4567-e89b-42d3-a456-426614174099',
+						property: 'x' as const,
+						keys: [
+							{ id: keyId, timeSeconds: 0.75, value: 10, interpolation: 'linear' as const, curve: null },
+							{ id: secondKeyId, timeSeconds: 0.25, value: 20, interpolation: 'linear' as const, curve: null }
+						]
+					},
+					{
+						id: duplicateTrackId,
+						kind: 'bone-transform' as const,
+						targetId: '123e4567-e89b-42d3-a456-426614174099',
+						property: 'x' as const,
+						keys: []
+					}
+				],
+				events: []
+			}]
+		};
+		const codes = validateProject(invalidProject).map(({ code }) => code);
+
+		expect(codes).toContain('invalid-track-target');
+		expect(codes).toContain('invalid-key');
+		expect(codes).toContain('duplicate-track');
 	});
 });

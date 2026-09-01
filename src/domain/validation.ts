@@ -3,9 +3,12 @@ import { isEntityId, type EntityId } from './ids.ts';
 import type {
 	Attachment,
 	Bone,
+	Clip,
+	NumberKey,
 	Project,
 	RectangleAttachment,
-	Slot
+	Slot,
+	Track
 } from './model.ts';
 import { isSupportedImageMimeType, PROJECT_SCHEMA_VERSION } from './schema.ts';
 
@@ -22,7 +25,11 @@ export type ValidationCode =
 	| 'invalid-bone-order'
 	| 'invalid-setup-draw-order'
 	| 'invalid-attachment'
-	| 'invalid-asset';
+	| 'invalid-asset'
+	| 'invalid-clip-settings'
+	| 'invalid-key'
+	| 'invalid-track-target'
+	| 'duplicate-track';
 
 export type ValidationDiagnostic = Readonly<{
 	code: ValidationCode;
@@ -239,6 +246,187 @@ const validateReferences = function validateReferences(
 	];
 };
 
+const isValidSlotOrder = function isValidSlotOrder(
+	project: Project,
+	value: readonly EntityId[]
+): boolean {
+	const slotIds = project.slots.map((slot) => slot.id);
+
+	return value.length === slotIds.length
+		&& !hasDuplicateValues(value)
+		&& value.every((slotId) => slotIds.includes(slotId));
+};
+
+const isNumberTrack = function isNumberTrack(
+	track: Track
+): track is Extract<Track, { keys: readonly NumberKey[] }> {
+	return track.kind === 'bone-transform'
+		|| track.kind === 'attachment-transform'
+		|| track.kind === 'attachment-opacity'
+		|| track.kind === 'rectangle-size';
+};
+
+const validateNumberKey = function validateNumberKey(
+	key: NumberKey,
+	clip: Clip,
+	path: string
+): readonly ValidationDiagnostic[] {
+	const timeIsValid = Number.isFinite(key.timeSeconds)
+		&& key.timeSeconds >= 0
+		&& key.timeSeconds <= clip.durationSeconds;
+	const valueIsValid = Number.isFinite(key.value);
+	const curveIsValid = key.interpolation !== 'bezier'
+		? key.curve === null
+		: key.curve !== null
+			&& [key.curve.x1, key.curve.y1, key.curve.x2, key.curve.y2].every(Number.isFinite)
+			&& key.curve.x1 >= 0
+			&& key.curve.x1 <= 1
+			&& key.curve.x2 >= 0
+			&& key.curve.x2 <= 1;
+
+	return timeIsValid && valueIsValid && curveIsValid
+		? []
+		: [diagnostic('invalid-key', path, 'Numeric keys need finite values, valid times, and valid curve metadata.')];
+};
+
+const validateTrackKeys = function validateTrackKeys(
+	clip: Clip,
+	track: Track,
+	clipIndex: number,
+	trackIndex: number
+): readonly ValidationDiagnostic[] {
+	const path = `clips[${clipIndex}].tracks[${trackIndex}]`;
+	const timesAreStrictlyIncreasing = track.keys.every((key, index) => {
+		const previous = track.keys[index - 1];
+		return !previous || previous.timeSeconds < key.timeSeconds;
+	});
+	const orderDiagnostic = timesAreStrictlyIncreasing
+		? []
+		: [diagnostic('invalid-key', `${path}.keys`, 'Track keys must be strictly ordered by time.')];
+	if (isNumberTrack(track)) {
+		return [
+			...orderDiagnostic,
+			...track.keys.flatMap((key, index) => validateNumberKey(key, clip, `${path}.keys[${index}]`))
+		];
+	}
+
+	const discreteKeyDiagnostics = track.keys.flatMap((key, index) => Number.isFinite(key.timeSeconds)
+		&& key.timeSeconds >= 0
+		&& key.timeSeconds <= clip.durationSeconds
+		? []
+		: [diagnostic('invalid-key', `${path}.keys[${index}]`, 'Discrete keys need finite times inside the clip duration.')]);
+
+	return [
+		...orderDiagnostic,
+		...discreteKeyDiagnostics
+	];
+};
+
+const validateTrackTarget = function validateTrackTarget(
+	project: Project,
+	track: Track,
+	path: string
+): readonly ValidationDiagnostic[] {
+	if (track.kind === 'slot-draw-order') {
+		return [];
+	}
+	if (track.kind === 'bone-transform') {
+		return findBone(project, track.targetId)
+			? []
+			: [diagnostic('invalid-track-target', `${path}.targetId`, 'Bone transform track target does not exist.')];
+	}
+	if (track.kind === 'attachment-transform') {
+		return findAttachment(project, track.targetId)
+			? []
+			: [diagnostic('invalid-track-target', `${path}.targetId`, 'Attachment transform track target does not exist.')];
+	}
+	if (track.kind === 'attachment-opacity') {
+		const attachment = findAttachment(project, track.targetId);
+		return attachment?.kind === 'image'
+			? []
+			: [diagnostic('invalid-track-target', `${path}.targetId`, 'Opacity tracks must target image attachments.')];
+	}
+	if (track.kind === 'slot-attachment') {
+		return findSlot(project, track.targetId)
+			? []
+			: [diagnostic('invalid-track-target', `${path}.targetId`, 'Attachment tracks must target slots.')];
+	}
+	if (track.kind === 'point-enabled') {
+		const attachment = findAttachment(project, track.targetId);
+		return attachment?.kind === 'point'
+			? []
+			: [diagnostic('invalid-track-target', `${path}.targetId`, 'Point enabled tracks must target point attachments.')];
+	}
+
+	const attachment = findAttachment(project, track.targetId);
+	return attachment?.kind === 'rectangle'
+		? []
+		: [diagnostic('invalid-track-target', `${path}.targetId`, 'Rectangle tracks must target rectangle attachments.')];
+};
+
+const validateDiscreteTrackValues = function validateDiscreteTrackValues(
+	project: Project,
+	track: Track,
+	path: string
+): readonly ValidationDiagnostic[] {
+	if (track.kind === 'slot-attachment') {
+		return track.keys.flatMap((key, index) => {
+			const slot = findSlot(project, track.targetId);
+			const attachment = key.value === null ? undefined : findAttachment(project, key.value);
+			const valueIsValid = key.value === null || (
+				attachment?.kind === 'image' && slot?.id === attachment.slotId
+			);
+
+			return valueIsValid
+				? []
+				: [diagnostic('invalid-key', `${path}.keys[${index}].value`, 'Attachment keys must reference an image in the tracked slot.')];
+		});
+	}
+	if (track.kind === 'slot-draw-order') {
+		return track.keys.flatMap((key, index) => isValidSlotOrder(project, key.value)
+			? []
+			: [diagnostic('invalid-key', `${path}.keys[${index}].value`, 'Draw-order keys must contain every slot exactly once.')]);
+	}
+
+	return [];
+};
+
+const validateClips = function validateClips(
+	project: Project
+): readonly ValidationDiagnostic[] {
+	return project.clips.flatMap((clip, clipIndex) => {
+		const settingsAreValid = Number.isFinite(clip.durationSeconds)
+			&& clip.durationSeconds > 0
+			&& Number.isFinite(clip.fps)
+			&& clip.fps > 0;
+		const settingsDiagnostics = settingsAreValid
+			? []
+			: [diagnostic('invalid-clip-settings', `clips[${clipIndex}]`, 'Clip duration and FPS must be positive finite numbers.')];
+		const signatures = clip.tracks.map((track) => {
+			const target = 'targetId' in track ? track.targetId : 'project';
+			const property = 'property' in track ? track.property : '';
+			return `${track.kind}:${target}:${property}`;
+		});
+		const duplicateTracks = signatures.filter((signature, index) => signatures.indexOf(signature) !== index);
+		const duplicateDiagnostics = duplicateTracks.map((signature) => diagnostic(
+			'duplicate-track',
+			`clips[${clipIndex}].tracks`,
+			`Duplicate track definition: ${signature}`
+		));
+		const trackDiagnostics = clip.tracks.flatMap((track, trackIndex) => {
+			const path = `clips[${clipIndex}].tracks[${trackIndex}]`;
+
+			return [
+				...validateTrackTarget(project, track, path),
+				...validateTrackKeys(clip, track, clipIndex, trackIndex),
+				...validateDiscreteTrackValues(project, track, path)
+			];
+		});
+
+		return [...settingsDiagnostics, ...duplicateDiagnostics, ...trackDiagnostics];
+	});
+};
+
 export const validateProject = function validateProject(
 	project: Project
 ): readonly ValidationDiagnostic[] {
@@ -246,7 +434,8 @@ export const validateProject = function validateProject(
 		...validateIds(project),
 		...validateBasicFields(project),
 		...validateBoneHierarchy(project),
-		...validateReferences(project)
+		...validateReferences(project),
+		...validateClips(project)
 	];
 };
 
