@@ -114,6 +114,7 @@ test('creates, duplicates, renames, and configures animation clips', async ({ pa
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await expect(page.getByRole('button', { name: 'clip 1', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Clip settings' }).click();
 	await page.getByLabel('Clip name').fill('walk');
 	await page.getByRole('button', { name: 'Rename', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'walk', exact: true })).toBeVisible();
@@ -201,6 +202,7 @@ test('navigates and filters the animation timeline', async ({ page }) => {
 
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Clip settings' }).click();
 	await page.getByLabel('Duration (sec)').fill('3');
 	await page.getByRole('button', { name: 'Apply playback', exact: true }).click();
 	await expect(page.getByLabel('Timeline frame range')).toHaveText('Frames 1–20 of 36');
@@ -219,11 +221,14 @@ test('creates, moves, copies, and deletes typed animation keys', async ({ page }
 	await page.getByRole('button', { name: 'root', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Add key' }).click();
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toBeVisible();
+	await page.getByRole('button', { name: 'Close Track details' }).click();
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
+	await page.getByRole('button', { name: 'Key details' }).click();
 	await page.getByRole('spinbutton', { name: 'Frame', exact: true }).fill('3');
 	await page.getByRole('button', { name: 'Move key', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Key frame 3' })).toBeVisible();
@@ -241,6 +246,7 @@ test('creates and edits timeline events', async ({ page }) => {
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await page.getByRole('button', { name: 'Add event', exact: true }).click();
 	await page.getByRole('button', { name: 'Event event at frame 1', exact: true }).click();
+	await page.getByRole('button', { name: 'Event details' }).click();
 	await page.getByLabel('Event name').fill('impact');
 	await page.getByLabel('Payload JSON').fill('{"damage":4,"tags":["hit"]}');
 	await page.getByRole('button', { name: 'Apply event', exact: true }).click();
@@ -260,6 +266,7 @@ test('keys point transform and enabled state', async ({ page }) => {
 	await page.getByRole('button', { name: 'Add point' }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'point · Point · x' });
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
@@ -278,6 +285,7 @@ test('keys rectangle rotation, dimensions, and enabled state', async ({ page }) 
 	await page.getByRole('button', { name: 'Add rectangle' }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'rectangle · Rectangle · rotation' });
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await expect(page.getByText('Image transform · rotation · rectangle', { exact: true })).toBeVisible();
@@ -323,9 +331,12 @@ test('changes interpolation for a selected numeric key', async ({ page }) => {
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('button', { name: 'Close Track details' }).click();
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
+	await page.getByRole('button', { name: 'Key details' }).click();
 	const interpolation = page.getByRole('combobox', { name: 'Interpolation' });
 
 	await expect(interpolation).toHaveValue('linear');
@@ -346,14 +357,17 @@ test('retimes multiple selected animation keys together', async ({ page }) => {
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
 	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'root · Bone · y' });
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
 	const keys = page.getByRole('button', { name: 'Key frame 1' });
+	await page.getByRole('button', { name: 'Close Track details' }).click();
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
+	await page.getByRole('button', { name: 'Key details' }).click();
 	await expect(page.getByText('2 keys selected', { exact: true })).toBeVisible();
 	await page.getByRole('spinbutton', { name: 'Offset frames', exact: true }).fill('2');
 	await page.getByRole('button', { name: 'Retime selected keys', exact: true }).click();
@@ -366,6 +380,7 @@ test('undoes a multi-key animation deletion as one action', async ({ page }) => 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
 	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'root · Bone · y' });
@@ -373,8 +388,10 @@ test('undoes a multi-key animation deletion as one action', async ({ page }) => 
 	await page.getByRole('button', { name: 'Add key' }).click();
 
 	const keys = page.getByRole('button', { name: 'Key frame 1' });
+	await page.getByRole('button', { name: 'Close Track details' }).click();
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
+	await page.getByRole('button', { name: 'Key details' }).click();
 	await page.getByRole('button', { name: 'Delete selected keys', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(0);
 
@@ -546,13 +563,16 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	const newTrack = page.getByRole('combobox', { name: 'New track' });
 	await newTrack.selectOption({ label: 'hero.png · Attachment' });
 	await page.getByRole('button', { name: 'Add track' }).click();
 	const keyAttachment = page.getByRole('combobox', { name: 'Key attachment' });
 	await keyAttachment.selectOption({ label: 'hero.png' });
 	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('button', { name: 'Close Track details' }).click();
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
+	await page.getByRole('button', { name: 'Key details' }).click();
 	const selectedAttachment = page.getByRole('combobox', { name: 'Selected attachment' });
 	await expect(selectedAttachment).toHaveValue(/.+/);
 	await selectedAttachment.selectOption({ label: 'alt.png' });
@@ -645,10 +665,13 @@ test('reorders setup slots through hierarchy drag and drop', async ({ page }) =>
 
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'Setup · Draw order' });
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
+	await page.getByRole('button', { name: 'Close Track details' }).click();
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
+	await page.getByRole('button', { name: 'Key details' }).click();
 
 	const keyedSlots = page.locator('.draw-order-key-editor li');
 	await expect(keyedSlots).toHaveCount(2);

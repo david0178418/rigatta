@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import { DEFAULT_LOCAL_TRANSFORM, degreesToRadians, radiansToDegrees, type LocalTransform } from '../domain/coordinates.ts';
 import { isEventPayload } from '../domain/events.ts';
 import { createEntityId, parseEntityId, type EntityId } from '../domain/ids.ts';
@@ -45,6 +45,7 @@ import { createExportDiagnostics, formatByteCount } from '../export/diagnostics.
 import { createExampleAssetBlobs, exampleProject } from '../examples/example-project.ts';
 import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
 import { nextAvailableName } from './entity-names.ts';
+import { ANIMATE_TIMELINE_DEFAULT_HEIGHT, SETUP_TIMELINE_HEIGHT, clampTimelineHeight, timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -454,6 +455,83 @@ const moveDrawOrderSlot = function moveDrawOrderSlot(
 			: current);
 };
 
+type TimelineSplitterProps = Readonly<{
+	height: number;
+	viewportHeight: number;
+	onHeightChange: (height: number) => void;
+}>;
+
+const TimelineSplitter = function TimelineSplitter({ height, viewportHeight, onHeightChange }: TimelineSplitterProps): ReactElement {
+	const pointerSessionRef = useRef<Readonly<{ id: number; startY: number; startHeight: number }> | undefined>(undefined);
+	const [dragging, setDragging] = useState(false);
+	const bounds = timelineHeightBounds(viewportHeight);
+	const beginPointerDrag = function beginPointerDrag(event: ReactPointerEvent<HTMLDivElement>): void {
+		if (event.button !== 0) {
+			return;
+		}
+
+		event.preventDefault();
+		event.currentTarget.setPointerCapture(event.pointerId);
+		pointerSessionRef.current = { id: event.pointerId, startY: event.clientY, startHeight: height };
+		setDragging(true);
+	};
+	const updatePointerDrag = function updatePointerDrag(event: ReactPointerEvent<HTMLDivElement>): void {
+		const session = pointerSessionRef.current;
+
+		if (!session || session.id !== event.pointerId) {
+			return;
+		}
+
+		onHeightChange(timelineHeightFromPointer(session.startHeight, session.startY, event.clientY, viewportHeight));
+	};
+	const endPointerDrag = function endPointerDrag(event: ReactPointerEvent<HTMLDivElement>): void {
+		const session = pointerSessionRef.current;
+
+		if (!session || session.id !== event.pointerId) {
+			return;
+		}
+
+		pointerSessionRef.current = undefined;
+		setDragging(false);
+
+		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+			event.currentTarget.releasePointerCapture(event.pointerId);
+		}
+	};
+	const updateFromKeyboard = function updateFromKeyboard(event: ReactKeyboardEvent<HTMLDivElement>): void {
+		const nextHeight = timelineHeightFromKeyboard(height, event.key, viewportHeight);
+
+		if (nextHeight === undefined) {
+			return;
+		}
+
+		event.preventDefault();
+		onHeightChange(nextHeight);
+	};
+
+	return (
+		<div
+			className={dragging ? 'timeline-splitter is-dragging' : 'timeline-splitter'}
+			role="separator"
+			tabIndex={0}
+			aria-label="Resize animation timeline"
+			aria-orientation="horizontal"
+			aria-valuemin={bounds.min}
+			aria-valuemax={bounds.max}
+			aria-valuenow={height}
+			aria-valuetext={`${height} pixels`}
+			aria-controls="animation-timeline-pane"
+			onKeyDown={updateFromKeyboard}
+			onPointerDown={beginPointerDrag}
+			onPointerMove={updatePointerDrag}
+			onPointerUp={endPointerDrag}
+			onPointerCancel={endPointerDrag}
+		>
+			<span className="timeline-splitter-grip" aria-hidden="true" />
+		</div>
+	);
+};
+
 type AnimateTimelineProps = Readonly<{
 	project: Project;
 	activeClip: Clip | undefined;
@@ -486,6 +564,8 @@ type AnimateTimelineProps = Readonly<{
 	onAutoKeyChange: (enabled: boolean) => void;
 	onKeyPendingEdits: () => void;
 }>;
+
+type TimelineDetail = 'clip' | 'track' | 'key' | 'event';
 
 const AnimateTimeline = function AnimateTimeline({
 	project,
@@ -526,6 +606,19 @@ const AnimateTimeline = function AnimateTimeline({
 	const [trackDefinitionValue, setTrackDefinitionValue] = useState('');
 	const [selectedEventId, setSelectedEventId] = useState<EntityId | undefined>(undefined);
 	const [eventError, setEventError] = useState<string | undefined>(undefined);
+	const [openDetails, setOpenDetails] = useState<TimelineDetail | undefined>(undefined);
+	const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
+	const openDetailSurface = function openDetailSurface(detail: TimelineDetail, trigger: HTMLButtonElement): void {
+		detailTriggerRef.current = trigger;
+		setOpenDetails(detail);
+	};
+	const closeDetailSurface = function closeDetailSurface(): void {
+		const trigger = detailTriggerRef.current;
+
+		detailTriggerRef.current = null;
+		setOpenDetails(undefined);
+		trigger?.focus();
+	};
 	const submitClipName = function submitClipName(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 		const name = new FormData(event.currentTarget).get('name');
@@ -804,110 +897,77 @@ const AnimateTimeline = function AnimateTimeline({
 					<button className="secondary-button" type="button" onClick={onCreateClip}>Create animation clip</button>
 				</div>
 			) : (
-				<div className="animate-timeline">
-					<div className="clip-tabs" aria-label="Animation clips">
-						{project.clips.map((clip) => (
-							<button
-								className={activeClip?.id === clip.id ? 'clip-tab is-active' : 'clip-tab'}
-								key={clip.id}
-								type="button"
-								onClick={() => onSelectClip(clip.id)}
-								aria-pressed={activeClip?.id === clip.id}
-							>
-									{clip.name}
-							</button>
-							))}
-					</div>
+				<div className="animate-timeline" data-testid="animate-timeline">
 					{activeClip && (
-						<div className="clip-editor">
-							<div className="clip-editor-heading">
-								<span className="muted-copy">{activeClip.tracks.length} tracks · {activeClip.events.length} events</span>
-								<div className="inspector-actions">
-									<button className="quiet-button" type="button" onClick={onDuplicateClip}>Duplicate</button>
-									<button className="danger-button" type="button" onClick={onDeleteClip}>Delete</button>
-								</div>
-							</div>
-							<div className="clip-playback-controls" aria-label="Playback controls">
-								<button className="quiet-button" type="button" aria-label="Step backward" onClick={() => onStepPlayback(-1)}>◀</button>
-								<button className="secondary-button" type="button" aria-label={playback.playing ? 'Pause animation' : 'Play animation'} onClick={onTogglePlayback}>
-									{playback.playing ? 'Pause' : 'Play'}
-								</button>
-								<button className="quiet-button" type="button" aria-label="Step forward" onClick={() => onStepPlayback(1)}>▶</button>
-								<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
-								<label className="auto-key-field"><input type="checkbox" aria-label="Auto Key" checked={autoKey} onChange={(event) => onAutoKeyChange(event.target.checked)} /><span>Auto Key</span></label>
-								<button className="quiet-button" type="button" onClick={onKeyPendingEdits} disabled={pendingEditCount === 0}>Key edited properties{pendingEditCount > 0 ? ` (${pendingEditCount})` : ''}</button>
-							</div>
-							<div className="timeline-navigation">
-								<div className="timeline-navigation-actions" aria-label="Timeline navigation">
-									<button className="quiet-button" type="button" aria-label="Pan timeline left" onClick={() => setTimelineViewport((current) => panTimeline(current, 320, frameCount))}>◀</button>
-									<button className="quiet-button" type="button" aria-label="Zoom timeline out" onClick={() => setTimelineViewport((current) => zoomTimeline(current, -1, playback.frameIndex, frameCount))}>−</button>
-									<button className="quiet-button" type="button" aria-label="Reset timeline view" onClick={() => setTimelineViewport(resetTimelineViewport())}>100%</button>
-									<button className="quiet-button" type="button" aria-label="Zoom timeline in" onClick={() => setTimelineViewport((current) => zoomTimeline(current, 1, playback.frameIndex, frameCount))}>+</button>
-									<button className="quiet-button" type="button" aria-label="Pan timeline right" onClick={() => setTimelineViewport((current) => panTimeline(current, -320, frameCount))}>▶</button>
-								</div>
-								<label className="timeline-filter-field">
-									<span className="sr-only">Filter tracks</span>
-									<input type="search" aria-label="Filter tracks" placeholder="Filter tracks" value={trackFilter} onChange={(event) => setTrackFilter(event.target.value)} />
-								</label>
-								<span className="timeline-zoom-readout">{Math.round(timelineViewport.pixelsPerFrame / 32 * 100)}%</span>
-							</div>
-							<form className="track-create-form" onSubmit={submitCreateTrack}>
-								<label>
-									<span className="field-label">New track</span>
-									<select aria-label="New track" value={selectedTrackOption?.value ?? ''} onChange={(event) => setTrackDefinitionValue(event.target.value)} disabled={trackOptions.length === 0}>
-										{trackOptions.length === 0 ? <option value="">No available properties</option> : trackOptions.map((candidate) => <option key={candidate.value} value={candidate.value}>{candidate.label}</option>)}
-									</select>
-								</label>
-								<button className="secondary-button" type="submit" disabled={!selectedTrackOption}>Add track</button>
-							</form>
-							<div className="event-toolbar">
-								<span className="muted-copy">{activeClip.events.length} event{activeClip.events.length === 1 ? '' : 's'}</span>
-								<button className="secondary-button" type="button" onClick={addTimelineEvent}>Add event</button>
-							</div>
-							{selectedTrack && (
-								<div className="track-edit-toolbar">
-									<span className="muted-copy">Selected: {selectedRow?.label}</span>
-									<button className="danger-button" type="button" onClick={deleteSelectedTrack}>Delete track</button>
-								</div>
-							)}
-							{selectedTrack && (
-								<form className="key-create-form" key={selectedTrack.id} onSubmit={submitAddKey}>
-									<span className="muted-copy">Add key at frame {playback.frameIndex + 1}</span>
-									{(selectedTrack.kind === 'bone-transform'
-										|| selectedTrack.kind === 'attachment-transform'
-										|| selectedTrack.kind === 'attachment-opacity'
-										|| selectedTrack.kind === 'rectangle-size') && (
-										<label><span className="field-label">Value</span><input name="value" type="number" step="any" defaultValue={selectedTrack.kind === 'attachment-opacity' || selectedTrack.kind === 'rectangle-size' ? 1 : 0} /></label>
-									)}
-									{selectedTrack.kind === 'slot-attachment' && (
-										<label><span className="field-label">Attachment</span><select name="attachmentId" aria-label="Key attachment" defaultValue=""><option value="">None</option>{project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedTrack.targetId).map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}</select></label>
-									)}
-									{(selectedTrack.kind === 'point-enabled' || selectedTrack.kind === 'rectangle-enabled') && (
-										<label className="key-boolean-field"><input name="enabled" type="checkbox" defaultChecked={enabledValueForTrack(project, selectedTrack)} /><span className="field-label">Enabled</span></label>
-									)}
-									<button className="secondary-button" type="submit">Add key</button>
-								</form>
-							)}
-							<div className="timeline-ruler-meta">
-								<span aria-label="Timeline frame range">Frames {timelineRange.startFrame + 1}–{timelineRange.endFrame + 1} of {frameCount}</span>
-								<span className="muted-copy">{trackRows.length} matching track{trackRows.length === 1 ? '' : 's'}</span>
-							</div>
-							<div className="dopesheet" aria-label="Animation tracks">
-								<div className="dopesheet-ruler">
-									<span className="track-row-label">Track</span>
-									<div className="timeline-ruler" aria-label="Timeline ruler">
-										{Array.from({ length: timelineVisibleCount }, (_, index) => timelineRange.startFrame + index).map((frame) => (
-											<span className={frame === playback.frameIndex ? 'timeline-tick is-playhead' : 'timeline-tick'} key={frame}>{frame + 1}</span>
+						<div className="timeline-shell">
+							<div className="timeline-sticky">
+								<div className="clip-selector-row">
+									<div className="clip-tabs" aria-label="Animation clips">
+										{project.clips.map((clip) => (
+											<button
+												className={activeClip.id === clip.id ? 'clip-tab is-active' : 'clip-tab'}
+												key={clip.id}
+												type="button"
+												onClick={() => onSelectClip(clip.id)}
+												aria-pressed={activeClip.id === clip.id}
+											>
+												{clip.name}
+											</button>
 										))}
 									</div>
+									<div className="timeline-detail-actions" aria-label="Timeline details">
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'clip'} onClick={(event) => openDetailSurface('clip', event.currentTarget)}>Clip settings</button>
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'track'} onClick={(event) => openDetailSurface('track', event.currentTarget)}>Track details</button>
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'key'} disabled={selectedKeyMarkers.length === 0} onClick={(event) => openDetailSurface('key', event.currentTarget)}>Key details</button>
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'event'} disabled={!selectedEvent} onClick={(event) => openDetailSurface('event', event.currentTarget)}>Event details</button>
+									</div>
 								</div>
-								{trackRows.length === 0 ? (
-									<div className="dopesheet-empty">No typed tracks match this filter.</div>
-								) : trackRows.map((row) => (
-									<div className={selectedRow?.track.id === row.track.id ? 'track-row is-selected' : 'track-row'} data-track-id={row.track.id} key={row.track.id} onClick={() => { setSelectedTrackId(row.track.id); setSelectedKeys([]); }}>
-										<div className="track-row-label"><span>{row.label}</span><small>{row.track.kind}</small></div>
-										<div className="track-key-lane">
-											{row.keys.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame).map((key) => (
+								<div className="clip-playback-controls" aria-label="Playback controls">
+									<button className="quiet-button" type="button" aria-label="Step backward" onClick={() => onStepPlayback(-1)}>◀</button>
+									<button className="secondary-button" type="button" aria-label={playback.playing ? 'Pause animation' : 'Play animation'} onClick={onTogglePlayback}>
+										{playback.playing ? 'Pause' : 'Play'}
+									</button>
+									<button className="quiet-button" type="button" aria-label="Step forward" onClick={() => onStepPlayback(1)}>▶</button>
+									<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
+									<label className="auto-key-field"><input type="checkbox" aria-label="Auto Key" checked={autoKey} onChange={(event) => onAutoKeyChange(event.target.checked)} /><span>Auto Key</span></label>
+									<button className="quiet-button" type="button" onClick={onKeyPendingEdits} disabled={pendingEditCount === 0}>Key edited properties{pendingEditCount > 0 ? ` (${pendingEditCount})` : ''}</button>
+								</div>
+								<div className="timeline-navigation">
+									<div className="timeline-navigation-actions" aria-label="Timeline navigation">
+										<button className="quiet-button" type="button" aria-label="Pan timeline left" onClick={() => setTimelineViewport((current) => panTimeline(current, 320, frameCount))}>◀</button>
+										<button className="quiet-button" type="button" aria-label="Zoom timeline out" onClick={() => setTimelineViewport((current) => zoomTimeline(current, -1, playback.frameIndex, frameCount))}>−</button>
+										<button className="quiet-button" type="button" aria-label="Reset timeline view" onClick={() => setTimelineViewport(resetTimelineViewport())}>100%</button>
+										<button className="quiet-button" type="button" aria-label="Zoom timeline in" onClick={() => setTimelineViewport((current) => zoomTimeline(current, 1, playback.frameIndex, frameCount))}>+</button>
+										<button className="quiet-button" type="button" aria-label="Pan timeline right" onClick={() => setTimelineViewport((current) => panTimeline(current, -320, frameCount))}>▶</button>
+									</div>
+									<label className="timeline-filter-field">
+										<span className="sr-only">Filter tracks</span>
+										<input type="search" aria-label="Filter tracks" placeholder="Filter tracks" value={trackFilter} onChange={(event) => setTrackFilter(event.target.value)} />
+									</label>
+									<span className="timeline-zoom-readout">{Math.round(timelineViewport.pixelsPerFrame / 32 * 100)}%</span>
+								</div>
+							</div>
+							<div className="timeline-content" id="animation-timeline-pane" data-testid="timeline-scroll-region">
+								<div className="timeline-ruler-meta">
+									<span aria-label="Timeline frame range">Frames {timelineRange.startFrame + 1}–{timelineRange.endFrame + 1} of {frameCount}</span>
+									<span className="muted-copy">{trackRows.length} matching track{trackRows.length === 1 ? '' : 's'}</span>
+								</div>
+								<div className="dopesheet" aria-label="Animation tracks">
+									<div className="dopesheet-ruler">
+										<span className="track-row-label">Track</span>
+										<div className="timeline-ruler" aria-label="Timeline ruler">
+											{Array.from({ length: timelineVisibleCount }, (_, index) => timelineRange.startFrame + index).map((frame) => (
+												<span className={frame === playback.frameIndex ? 'timeline-tick is-playhead' : 'timeline-tick'} key={frame}>{frame + 1}</span>
+											))}
+										</div>
+									</div>
+									{trackRows.length === 0 ? (
+										<div className="dopesheet-empty">No typed tracks match this filter.</div>
+									) : trackRows.map((row) => (
+										<div className={selectedRow?.track.id === row.track.id ? 'track-row is-selected' : 'track-row'} data-track-id={row.track.id} key={row.track.id} onClick={() => { setSelectedTrackId(row.track.id); setSelectedKeys([]); }}>
+											<div className="track-row-label"><span>{row.label}</span><small>{row.track.kind}</small></div>
+											<div className="track-key-lane">
+												{row.keys.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame).map((key) => (
 													<button
 														aria-label={`Key frame ${key.frameIndex + 1}`}
 														className={selectedKeys.some((selected) => selected.keyId === key.id && selected.trackId === row.track.id) ? 'track-key is-selected' : 'track-key'}
@@ -917,154 +977,224 @@ const AnimateTimeline = function AnimateTimeline({
 														style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
 														title={`Frame ${key.frameIndex + 1}`}
 													/>
-											))}
+												))}
+											</div>
+										</div>
+									))}
+									<div className="event-track" aria-label="Animation events">
+										<div className="track-row-label event-row-label">
+											<div><span>Events</span><small>{activeClip.events.length} event{activeClip.events.length === 1 ? '' : 's'}</small></div>
+											<button className="quiet-button" type="button" onClick={addTimelineEvent}>Add event</button>
+										</div>
+										<div className="track-key-lane">
+											{activeClip.events
+												.filter((event) => {
+													const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
+
+													return frameIndex >= timelineRange.startFrame && frameIndex <= timelineRange.endFrame;
+												})
+												.map((event) => {
+													const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
+
+													return (
+														<button
+															aria-label={`Event ${event.name} at frame ${frameIndex + 1}`}
+															className={selectedEventId === event.id ? 'event-key is-selected' : 'event-key'}
+															key={event.id}
+															onClick={() => { setSelectedEventId(event.id); setEventError(undefined); }}
+															type="button"
+															style={{ left: `${((frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
+															title={`${event.name} · frame ${frameIndex + 1}`}
+														/>
+													);
+												})}
 										</div>
 									</div>
-								))}
-																						</div>
-																				<div className="event-track" aria-label="Animation events">
-																					<div className="track-row-label"><span>Events</span><small>event</small></div>
-																					<div className="track-key-lane">
-																						{activeClip.events
-																							.filter((event) => {
-																								const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
-
-																								return frameIndex >= timelineRange.startFrame && frameIndex <= timelineRange.endFrame;
-																							})
-																							.map((event) => {
-																								const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
-
-																								return (
-																									<button
-																									aria-label={`Event ${event.name} at frame ${frameIndex + 1}`}
-																									className={selectedEventId === event.id ? 'event-key is-selected' : 'event-key'}
-																									key={event.id}
-																									onClick={() => { setSelectedEventId(event.id); setEventError(undefined); }}
-																									type="button"
-																									style={{ left: `${((frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
-																									title={`${event.name} · frame ${frameIndex + 1}`}
-																								/>
-																								);
-																					})}
-																					</div>
-																				</div>
-																				{selectedEvent && (
-																					<>
-																							<form className="event-editor" key={`${selectedEvent.id}:${selectedEvent.name}:${JSON.stringify(selectedEvent.payload)}`} onSubmit={submitEventDetails}>
-																							<div className="event-editor-heading">
-																								<span className="muted-copy">Selected event</span>
-																								<button className="danger-button" type="button" onClick={deleteTimelineEvent}>Delete event</button>
-																							</div>
-																							<label><span className="field-label">Event name</span><input name="eventName" defaultValue={selectedEvent.name} /></label>
-																							<label><span className="field-label">Payload JSON</span><textarea name="eventPayload" rows={4} defaultValue={JSON.stringify(selectedEvent.payload, null, 2)} /></label>
-																							<button className="secondary-button" type="submit">Apply event</button>
-																						</form>
-																						<form className="event-editor event-move-form" onSubmit={submitEventMove}>
-																							<label><span className="field-label">Event frame</span><input name="eventFrame" type="number" min="1" max={frameCount} step="1" defaultValue={frameIndexForTime(activeClip, selectedEvent.timeSeconds) + 1} /></label>
-																							<button className="secondary-button" type="submit">Move event</button>
-																						</form>
-																							{eventError && <p className="form-error" role="alert">{eventError}</p>}
-																						</>
-																				)}
-																				{selectedKeyMarkers.length > 1 && (
-								<form className="key-editor" onSubmit={submitRetimeKeys}>
-									<span className="muted-copy">{selectedKeyMarkers.length} keys selected</span>
-									<label><span className="field-label">Offset frames</span><input name="offsetFrames" type="number" step="1" defaultValue="0" /></label>
-									<button className="secondary-button" type="submit">Retime selected keys</button>
-									<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete selected keys</button>
-								</form>
+								</div>
+								<label className="playhead-field">
+									<span className="field-label">Playhead</span>
+									<input
+										aria-label="Playhead"
+										type="range"
+										min="0"
+										max={frameCountForClip(activeClip) - 1}
+										step="1"
+										value={playback.frameIndex}
+										onChange={(event) => onSeekPlayback(Number(event.target.value))}
+									/>
+								</label>
+							</div>
+							{openDetails === 'clip' && (
+								<section className="timeline-detail-surface" aria-label="Clip settings" role="dialog">
+									<div className="timeline-detail-heading">
+										<div><p className="eyebrow">Details</p><h2>Clip settings</h2></div>
+										<button className="quiet-button" type="button" aria-label="Close Clip settings" onClick={closeDetailSurface}>Close</button>
+									</div>
+									<p className="muted-copy">{activeClip.tracks.length} tracks · {activeClip.events.length} events</p>
+									<form className="clip-form" key={`name:${activeClip.id}:${activeClip.name}`} onSubmit={submitClipName}>
+										<label><span className="field-label">Clip name</span><input name="name" defaultValue={activeClip.name} aria-label="Clip name" /></label>
+										<button className="secondary-button" type="submit">Rename</button>
+									</form>
+									<form className="clip-form clip-playback-form" key={`playback:${activeClip.id}:${activeClip.durationSeconds}:${activeClip.fps}:${activeClip.loop}`} onSubmit={submitPlayback}>
+										<label><span className="field-label">Duration (sec)</span><input name="durationSeconds" type="number" min="0.01" step="any" defaultValue={activeClip.durationSeconds} /></label>
+										<label><span className="field-label">FPS</span><input name="fps" type="number" min="0.01" step="any" defaultValue={activeClip.fps} /></label>
+										<label className="clip-loop-field"><input name="loop" type="checkbox" defaultChecked={activeClip.loop} /><span className="field-label">Loop</span></label>
+										<button className="secondary-button" type="submit">Apply playback</button>
+									</form>
+									<div className="inspector-actions">
+										<button className="quiet-button" type="button" onClick={onDuplicateClip}>Duplicate</button>
+										<button className="danger-button" type="button" onClick={onDeleteClip}>Delete</button>
+									</div>
+								</section>
 							)}
-							{selectedKeyMarker && selectedRow && (
-								<form className="key-editor" key={`${selectedKeyMarker.keyId}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
-									<span className="muted-copy">Key frame {selectedKeyMarker.frameIndex + 1}</span>
-									<label><span className="field-label">Frame</span><input name="frame" type="number" min="1" max={frameCount} step="1" defaultValue={selectedKeyMarker.frameIndex + 1} /></label>
-									{selectedNumberKey && (
+							{openDetails === 'track' && (
+								<section className="timeline-detail-surface" aria-label="Track details" role="dialog">
+									<div className="timeline-detail-heading">
+										<div><p className="eyebrow">Details</p><h2>Track details</h2></div>
+										<button className="quiet-button" type="button" aria-label="Close Track details" onClick={closeDetailSurface}>Close</button>
+									</div>
+									<form className="track-create-form" onSubmit={submitCreateTrack}>
 										<label>
-											<span className="field-label">Interpolation to next key</span>
-											<select aria-label="Interpolation" value={selectedNumberKey.interpolation} onChange={(event) => updateSelectedInterpolation(event.currentTarget.value)}>
-												<option value="stepped">Stepped</option>
-																				<option value="linear">Linear</option>
-																				<option value="bezier">Cubic Bezier</option>
-																			</select>
-																			{selectedNumberKey.interpolation === 'bezier' && <small className="muted-copy">Curve controls are available in the graph editor.</small>}
-																	</label>
-																)}
-																{selectedNumberKey?.interpolation === 'bezier' && selectedNumberKey.curve && (
-																	<BezierGraphEditor
-																		key={`${selectedKeyMarker.keyId}:${selectedNumberKey.curve.x1}:${selectedNumberKey.curve.y1}:${selectedNumberKey.curve.x2}:${selectedNumberKey.curve.y2}`}
-																		curve={selectedNumberKey.curve}
-																		onChange={(curve) => onUpdateInterpolation(selectedRow.track.id, selectedKeyMarker.keyId, { interpolation: 'bezier', curve })}
-																	/>
-																)}
-																{selectedAttachmentKey && selectedSlotId && (
-																	<label>
-																		<span className="field-label">Keyed attachment</span>
-																		<select aria-label="Selected attachment" value={selectedAttachmentKey.value ?? ''} onChange={(event) => updateSelectedAttachment(event.currentTarget.value)}>
-																			<option value="">None</option>
-																			{project.attachments
-																																		.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedSlotId)
-																			.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}
-																		</select>
-																	</label>
-																)}
-																{selectedDrawOrderKey && (
-																	<div className="draw-order-key-editor">
-																		<span className="field-label">Keyed slot order</span>
-																		<ol>
-																			{selectedDrawOrderKey.value.map((slotId, index) => {
-																				const slotName = project.slots.find((slot) => slot.id === slotId)?.name ?? slotId;
-
-																				return (
-																		<li key={slotId} data-slot-id={slotId}>
-																						<span>{slotName}</span>
-																						<div>
-																							<button className="quiet-button" type="button" aria-label={`Move ${slotName} earlier`} disabled={index === 0} onClick={() => updateSelectedDrawOrder(slotId, -1)}>↑</button>
-																							<button className="quiet-button" type="button" aria-label={`Move ${slotName} later`} disabled={index === selectedDrawOrderKey.value.length - 1} onClick={() => updateSelectedDrawOrder(slotId, 1)}>↓</button>
-																						</div>
-																					</li>
-																				);
-																			})}
-																		</ol>
-																	</div>
-																)}
-																<button className="secondary-button" type="submit">Move key</button>
-									<button className="quiet-button" type="button" onClick={(event) => {
-										const form = event.currentTarget.form;
-										const frame = form ? form.elements.namedItem('frame') : undefined;
-
-										if (frame instanceof HTMLInputElement) {
-											const copiedId = onCopyKey(selectedRow.track.id, selectedKeyMarker.keyId, Math.round(Number(frame.value)) - 1);
-
-											if (copiedId) {
-														setSelectedKeys([{ trackId: selectedRow.track.id, keyId: copiedId }]);
-											}
-										}
-									}}>Copy key</button>
-									<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete key</button>
-								</form>
+											<span className="field-label">New track</span>
+											<select aria-label="New track" value={selectedTrackOption?.value ?? ''} onChange={(event) => setTrackDefinitionValue(event.target.value)} disabled={trackOptions.length === 0}>
+												{trackOptions.length === 0 ? <option value="">No available properties</option> : trackOptions.map((candidate) => <option key={candidate.value} value={candidate.value}>{candidate.label}</option>)}
+											</select>
+										</label>
+										<button className="secondary-button" type="submit" disabled={!selectedTrackOption}>Add track</button>
+									</form>
+									{selectedTrack && (
+										<>
+											<div className="track-edit-toolbar">
+												<span className="muted-copy">Selected: {selectedRow?.label}</span>
+												<button className="danger-button" type="button" onClick={deleteSelectedTrack}>Delete track</button>
+											</div>
+											<form className="key-create-form" key={selectedTrack.id} onSubmit={submitAddKey}>
+												<span className="muted-copy">Add key at frame {playback.frameIndex + 1}</span>
+												{(selectedTrack.kind === 'bone-transform'
+													|| selectedTrack.kind === 'attachment-transform'
+													|| selectedTrack.kind === 'attachment-opacity'
+													|| selectedTrack.kind === 'rectangle-size') && (
+													<label><span className="field-label">Value</span><input name="value" type="number" step="any" defaultValue={selectedTrack.kind === 'attachment-opacity' || selectedTrack.kind === 'rectangle-size' ? 1 : 0} /></label>
+												)}
+												{selectedTrack.kind === 'slot-attachment' && (
+													<label><span className="field-label">Attachment</span><select name="attachmentId" aria-label="Key attachment" defaultValue=""><option value="">None</option>{project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedTrack.targetId).map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}</select></label>
+												)}
+												{(selectedTrack.kind === 'point-enabled' || selectedTrack.kind === 'rectangle-enabled') && (
+													<label className="key-boolean-field"><input name="enabled" type="checkbox" defaultChecked={enabledValueForTrack(project, selectedTrack)} /><span className="field-label">Enabled</span></label>
+												)}
+												<button className="secondary-button" type="submit">Add key</button>
+											</form>
+										</>
+									)}
+								</section>
 							)}
-							<label className="playhead-field">
-								<span className="field-label">Playhead</span>
-								<input
-									aria-label="Playhead"
-									type="range"
-									min="0"
-									max={frameCountForClip(activeClip) - 1}
-									step="1"
-									value={playback.frameIndex}
-									onChange={(event) => onSeekPlayback(Number(event.target.value))}
-								/>
-							</label>
-							<form className="clip-form" key={`name:${activeClip.id}:${activeClip.name}`} onSubmit={submitClipName}>
-								<label><span className="field-label">Clip name</span><input name="name" defaultValue={activeClip.name} aria-label="Clip name" /></label>
-								<button className="secondary-button" type="submit">Rename</button>
-							</form>
-							<form className="clip-form clip-playback-form" key={`playback:${activeClip.id}:${activeClip.durationSeconds}:${activeClip.fps}:${activeClip.loop}`} onSubmit={submitPlayback}>
-								<label><span className="field-label">Duration (sec)</span><input name="durationSeconds" type="number" min="0.01" step="any" defaultValue={activeClip.durationSeconds} /></label>
-								<label><span className="field-label">FPS</span><input name="fps" type="number" min="0.01" step="any" defaultValue={activeClip.fps} /></label>
-								<label className="clip-loop-field"><input name="loop" type="checkbox" defaultChecked={activeClip.loop} /><span className="field-label">Loop</span></label>
-								<button className="secondary-button" type="submit">Apply playback</button>
-							</form>
+							{openDetails === 'key' && (
+								<section className="timeline-detail-surface" aria-label="Key details" role="dialog">
+									<div className="timeline-detail-heading">
+										<div><p className="eyebrow">Details</p><h2>Key details</h2></div>
+										<button className="quiet-button" type="button" aria-label="Close Key details" onClick={closeDetailSurface}>Close</button>
+									</div>
+									{selectedKeyMarkers.length > 1 && (
+										<form className="key-editor" onSubmit={submitRetimeKeys}>
+											<span className="muted-copy">{selectedKeyMarkers.length} keys selected</span>
+											<label><span className="field-label">Offset frames</span><input name="offsetFrames" type="number" step="1" defaultValue="0" /></label>
+											<button className="secondary-button" type="submit">Retime selected keys</button>
+											<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete selected keys</button>
+										</form>
+									)}
+									{selectedKeyMarker && selectedRow && (
+										<form className="key-editor" key={`${selectedKeyMarker.keyId}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
+											<span className="muted-copy">Key frame {selectedKeyMarker.frameIndex + 1}</span>
+											<label><span className="field-label">Frame</span><input name="frame" type="number" min="1" max={frameCount} step="1" defaultValue={selectedKeyMarker.frameIndex + 1} /></label>
+											{selectedNumberKey && (
+												<label>
+													<span className="field-label">Interpolation to next key</span>
+													<select aria-label="Interpolation" value={selectedNumberKey.interpolation} onChange={(event) => updateSelectedInterpolation(event.currentTarget.value)}>
+														<option value="stepped">Stepped</option>
+														<option value="linear">Linear</option>
+														<option value="bezier">Cubic Bezier</option>
+													</select>
+													{selectedNumberKey.interpolation === 'bezier' && <small className="muted-copy">Curve controls are available in the graph editor.</small>}
+												</label>
+											)}
+											{selectedNumberKey?.interpolation === 'bezier' && selectedNumberKey.curve && (
+												<BezierGraphEditor
+													key={`${selectedKeyMarker.keyId}:${selectedNumberKey.curve.x1}:${selectedNumberKey.curve.y1}:${selectedNumberKey.curve.x2}:${selectedNumberKey.curve.y2}`}
+													curve={selectedNumberKey.curve}
+													onChange={(curve) => onUpdateInterpolation(selectedRow.track.id, selectedKeyMarker.keyId, { interpolation: 'bezier', curve })}
+												/>
+											)}
+											{selectedAttachmentKey && selectedSlotId && (
+												<label>
+													<span className="field-label">Keyed attachment</span>
+													<select aria-label="Selected attachment" value={selectedAttachmentKey.value ?? ''} onChange={(event) => updateSelectedAttachment(event.currentTarget.value)}>
+														<option value="">None</option>
+														{project.attachments
+															.filter((attachment) => attachment.kind === 'image' && attachment.slotId === selectedSlotId)
+															.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}
+													</select>
+												</label>
+											)}
+											{selectedDrawOrderKey && (
+												<div className="draw-order-key-editor">
+													<span className="field-label">Keyed slot order</span>
+													<ol>
+														{selectedDrawOrderKey.value.map((slotId, index) => {
+															const slotName = project.slots.find((slot) => slot.id === slotId)?.name ?? slotId;
+
+															return (
+																<li key={slotId} data-slot-id={slotId}>
+																	<span>{slotName}</span>
+																	<div>
+																		<button className="quiet-button" type="button" aria-label={`Move ${slotName} earlier`} disabled={index === 0} onClick={() => updateSelectedDrawOrder(slotId, -1)}>↑</button>
+																		<button className="quiet-button" type="button" aria-label={`Move ${slotName} later`} disabled={index === selectedDrawOrderKey.value.length - 1} onClick={() => updateSelectedDrawOrder(slotId, 1)}>↓</button>
+																	</div>
+																</li>
+															);
+														})}
+													</ol>
+												</div>
+											)}
+											<button className="secondary-button" type="submit">Move key</button>
+											<button className="quiet-button" type="button" onClick={(event) => {
+												const form = event.currentTarget.form;
+												const frame = form ? form.elements.namedItem('frame') : undefined;
+
+												if (frame instanceof HTMLInputElement) {
+													const copiedId = onCopyKey(selectedRow.track.id, selectedKeyMarker.keyId, Math.round(Number(frame.value)) - 1);
+
+													if (copiedId) {
+														setSelectedKeys([{ trackId: selectedRow.track.id, keyId: copiedId }]);
+													}
+												}
+											}}>Copy key</button>
+											<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete key</button>
+										</form>
+									)}
+								</section>
+							)}
+							{openDetails === 'event' && selectedEvent && (
+								<section className="timeline-detail-surface" aria-label="Event details" role="dialog">
+									<div className="timeline-detail-heading">
+										<div><p className="eyebrow">Details</p><h2>Event details</h2></div>
+										<button className="quiet-button" type="button" aria-label="Close Event details" onClick={closeDetailSurface}>Close</button>
+									</div>
+									<form className="event-editor" key={`${selectedEvent.id}:${selectedEvent.name}:${JSON.stringify(selectedEvent.payload)}`} onSubmit={submitEventDetails}>
+										<div className="event-editor-heading">
+											<span className="muted-copy">Selected event</span>
+											<button className="danger-button" type="button" onClick={deleteTimelineEvent}>Delete event</button>
+										</div>
+										<label><span className="field-label">Event name</span><input name="eventName" defaultValue={selectedEvent.name} /></label>
+										<label><span className="field-label">Payload JSON</span><textarea name="eventPayload" rows={4} defaultValue={JSON.stringify(selectedEvent.payload, null, 2)} /></label>
+										<button className="secondary-button" type="submit">Apply event</button>
+									</form>
+									<form className="event-editor event-move-form" onSubmit={submitEventMove}>
+										<label><span className="field-label">Event frame</span><input name="eventFrame" type="number" min="1" max={frameCount} step="1" defaultValue={frameIndexForTime(activeClip, selectedEvent.timeSeconds) + 1} /></label>
+										<button className="secondary-button" type="submit">Move event</button>
+									</form>
+									{eventError && <p className="form-error" role="alert">{eventError}</p>}
+								</section>
+							)}
 						</div>
 					)}
 				</div>
@@ -1265,6 +1395,8 @@ const CanvasWarnings = function CanvasWarnings({ warnings }: Readonly<{ warnings
 
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
+	const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+	const [timelineHeight, setTimelineHeight] = useState(() => clampTimelineHeight(ANIMATE_TIMELINE_DEFAULT_HEIGHT, window.innerHeight));
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
 	const [persistenceError, setPersistenceError] = useState<string | undefined>(undefined);
 	const [commandError, setCommandError] = useState<string | undefined>(undefined);
@@ -1299,6 +1431,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const activePlayback = activeClip && playback?.clipId === activeClip.id
 		? playback.state
 		: createPlaybackState();
+	const boundedTimelineHeight = clampTimelineHeight(timelineHeight, viewportHeight);
+	const shellStyle = {
+		'--timeline-height': `${mode === 'animate' ? boundedTimelineHeight : SETUP_TIMELINE_HEIGHT}px`
+	} as CSSProperties;
 	const activePose = useMemo(() => {
 		if (mode !== 'animate' || !activeClip) {
 			return undefined;
@@ -1347,6 +1483,18 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			autosave.cancel();
 		};
 	}, [autosave]);
+
+	useEffect(() => {
+		const updateViewportHeight = function updateViewportHeight(): void {
+			setViewportHeight(window.innerHeight);
+		};
+
+		window.addEventListener('resize', updateViewportHeight);
+
+		return function cleanup(): void {
+			window.removeEventListener('resize', updateViewportHeight);
+		};
+	}, []);
 
 	useEffect(() => {
 		const lifecycle = { cancelled: false };
@@ -2377,7 +2525,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const statusMessage = commandError ?? persistenceError ?? assetError;
 
 	return (
-		<div className="app-shell">
+		<div className="app-shell" style={shellStyle}>
 			<header className="topbar">
 				<div className="brand-lockup">
 					<span className="brand-mark" aria-hidden="true">BA</span>
@@ -2511,30 +2659,48 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							</label>
 							</div>
 						</div>
-						<CanvasWarnings warnings={canvasWarnings} />
-						<div className="viewport-stage">
-							<ViewportCanvas
-								project={project}
-								assets={assetBlobs}
-								pose={activePose}
-							onAssetDrop={dropAssetOnCanvas}
-							onCanvasSelect={selectCanvasPoint}
-							onCanvasMarquee={selectCanvasMarquee}
-								selection={selection}
-								transformTool={transformTool}
-								gridVisible={gridSettings.visible}
-								gridSpacing={gridSettings.spacing}
-								snapToGrid={gridSettings.snap}
-								onCanvasTransformStart={beginCanvasTransform}
-							onCanvasTransform={updateCanvasTransform}
-						/>
-						{project.bones.length === 0 && project.assets.length === 0 && (
-							<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
-								<span>Drop image parts here</span>
-								<small>Fixed logical canvas · {project.logicalCanvas.width} × {project.logicalCanvas.height}</small>
+						<div className="viewport-body">
+							<CanvasWarnings warnings={canvasWarnings} />
+							<div className="viewport-stage">
+								<div className="canvas-stage-content">
+									<div className="canvas-tool-toolbar" aria-label="Transform tools">
+										{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
+											<button
+												className={transformTool === tool ? 'tool-button is-active' : 'tool-button'}
+												key={tool}
+												type="button"
+												onClick={() => setTransformTool(tool)}
+												aria-pressed={transformTool === tool}
+												title={transformToolLabels[tool]}
+											>
+												{transformToolLabels[tool]}
+											</button>
+										))}
+									</div>
+									<ViewportCanvas
+										project={project}
+										assets={assetBlobs}
+										pose={activePose}
+										onAssetDrop={dropAssetOnCanvas}
+										onCanvasSelect={selectCanvasPoint}
+										onCanvasMarquee={selectCanvasMarquee}
+										selection={selection}
+										transformTool={transformTool}
+										gridVisible={gridSettings.visible}
+										gridSpacing={gridSettings.spacing}
+										snapToGrid={gridSettings.snap}
+										onCanvasTransformStart={beginCanvasTransform}
+										onCanvasTransform={updateCanvasTransform}
+									/>
+									{project.bones.length === 0 && project.assets.length === 0 && (
+										<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
+											<span>Drop image parts here</span>
+											<small>Fixed logical canvas · {project.logicalCanvas.width} × {project.logicalCanvas.height}</small>
+										</div>
+									)}
+								</div>
 							</div>
-						)}
-					</div>
+						</div>
 				</section>
 
 				<aside className="panel inspector-panel" aria-label="Rig hierarchy and inspector">
@@ -2702,19 +2868,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 												<p className="muted-copy">Drop an image from the library onto this slot to add a setup attachment.</p>
 											</div>
 										)}
-										<div className="transform-tools" aria-label="Transform tools">
-											{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
-												<button
-													className={transformTool === tool ? 'tool-button is-active' : 'tool-button'}
-													key={tool}
-													type="button"
-													onClick={() => setTransformTool(tool)}
-													aria-pressed={transformTool === tool}
-												>
-													{transformToolLabels[tool]}
-												</button>
-											))}
-										</div>
 										{selectedBone && (
 											<div className="inspector-actions inspector-create-actions">
 												<button className="secondary-button" type="button" onClick={addChildBone}>Add child bone</button>
@@ -2731,54 +2884,65 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				</aside>
 			</main>
 
-			<footer className="timeline-panel" aria-label="Animation timeline">
-				{mode === 'animate' ? (
-					<AnimateTimeline
-						project={project}
-						activeClip={activeClip}
-						playback={activePlayback}
-						autoKey={autoKey}
-						pendingEditCount={pendingAnimationEdits.length}
-						onSelectClip={setActiveClipId}
-						onCreateClip={createAnimationClip}
-						onDuplicateClip={duplicateActiveClip}
-						onRenameClip={renameActiveClip}
-						onDeleteClip={deleteActiveClip}
-						onAddEvent={addAnimationEvent}
-						onUpdateEvent={updateAnimationEvent}
-						onMoveEvent={moveAnimationEvent}
-						onDeleteEvent={deleteAnimationEvent}
-						onUpdatePlayback={updateActiveClipPlayback}
-						onTogglePlayback={toggleActivePlayback}
-						onStepPlayback={stepActivePlayback}
-						onSeekPlayback={seekActivePlayback}
-						onCreateTrack={createAnimationTrack}
-						onDeleteTrack={deleteAnimationTrack}
-						onAddKey={addAnimationKey}
-						onMoveKey={moveAnimationKey}
-						onCopyKey={copyAnimationKey}
-						onUpdateInterpolation={updateAnimationInterpolation}
-						onUpdateAttachmentKey={updateAnimationAttachmentKey}
-						onUpdateDrawOrderKey={updateAnimationDrawOrderKey}
-						onDeleteKeys={deleteAnimationKeys}
-						onRetimeKeys={retimeAnimationKeys}
-						onAutoKeyChange={setAutoKey}
-						onKeyPendingEdits={keyPendingAnimationEdits}
+			<footer className="timeline-panel" data-mode={mode} aria-label="Animation timeline">
+				{mode === 'animate' && (
+					<TimelineSplitter
+						height={boundedTimelineHeight}
+						viewportHeight={viewportHeight}
+						onHeightChange={setTimelineHeight}
 					/>
-				) : (
-					<>
-						<div className="timeline-header">
-							<div>
-								<p className="eyebrow">Animation</p>
-								<h2>Timeline</h2>
-							</div>
-							<span className="muted-copy">{project.clips.length === 0 ? 'No clips yet' : `${project.clips.length} clip${project.clips.length === 1 ? '' : 's'}`}</span>
-						</div>
-						<div className="timeline-empty">Create an animation clip when the rig is ready.</div>
-					</>
 				)}
-				<ValidationDiagnostics diagnostics={projectDiagnostics} />
-				{statusMessage && <div className="status-strip" role="status">{statusMessage}</div>}
+				<div className="timeline-panel-content">
+					<div className="timeline-main-content" id={mode === 'animate' && project.clips.length === 0 ? 'animation-timeline-pane' : undefined}>
+						{mode === 'animate' ? (
+							<AnimateTimeline
+								project={project}
+								activeClip={activeClip}
+								playback={activePlayback}
+								autoKey={autoKey}
+								pendingEditCount={pendingAnimationEdits.length}
+								onSelectClip={setActiveClipId}
+								onCreateClip={createAnimationClip}
+								onDuplicateClip={duplicateActiveClip}
+								onRenameClip={renameActiveClip}
+								onDeleteClip={deleteActiveClip}
+								onAddEvent={addAnimationEvent}
+								onUpdateEvent={updateAnimationEvent}
+								onMoveEvent={moveAnimationEvent}
+								onDeleteEvent={deleteAnimationEvent}
+								onUpdatePlayback={updateActiveClipPlayback}
+								onTogglePlayback={toggleActivePlayback}
+								onStepPlayback={stepActivePlayback}
+								onSeekPlayback={seekActivePlayback}
+								onCreateTrack={createAnimationTrack}
+								onDeleteTrack={deleteAnimationTrack}
+								onAddKey={addAnimationKey}
+								onMoveKey={moveAnimationKey}
+								onCopyKey={copyAnimationKey}
+								onUpdateInterpolation={updateAnimationInterpolation}
+								onUpdateAttachmentKey={updateAnimationAttachmentKey}
+								onUpdateDrawOrderKey={updateAnimationDrawOrderKey}
+								onDeleteKeys={deleteAnimationKeys}
+								onRetimeKeys={retimeAnimationKeys}
+								onAutoKeyChange={setAutoKey}
+								onKeyPendingEdits={keyPendingAnimationEdits}
+							/>
+						) : (
+							<div className="setup-timeline-row">
+								<div>
+									<p className="eyebrow">Animation</p>
+									<h2>Timeline</h2>
+								</div>
+								<span className="muted-copy">{project.clips.length === 0 ? 'No clips yet' : `${project.clips.length} clip${project.clips.length === 1 ? '' : 's'}`}</span>
+								{project.clips.length === 0 && <span className="setup-timeline-guidance">Create an animation clip in Animate mode when the rig is ready.</span>}
+							</div>
+						)}
+					</div>
+					<div className="timeline-feedback">
+						<ValidationDiagnostics diagnostics={projectDiagnostics} />
+						{statusMessage && <div className="status-strip" role="status">{statusMessage}</div>}
+					</div>
+				</div>
 			</footer>
 		</div>
 	);
