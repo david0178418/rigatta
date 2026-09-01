@@ -37,6 +37,7 @@ import { createTransformGesture, isTransformHandleHit, transformGestureCommands,
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
+import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -1146,6 +1147,40 @@ const ExportControls = function ExportControls({
 	);
 };
 
+const ShortcutReference = function ShortcutReference({ onClose }: Readonly<{ onClose: () => void }>): ReactElement {
+	const shortcuts: readonly Readonly<{ keys: string; action: string }>[] = [
+		{ keys: 'Ctrl/Cmd + Z', action: 'Undo' },
+		{ keys: 'Ctrl/Cmd + Shift + Z', action: 'Redo' },
+		{ keys: 'Ctrl/Cmd + Y', action: 'Redo' },
+		{ keys: 'Space', action: 'Play or pause the active clip' },
+		{ keys: '← / →', action: 'Step the active clip by one frame' },
+		{ keys: '?', action: 'Open this reference' }
+	];
+
+	return (
+		<div className="shortcut-panel-overlay">
+			<section className="shortcut-panel" aria-label="Keyboard shortcuts">
+				<div className="panel-heading">
+					<div>
+						<p className="eyebrow">Reference</p>
+						<h2>Keyboard shortcuts</h2>
+					</div>
+					<button className="quiet-button" type="button" aria-label="Close keyboard shortcuts" onClick={onClose}>Close</button>
+				</div>
+				<dl className="shortcut-list">
+					{shortcuts.map((shortcut) => (
+						<div key={shortcut.keys}>
+							<dt><kbd>{shortcut.keys}</kbd></dt>
+							<dd>{shortcut.action}</dd>
+						</div>
+					))}
+				</dl>
+				<p className="muted-copy shortcut-note">Shortcuts are inactive while typing in a form field.</p>
+			</section>
+		</div>
+	);
+};
+
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
@@ -1165,6 +1200,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [slotOrderDropPreview, setSlotOrderDropPreview] = useState<Readonly<{ slotId: EntityId; zone: SlotDropZone }> | undefined>(undefined);
 	const [exportPanelOpen, setExportPanelOpen] = useState(false);
 	const [exportSelection, setExportSelection] = useState<ExportClipSelection>({ mode: 'combined', clipIds: [] });
+	const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
@@ -1233,6 +1269,44 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			}
 		};
 	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.playing]);
+
+	useEffect(() => {
+		const isFormTarget = function isFormTarget(target: EventTarget | null): boolean {
+			return target instanceof HTMLInputElement
+				|| target instanceof HTMLTextAreaElement
+				|| target instanceof HTMLSelectElement
+				|| target instanceof HTMLElement && target.isContentEditable;
+		};
+		const actionHandlers: Readonly<Record<ShortcutAction, () => void>> = {
+			undo: () => stepHistory(undo(history)),
+			redo: () => stepHistory(redo(history)),
+			'toggle-playback': () => toggleActivePlayback(),
+			'step-backward': () => stepActivePlayback(-1),
+			'step-forward': () => stepActivePlayback(1),
+			'open-reference': () => setShortcutPanelOpen(true)
+		};
+		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
+			if (isFormTarget(event.target)) {
+				return;
+			}
+
+			const action = shortcutActionFor(event);
+			const handler = action ? actionHandlers[action] : undefined;
+
+			if (!handler) {
+				return;
+			}
+
+			event.preventDefault();
+			handler();
+		};
+
+		window.addEventListener('keydown', onKeyDown);
+
+		return function cleanup(): void {
+			window.removeEventListener('keydown', onKeyDown);
+		};
+	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, activePlayback.playing, history, mode]);
 
 	const commitHistory = function commitHistory(
 		nextHistory: HistoryState,
@@ -2179,6 +2253,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				<div className="toolbar-actions">
 					<button className="quiet-button" type="button" disabled={!canUndo(history)} onClick={() => stepHistory(undo(history))}>Undo</button>
 					<button className="quiet-button" type="button" disabled={!canRedo(history)} onClick={() => stepHistory(redo(history))}>Redo</button>
+					<button className="quiet-button" type="button" aria-label="Keyboard shortcuts" onClick={() => setShortcutPanelOpen(true)}>?</button>
 					<button className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel}>Export</button>
 				</div>
 			</header>
@@ -2190,6 +2265,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					onClose={() => setExportPanelOpen(false)}
 				/>
 			)}
+			{shortcutPanelOpen && <ShortcutReference onClose={() => setShortcutPanelOpen(false)} />}
 
 			<main className="workspace" data-mode={mode}>
 				<aside className="panel library-panel" aria-label="Image library" onDragOver={dragOverLibrary} onDrop={dropOnLibrary}>

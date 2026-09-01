@@ -115,6 +115,31 @@ test('selects clips and output grouping for export', async ({ page }) => {
 	await expect(page.getByRole('region', { name: 'Export controls' })).toHaveCount(0);
 });
 
+test('supports keyboard shortcuts and shortcut reference', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await expect(page.getByRole('button', { name: 'root', exact: true })).toBeVisible();
+	await page.keyboard.press('Control+z');
+	await expect(page.getByRole('button', { name: 'root', exact: true })).toHaveCount(0);
+	await page.keyboard.press('Control+Shift+z');
+	await expect(page.getByRole('button', { name: 'root', exact: true })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Animate' }).click();
+	await page.getByRole('button', { name: 'Create animation clip' }).click();
+	await page.keyboard.press('Space');
+	await expect(page.getByRole('button', { name: 'Pause animation' })).toBeVisible();
+	await page.keyboard.press('Space');
+	await expect(page.getByRole('button', { name: 'Play animation' })).toBeVisible();
+	await page.keyboard.press('ArrowRight');
+	await expect(page.getByText('Frame 2 / 12', { exact: false })).toBeVisible();
+
+	await page.keyboard.press('?');
+	await expect(page.getByRole('region', { name: 'Keyboard shortcuts' })).toBeVisible();
+	await page.getByRole('button', { name: 'Close keyboard shortcuts' }).click();
+	await expect(page.getByRole('region', { name: 'Keyboard shortcuts' })).toHaveCount(0);
+});
+
 test('plays, pauses, and steps the active animation clip by frame', async ({ page }) => {
 	await page.goto('/');
 
