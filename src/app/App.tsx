@@ -452,7 +452,7 @@ type AnimateTimelineProps = Readonly<{
 	onUpdateInterpolation: (trackId: EntityId, keyId: EntityId, input: NumberKeyInterpolationInput) => void;
 	onUpdateAttachmentKey: (trackId: EntityId, keyId: EntityId, value: EntityId | null) => void;
 	onUpdateDrawOrderKey: (trackId: EntityId, keyId: EntityId, value: readonly EntityId[]) => void;
-	onDeleteKey: (trackId: EntityId, keyId: EntityId) => void;
+	onDeleteKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[]) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 	onAutoKeyChange: (enabled: boolean) => void;
 	onKeyPendingEdits: () => void;
@@ -481,7 +481,7 @@ const AnimateTimeline = function AnimateTimeline({
 	onUpdateInterpolation,
 	onUpdateAttachmentKey,
 	onUpdateDrawOrderKey,
-	onDeleteKey,
+	onDeleteKeys,
 	onRetimeKeys,
 	onAutoKeyChange,
 	onKeyPendingEdits
@@ -669,7 +669,7 @@ const AnimateTimeline = function AnimateTimeline({
 		});
 	};
 	const deleteSelectedKeys = function deleteSelectedKeys(): void {
-		selectedKeys.forEach((key) => onDeleteKey(key.trackId, key.keyId));
+		onDeleteKeys(selectedKeys);
 		setSelectedKeys([]);
 	};
 	const deleteSelectedTrack = function deleteSelectedTrack(): void {
@@ -1150,10 +1150,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 
-	const deleteAnimationKey = function deleteAnimationKey(trackId: EntityId, keyId: EntityId): void {
-		if (activeClip) {
-			applyCommand({ kind: 'delete-key', clipId: activeClip.id, trackId, keyId });
+	const deleteAnimationKeys = function deleteAnimationKeys(
+		keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[]
+	): void {
+		if (!activeClip || keys.length === 0) {
+			return;
 		}
+
+		applyCommandSequence(keys.map((key) => ({
+			kind: 'delete-key' as const,
+			clipId: activeClip.id,
+			trackId: key.trackId,
+			keyId: key.keyId
+		})));
 	};
 
 	const retimeAnimationKeys = function retimeAnimationKeys(
@@ -2243,7 +2252,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onUpdateInterpolation={updateAnimationInterpolation}
 						onUpdateAttachmentKey={updateAnimationAttachmentKey}
 						onUpdateDrawOrderKey={updateAnimationDrawOrderKey}
-						onDeleteKey={deleteAnimationKey}
+						onDeleteKeys={deleteAnimationKeys}
 						onRetimeKeys={retimeAnimationKeys}
 						onAutoKeyChange={setAutoKey}
 						onKeyPendingEdits={keyPendingAnimationEdits}
