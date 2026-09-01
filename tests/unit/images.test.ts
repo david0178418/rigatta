@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mimeTypeFromFileName, validateImageBytes } from '../../src/assets/images.ts';
+import { decodeImageBlob, mimeTypeFromFileName, validateImageBytes } from '../../src/assets/images.ts';
 
 const pngBytes = Uint8Array.from([
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -27,5 +27,28 @@ describe('image validation', () => {
 		expect(mimeTypeFromFileName('character.PNG')).toBe('image/png');
 		expect(mimeTypeFromFileName('character.jpeg')).toBe('image/jpeg');
 		expect(mimeTypeFromFileName('character.tga')).toBeUndefined();
+	});
+
+	test('decodes validated image bytes through the browser bitmap boundary', async () => {
+		const originalCreateImageBitmap = globalThis.createImageBitmap;
+		const bitmap: ImageBitmap = {
+			width: 64,
+			height: 32,
+			close: function close(): void {}
+		};
+
+		globalThis.createImageBitmap = async function createImageBitmap(): Promise<ImageBitmap> {
+			return bitmap;
+		};
+
+		try {
+			const buffer = new ArrayBuffer(pngBytes.byteLength);
+			new Uint8Array(buffer).set(pngBytes);
+			const result = await decodeImageBlob(new Blob([buffer], { type: 'image/png' }), 'image/png');
+
+			expect(result).toMatchObject({ ok: true, value: { width: 64, height: 32, bitmap } });
+		} finally {
+			globalThis.createImageBitmap = originalCreateImageBitmap;
+		}
 	});
 });

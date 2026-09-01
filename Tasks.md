@@ -10,8 +10,8 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [ ] **P0-04** Define standard PixiJS atlas output and companion gameplay metadata schemas. Depends on P0-01.
 - [ ] **P0-05** Prototype PixiJS fixed-canvas rendering and PNG extraction. Depends on P0-01.
 - [ ] **P0-06** Prototype alpha trimming and verify `sourceSize` and `spriteSourceSize` alignment by reloading the atlas in PixiJS. Depends on P0-04 and P0-05.
-- [ ] **P0-07** Prototype Chrome directory picker and recursive directory drop traversal.
-- [ ] **P0-08** Prototype IndexedDB image blob persistence and reload.
+- [x] **P0-07** Prototype Chrome directory picker and recursive directory drop traversal.
+- [x] **P0-08** Prototype IndexedDB image blob persistence and reload.
 - [x] **P0-09** Prototype ZIP archive creation and validation-driven import. Depends on P0-03.
 - [ ] **P0-10** Record prototype conclusions and finalize technical choices.
 
@@ -26,7 +26,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P1-07** Configure Playwright and a Chrome smoke test.
 - [x] **P1-08** Add `typecheck`, `lint`, `test`, `test:e2e`, `build`, and `check` scripts.
 - [x] **P1-09** Build the CSS-token foundation and desktop editor shell.
-- [ ] **P1-10** Add startup loading, fatal error, and unsupported-browser states.
+- [x] **P1-10** Add startup loading, fatal error, and unsupported-browser states.
 
 ## Phase 2: domain model and history
 
@@ -49,18 +49,18 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 
 ## Phase 3: assets, persistence, and archives
 
-- [ ] **P3-01** Implement image file validation and decoding for PNG, JPEG, and WebP.
-- [ ] **P3-02** Implement recursive directory picker import. Depends on P0-07 and P3-01.
-- [ ] **P3-03** Implement recursive directory drag/drop import. Depends on P0-07 and P3-01.
-- [ ] **P3-04** Preserve and normalize relative asset folder paths.
-- [ ] **P3-05** Implement the IndexedDB schema and migrations. Depends on P0-08 and P0-02.
-- [ ] **P3-06** Implement separate project-metadata and asset-blob repositories.
-- [ ] **P3-07** Implement debounced autosave after committed commands.
-- [ ] **P3-08** Add storage persistence requests, quota reporting, and failure handling.
-- [ ] **P3-09** Implement recent-project listing and crash recovery.
-- [ ] **P3-10** Implement `.boneanim` export. Depends on P0-09 and P3-06.
-- [ ] **P3-11** Implement validate-before-replace `.boneanim` import.
-- [ ] **P3-12** Add repository, autosave, and archive round-trip tests.
+- [x] **P3-01** Implement image file validation and decoding for PNG, JPEG, and WebP.
+- [x] **P3-02** Implement recursive directory picker import. Depends on P0-07 and P3-01.
+- [x] **P3-03** Implement recursive directory drag/drop import. Depends on P0-07 and P3-01.
+- [x] **P3-04** Preserve and normalize relative asset folder paths.
+- [x] **P3-05** Implement the IndexedDB schema and migrations. Depends on P0-08 and P0-02.
+- [x] **P3-06** Implement separate project-metadata and asset-blob repositories.
+- [x] **P3-07** Implement debounced autosave after committed commands.
+- [x] **P3-08** Add storage persistence requests, quota reporting, and failure handling.
+- [x] **P3-09** Implement recent-project listing and crash recovery.
+- [x] **P3-10** Implement `.boneanim` export. Depends on P0-09 and P3-06.
+- [x] **P3-11** Implement validate-before-replace `.boneanim` import.
+- [x] **P3-12** Add repository, autosave, and archive round-trip tests.
 
 ## Phase 4: Setup mode
 
