@@ -1,6 +1,7 @@
 import type { SpritesheetData, SpritesheetFrameData } from 'pixi.js';
 import type { FrameBounds, FrameSize, TrimmedRgbaFrame } from './trim.ts';
 import type { GridLayout } from './grid.ts';
+import type { PackedAtlasPage, PackedFrameInput } from './packed-atlas.ts';
 
 export type AtlasPlacement = Readonly<{
 	x: number;
@@ -157,6 +158,51 @@ export const createPixiGridAtlasData = function createPixiGridAtlasData(
 			format: 'RGBA8888',
 			image: imageFilename,
 			size: { w: layout.width, h: layout.height },
+			scale: '1',
+			version: '1'
+		}
+	});
+};
+
+export const createPixiPackedAtlasData = function createPixiPackedAtlasData(
+	page: PackedAtlasPage,
+	frames: readonly PackedFrameInput[],
+	imageFilename: string = `atlas-${page.index}.png`
+): AtlasResult<SpritesheetData> {
+	if (!isPositiveInteger(page.size.width) || !isPositiveInteger(page.size.height)) {
+		return failure('Packed atlas dimensions must be positive integers.');
+	}
+
+	const framesByKey = new Map(frames.map((item) => [item.key, item.frame] as const));
+	const frameEntries = page.placements.reduce<AtlasResult<Record<string, SpritesheetFrameData>>>((result, placement) => {
+		if (!result.ok) {
+			return result;
+		}
+
+		const source = framesByKey.get(placement.key);
+
+		if (!source) {
+			return failure(`Packed frame ${placement.key} is unavailable.`);
+		}
+
+		const frame = createPixiAtlasFrame(source, { x: placement.x, y: placement.y });
+
+		return frame.ok
+			? success({ ...result.value, [placement.key]: frame.value })
+			: frame;
+	}, success({}));
+
+	if (!frameEntries.ok) {
+		return frameEntries;
+	}
+
+	return success({
+		frames: frameEntries.value,
+		meta: {
+			app: 'Bone Animation Utility',
+			format: 'RGBA8888',
+			image: imageFilename,
+			size: { w: page.size.width, h: page.size.height },
 			scale: '1',
 			version: '1'
 		}

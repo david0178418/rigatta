@@ -126,7 +126,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P7-08** Implement multipage splitting at the configured texture limit.
 - [x] **P7-09** Implement optional atlas edge extrusion.
 - [x] **P7-10** Composite packed atlas pages.
-- [ ] **P7-11** Generate standard PixiJS frames, animations, and trim metadata.
+- [x] **P7-11** Generate standard PixiJS frames, animations, and trim metadata.
 - [ ] **P7-12** Generate companion event and gameplay metadata.
 - [ ] **P7-13** Package multifile outputs into ZIP downloads.
 - [ ] **P7-14** Add export progress, batching, browser yielding, and cancellation.
