@@ -6,7 +6,8 @@ const EXAMPLE_PROJECT_ID = '123e4567-e89b-42d3-a456-426614174100';
 test('persists inspector collapse state for the matching project only', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await page.getByRole('button', { name: 'arm', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 	await page.getByRole('button', { name: 'Clip settings', exact: true }).click();
@@ -58,7 +59,8 @@ test('persists inspector collapse state for the matching project only', async ({
 	await expect(page.getByRole('button', { name: 'Collapse Entity properties' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Expand Entity properties' })).toHaveCount(0);
 
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Expand Entity properties' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Collapse Entity properties' })).toHaveCount(0);
 	await page.waitForTimeout(400);

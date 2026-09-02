@@ -2678,6 +2678,54 @@ h2 {
 	font-size: 9px;
 }
 
+.recent-project-list {
+	display: grid;
+	gap: 6px;
+}
+
+.recent-project-row {
+	display: grid;
+	gap: 3px;
+	padding: 9px 10px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: var(--surface);
+	color: var(--text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.recent-project-row:hover,
+.recent-project-row:focus-visible {
+	background: var(--surface-hover);
+	border-color: rgba(111, 212, 189, 0.5);
+}
+
+.recent-project-row span {
+	color: var(--muted);
+	font-size: 10px;
+}
+
+.project-settings-form {
+	display: grid;
+	gap: 12px;
+}
+
+.project-settings-form label {
+	display: grid;
+	gap: 5px;
+}
+
+.project-settings-form input {
+	width: 100%;
+}
+
+.field-error {
+	margin: -4px 0 0;
+	color: var(--danger);
+	font-size: 11px;
+}
+
 .timeline-row-mode-field select {
 	max-width: 110px;
 	padding: 5px 6px;

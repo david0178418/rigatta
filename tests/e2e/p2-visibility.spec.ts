@@ -6,7 +6,8 @@ const EXAMPLE_ROOT_BONE_ID = '123e4567-e89b-42d3-a456-426614174102';
 
 const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
 	await expect(page.locator('canvas.pixi-canvas')).toBeVisible();
 };

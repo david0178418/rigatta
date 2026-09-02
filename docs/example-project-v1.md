@@ -1,6 +1,6 @@
 # Built-in example project v1
 
-The top toolbar's `Load example` action loads a small deterministic cutout rig
+The `Project` menu's `Load example` action loads a small deterministic cutout rig
 named `Cutout Robot Example`. It includes one PNG asset, a two-bone hierarchy,
 an image slot, a point, a rectangle, one looping 12 FPS clip, and a structured
 event. The project uses a 256 × 256 logical canvas.

@@ -37,6 +37,25 @@ elements.
 The recovery snapshot is separate from the stable project record and is
 validated with the same project and image rules.
 
+## Project menu workflow
+
+1. Open `Project` and use `Project settings` to rename the current project.
+   The dialog reports the fixed logical canvas and does not expose export
+   settings.
+2. Use `Open recent` to select a stable project or a recovery snapshot. The
+   current authored project remains active if replacement is declined.
+3. Use `Import .boneanim` to choose a self-contained archive. Archive
+   validation completes before replacement confirmation, and invalid archives
+   leave the current project untouched.
+4. Use `Export project archive` to download editable project JSON and source
+   image bytes. Use the separate toolbar `Export` action for sprite-sheet
+   output.
+5. `New project` and `Load example` use the same authored-content replacement
+   confirmation rule and schedule the resulting project for recovery autosave.
+
+The complete action contract is recorded in
+[`project-menu-v1.md`](project-menu-v1.md).
+
 ## PixiJS loading workflow
 
 1. The viewport creates one Pixi application with a transparent canvas whose

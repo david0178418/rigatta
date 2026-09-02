@@ -12,7 +12,8 @@ test('keeps the desktop editor usable at supported viewport sizes', async ({ pag
 		await previous;
 		await page.setViewportSize(viewport);
 		await page.goto('/');
-		await page.getByRole('button', { name: 'Load example' }).click();
+		await page.getByRole('button', { name: 'Project', exact: true }).click();
+		await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 		await page.getByRole('button', { name: 'arm', exact: true }).click();
 
 		await expect(page.getByRole('button', { name: 'Setup' })).toBeVisible();
@@ -58,7 +59,8 @@ test('runs the P0 editor workflow at every supported viewport size', async ({ pa
 			await previous;
 			await page.setViewportSize(viewport);
 			await page.goto('/');
-			await page.getByRole('button', { name: 'Load example' }).click();
+			await page.getByRole('button', { name: 'Project', exact: true }).click();
+			await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 			await page.getByRole('button', { name: 'arm', exact: true }).click();
 			await page.getByRole('button', { name: 'Rotate', exact: true }).click();
 			await expect(page.getByRole('button', { name: 'Rotate', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -101,7 +103,8 @@ test('runs the P0 editor workflow at every supported viewport size', async ({ pa
 test('resizes the Animate timeline with keyboard and pointer controls', async ({ page }) => {
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await page.goto('/');
-		await page.getByRole('button', { name: 'Load example' }).click();
+		await page.getByRole('button', { name: 'Project', exact: true }).click();
+		await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 		await page.getByRole('button', { name: 'Animate' }).click();
 
 		const splitter = page.getByRole('separator', { name: 'Resize animation timeline' });

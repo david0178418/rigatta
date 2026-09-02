@@ -64,7 +64,8 @@ test('keeps an invalid duplicate name in the inline field until corrected or can
 
 test('searches Rig names and types with context markers and restores expansion and focus', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
 	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });

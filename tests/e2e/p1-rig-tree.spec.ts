@@ -128,7 +128,8 @@ test('reveals filtered descendants without adding a history entry', async ({ pag
 
 test('renders typed SVG icons and durable accessible row states', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
 	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });

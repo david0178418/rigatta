@@ -72,7 +72,8 @@ test('routes primary selection and marquee separately from middle and Space pan'
 test('constrains a transform, exposes feedback, groups history, and cancels on Escape', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example' }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	const arm = page.getByRole('button', { name: 'arm', exact: true });
 	await arm.click();
 	await expect(arm).toHaveAttribute('aria-pressed', 'true');

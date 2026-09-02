@@ -48,7 +48,8 @@ test('keeps asset density interactions, previews, and object URL lifetime bounde
 	});
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example' }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await page.getByRole('tab', { name: 'Assets', exact: true }).click();
 
 	const browser = page.locator('.asset-browser');

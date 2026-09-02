@@ -71,6 +71,7 @@ Playwright tests exercise the supported Chrome editor workflow.
 | Recover recent projects after reload or interruption | `tests/unit/startup.test.ts` and the reload recovery flow in `tests/e2e/smoke.spec.ts` cover startup selection and browser recovery. |
 | Self-contained versioned `.boneanim` archives | `tests/unit/archive.test.ts` covers project JSON, manifest, and image-byte round trips. |
 | Validate archives before replacing the open project | `tests/unit/archive.test.ts` rejects malformed, undeclared, tampered, and missing asset data before import succeeds. |
+| Project lifecycle actions and archive/export distinction | `tests/e2e/p1-project-menu.spec.ts` covers the Project menu, settings rename, replacement confirmations, archive download/import, recent projects, and the separate sprite-sheet Export action. |
 
 ## Sprite-sheet export
 

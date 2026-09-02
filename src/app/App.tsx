@@ -488,6 +488,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [exportSelection, setExportSelection] = useState<ExportClipSelection>({ mode: 'combined', clipIds: [] });
 	const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
 	const [recentProjects, setRecentProjects] = useState<readonly RecentProject[]>([]);
+	const [recentProjectsLoading, setRecentProjectsLoading] = useState(true);
 	const [rigSearch, setRigSearch] = useState('');
 	const [inlineRenameId, setInlineRenameId] = useState<EntityId | undefined>(undefined);
 	const [constraintStatus, setConstraintStatus] = useState<string | undefined>(undefined);
@@ -577,6 +578,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		|| project.slots.length > 0
 		|| project.attachments.length > 0
 		|| project.clips.length > 0;
+	useEffect(() => {
+		setRecentProjectsLoading(true);
+		void startup.repository.listRecentProjects().then((result) => {
+			setRecentProjectsLoading(false);
+
+			if (result.ok) {
+				setRecentProjects(result.value);
+				return;
+			}
+
+			setPersistenceError(result.error.message);
+		});
+	}, [startup.repository]);
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
@@ -673,7 +687,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		replaceProject(result.value.project, nextAssets);
 	};
 	const openRecentProjects = function openRecentProjects(): void {
+		setRecentProjectsLoading(true);
 		void startup.repository.listRecentProjects().then((result) => {
+			setRecentProjectsLoading(false);
+
 			if (result.ok) {
 				setRecentProjects(result.value);
 				return;
@@ -699,11 +716,20 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				setPersistenceError('The selected recent project could not be loaded.');
 				return;
 			}
-			if (projectHasContent && !window.confirm(`Replace the current project with “${result.value.project.name}”?`)) {
+			const snapshot = result.value;
+
+			if (projectHasContent && !window.confirm(`Replace the current project with “${snapshot.project.name}”?`)) {
 				return;
 			}
 
-			replaceProject(result.value.project, result.value.assets);
+			void startup.repository.markProjectOpened(projectId).then((opened) => {
+				if (!opened.ok) {
+					setPersistenceError(opened.error.message);
+					return;
+				}
+
+				replaceProject(snapshot.project, snapshot.assets);
+			});
 		});
 	};
 
@@ -2328,6 +2354,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					canvas={project.logicalCanvas}
 					projectName={project.name}
 					recentProjects={recentProjects}
+					recentProjectsLoading={recentProjectsLoading}
 					onExportArchive={() => void exportArchive()}
 					onImportArchive={(bytes) => void importArchive(bytes)}
 					onLoadExample={loadExampleProject}
@@ -2354,9 +2381,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<button className="quiet-button" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" disabled={!canRedo(history)} onClick={() => stepHistory(redo(history))} title="Redo · Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y">Redo</button>
 					<button className="quiet-button" type="button" aria-label="Previous selection" aria-keyshortcuts="PageUp" disabled={!canNavigateSelectionHistory(-1)} onClick={() => navigateSelectionHistory(-1)} title="Previous selection · Page Up">Previous</button>
 					<button className="quiet-button" type="button" aria-label="Next selection" aria-keyshortcuts="PageDown" disabled={!canNavigateSelectionHistory(1)} onClick={() => navigateSelectionHistory(1)} title="Next selection · Page Down">Next</button>
-					<button className="quiet-button" type="button" onClick={loadExampleProject}>Load example</button>
 					<button className="quiet-button" type="button" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={() => setShortcutPanelOpen(true)} title="Keyboard shortcuts · ?">?</button>
-					<button className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel}>Export</button>
+					<button className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel} title="Export sprite sheet">Export</button>
 				</div>
 			</header>
 			{exportPanelOpen && (

@@ -29,6 +29,11 @@ newer recovery record is surfaced as recoverable work. Opening a project can
 update its `lastOpenedAt` timestamp, while clearing or deleting a project also
 removes its recovery metadata and image blobs.
 
+The `Project` menu's `Open recent` action reads this listing and loads the
+selected stable or recovery snapshot through the repository. A valid snapshot
+is loaded before the replacement confirmation is shown; declining confirmation
+leaves the active project untouched.
+
 The autosave scheduler coalesces committed snapshots during a configurable
 debounce window and exposes an explicit `flush` operation for page lifecycle
 handling. A scheduled snapshot reports `scheduled`, `saving`, then either

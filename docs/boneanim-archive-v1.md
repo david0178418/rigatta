@@ -47,6 +47,9 @@ checking.
 
 ## Import and export rules
 
+- The editor's `Project` menu uses `Import .boneanim` and `Export project
+  archive` for this format. The toolbar `Export` action is reserved for
+  generated sprite-sheet output and does not produce a `.boneanim` archive.
 - Export writes deterministic JSON encoding and stable asset ordering by ID.
 - Import first checks ZIP paths, manifest shape, archive version, project
   schema, asset hashes, and image signatures. No active project state changes

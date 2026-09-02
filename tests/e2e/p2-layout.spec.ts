@@ -7,7 +7,8 @@ const EXAMPLE_ROOT_BONE_ID = '123e4567-e89b-42d3-a456-426614174102';
 test('resizes both side docks accessibly without reducing the canvas below its minimum', async ({ page }) => {
 	await page.setViewportSize({ width: 1120, height: 720 });
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 
 	const leftSplitter = page.getByRole('separator', { name: 'Resize left dock' });
 	const rightSplitter = page.getByRole('separator', { name: 'Resize right dock' });
@@ -101,7 +102,8 @@ test('restores matching-project presentation, isolates a new project, and falls 
 		}));
 	}, { key: UI_PREFERENCES_STORAGE_KEY, projectId: EXAMPLE_PROJECT_ID, rootBoneId: EXAMPLE_ROOT_BONE_ID });
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 
 	const leftSplitter = page.getByRole('separator', { name: 'Resize left dock' });
 	const rightSplitter = page.getByRole('separator', { name: 'Resize right dock' });
@@ -119,7 +121,8 @@ test('restores matching-project presentation, isolates a new project, and falls 
 	await expect(page.getByRole('tab', { name: 'Rig' })).toHaveAttribute('aria-selected', 'true');
 	await expect(page.getByRole('tab', { name: 'Properties' })).toHaveAttribute('aria-selected', 'true');
 
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await expect(leftSplitter).toHaveAttribute('aria-valuenow', '312');
 	await expect(rightSplitter).toHaveAttribute('aria-valuenow', '304');
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();

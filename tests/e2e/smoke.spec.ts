@@ -12,7 +12,8 @@ test('opens the empty editor shell', async ({ page }) => {
 test('loads the built-in example project', async ({ page }) => {
 	await page.goto('/');
 
-	await page.getByRole('button', { name: 'Load example' }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'root', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Animate' }).click();
@@ -22,7 +23,8 @@ test('loads the built-in example project', async ({ page }) => {
 
 test('renders the evaluated animation pose in the viewport', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example' }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 
 	const canvas = page.locator('canvas.pixi-canvas');

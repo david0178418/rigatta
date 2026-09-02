@@ -6,7 +6,8 @@ test('keeps workspace presentation boundaries mounted across editor modes', asyn
 	await expect(page.getByTestId('workspace-docks')).toBeVisible();
 	await expect(page.getByTestId('canvas-toolbar')).toBeVisible();
 	await expect(page.getByTestId('properties-inspector')).toBeVisible();
-	await page.getByRole('button', { name: 'Load example', exact: true }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 	await expect(page.getByTestId('animate-timeline')).toBeVisible();
 	await expect(page.getByTestId('workspace-docks')).toBeVisible();

@@ -9,7 +9,8 @@ const supportedViewports = [
 
 test('characterizes selection in Setup and Animate modes', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example' }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 
 	const arm = page.getByRole('button', { name: 'arm', exact: true });
 	await arm.click();
@@ -127,7 +128,8 @@ test('characterizes key and event detail surfaces with focus return', async ({ p
 test('characterizes timeline resizing through keyboard and pointer controls', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Load example' }).click();
+	await page.getByRole('button', { name: 'Project', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 
 	const splitter = page.getByRole('separator', { name: 'Resize animation timeline' });
