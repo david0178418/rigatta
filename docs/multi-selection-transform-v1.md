@@ -9,6 +9,11 @@ rotation uses the shared group-center pointer angle. The group handle center is
 the average of the selected entity origins. A cancelled pointer gesture leaves
 all members unchanged, and one undo removes the entire multi-target edit.
 
+Holding `Shift` constrains the shared gesture: translation and shear use the
+dominant local axis, scale uses one factor for both axes, and rotation snaps to
+15-degree increments. Rectangle aspect locking applies only to its
+rectangle-specific scale handle.
+
 Unit coverage verifies command generation for multiple image/gameplay
 attachments. The existing Setup browser coverage continues to verify the
 pointer transaction path against the rendered canvas.

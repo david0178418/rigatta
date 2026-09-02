@@ -8,7 +8,7 @@ import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createViewportState, formatViewportCoordinate, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
 import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from './grid.ts';
 import type { Selection } from './selection.ts';
-import type { TransformModifiers, TransformPhase, TransformTool } from './transform-gesture.ts';
+import { canvasGestureModeFor, type CanvasGestureMode, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -16,10 +16,12 @@ type PointerSession = Readonly<{
 	y: number;
 	startX: number;
 	startY: number;
-	mode: 'pan' | 'marquee' | 'transform';
+	mode: CanvasGestureMode;
 	constrained: boolean;
 	additive: boolean;
 }>;
+
+type ViewportGestureMode = CanvasGestureMode | 'idle';
 
 export const ViewportCanvas = function ViewportCanvas({
 	project,
@@ -64,6 +66,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	const rendererRef = useRef<FixedCanvasRenderer | undefined>(undefined);
 	const [viewport, setViewport] = useState<ViewportState>(createViewportState);
 	const [isPanning, setIsPanning] = useState(false);
+	const [gestureMode, setGestureMode] = useState<ViewportGestureMode>('idle');
 	const [marquee, setMarquee] = useState<ViewportRectangle | undefined>(undefined);
 	const [pointerPoint, setPointerPoint] = useState<ViewportPoint | undefined>(undefined);
 	const viewportStateRef = useRef(viewport);
@@ -213,6 +216,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			&& !!startPoint
 			&& !!transformStart
 			&& transformStart(startPoint, transformToolRef.current, { shiftKey: event.shiftKey });
+		const mode = canvasGestureModeFor(event.button, spacePressedRef.current, transformClaimed);
 
 		pointerSessionRef.current = {
 			id: event.pointerId,
@@ -220,13 +224,14 @@ export const ViewportCanvas = function ViewportCanvas({
 			y: event.clientY,
 			startX: event.clientX,
 			startY: event.clientY,
-			mode: panRequested ? 'pan' : transformClaimed ? 'transform' : 'marquee',
+			mode,
 			constrained: event.shiftKey,
 			additive: event.metaKey || event.ctrlKey
 		};
 		setMarquee(undefined);
 		hostRef.current?.setPointerCapture(event.pointerId);
-		setIsPanning(panRequested);
+		setGestureMode(mode);
+		setIsPanning(mode === 'pan');
 	};
 
 	const movePan = function movePan(event: PointerEvent): void {
@@ -258,7 +263,7 @@ export const ViewportCanvas = function ViewportCanvas({
 					{ x: event.clientX - stage.left, y: event.clientY - stage.top }
 				));
 			}
-		} else {
+		} else if (session.mode === 'pan') {
 			setViewport((current) => panViewport(current, { x: deltaX, y: deltaY }));
 		}
 		pointerSessionRef.current = { ...session, x: event.clientX, y: event.clientY };
@@ -288,7 +293,7 @@ export const ViewportCanvas = function ViewportCanvas({
 				viewportStateRef.current,
 				projectRef.current.logicalCanvas
 			), session.additive || event.metaKey || event.ctrlKey);
-		} else if (select && !didPanRef.current && stage && onSelect) {
+		} else if (select && session.mode === 'marquee' && !didPanRef.current && stage && onSelect) {
 			onSelect(screenToLogicalPoint(
 				{ x: event.clientX, y: event.clientY },
 				stage,
@@ -302,6 +307,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			hostRef.current.releasePointerCapture(event.pointerId);
 		}
 		pointerSessionRef.current = undefined;
+		setGestureMode('idle');
 		setIsPanning(false);
 	};
 
@@ -355,13 +361,13 @@ export const ViewportCanvas = function ViewportCanvas({
 	}, []);
 
 	useEffect(() => {
-		const cancelActiveGesture = function cancelActiveGesture(): void {
+		const cancelActiveGesture = function cancelActiveGesture(): boolean {
 			const session = pointerSessionRef.current;
 			const stage = viewportRef.current?.getBoundingClientRect();
 			const onTransform = transformRef.current;
 
 			if (!session) {
-				return;
+				return false;
 			}
 			if (session.mode === 'transform' && stage && onTransform) {
 				onTransform(logicalPointAt({ x: session.startX, y: session.startY }, stage, session.constrained), 'cancel', { shiftKey: session.constrained });
@@ -372,11 +378,15 @@ export const ViewportCanvas = function ViewportCanvas({
 
 			pointerSessionRef.current = undefined;
 			setMarquee(undefined);
+			setGestureMode('idle');
 			setIsPanning(false);
+
+			return true;
 		};
 		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
-			if (event.key === 'Escape') {
-				cancelActiveGesture();
+			if (event.key === 'Escape' && cancelActiveGesture()) {
+				event.preventDefault();
+				event.stopPropagation();
 			}
 		};
 
@@ -442,6 +452,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	return (
 		<div
 			className="pixi-viewport"
+			data-gesture-mode={gestureMode}
 			ref={viewportRef}
 			aria-label="Pixi fixed logical canvas"
 			onPointerLeave={() => setPointerPoint(undefined)}
@@ -451,7 +462,12 @@ export const ViewportCanvas = function ViewportCanvas({
 			onDrop={dropAsset}
 		>
 			<div
-				className={isPanning ? 'pixi-host is-panning' : 'pixi-host'}
+				className={[
+					'pixi-host',
+					isPanning ? 'is-panning' : '',
+					gestureMode === 'marquee' ? 'is-marquee' : '',
+					gestureMode === 'transform' ? 'is-transforming' : ''
+				].filter(Boolean).join(' ')}
 				ref={hostRef}
 				style={{ transform: viewportTransform }}
 			/>

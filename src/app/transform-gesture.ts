@@ -17,14 +17,33 @@ import type { SelectableEntity } from './selection.ts';
 export type TransformTool = 'translate' | 'rotate' | 'scale' | 'shear';
 export type TransformPhase = 'update' | 'end' | 'cancel';
 export type TransformModifiers = Readonly<{ shiftKey?: boolean }>;
-
-type TransformEntity = Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
-type RectangleResizeAxis = 'width' | 'height';
-
-type RectangleSize = Readonly<{
+export type CanvasGestureMode = 'pan' | 'marquee' | 'transform';
+export type RectangleResizeAxis = 'width' | 'height';
+export type RectangleSize = Readonly<{
 	width: number;
 	height: number;
 }>;
+
+export const canvasGestureModeFor = function canvasGestureModeFor(
+	pointerButton: number,
+	spacePressed: boolean,
+	transformClaimed: boolean
+): CanvasGestureMode {
+	return pointerButton === 1 || spacePressed
+		? 'pan'
+		: transformClaimed
+			? 'transform'
+			: 'marquee';
+};
+
+export type TransformGestureValues = Readonly<{
+	delta: Point;
+	angleDelta: number;
+	scaleXFactor: number;
+	scaleYFactor: number;
+}>;
+
+type TransformEntity = Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
 
 type TransformTarget = Readonly<{
 	entity: TransformEntity;
@@ -154,6 +173,63 @@ const shortestAngleDelta = function shortestAngleDelta(start: number, current: n
 	return delta - Math.PI;
 };
 
+const dominantAxisDeltaFor = function dominantAxisDeltaFor(delta: Point): Point {
+	return Math.abs(delta.x) >= Math.abs(delta.y)
+		? { x: delta.x, y: 0 }
+		: { x: 0, y: delta.y };
+};
+
+const snappedAngleDeltaFor = function snappedAngleDeltaFor(angleDelta: number): number {
+	return Math.round(angleDelta / (Math.PI / 12)) * (Math.PI / 12);
+};
+
+export const transformGestureValuesFor = function transformGestureValuesFor(
+	tool: TransformTool,
+	rawDelta: Point,
+	rawAngleDelta: number,
+	constrained: boolean
+): TransformGestureValues {
+	const dominantDelta = dominantAxisDeltaFor(rawDelta);
+	const constraintDelta = constrained && (tool === 'translate' || tool === 'shear')
+		? dominantDelta
+		: rawDelta;
+	const scaleDelta = constrained ? (Math.abs(rawDelta.x) >= Math.abs(rawDelta.y) ? rawDelta.x : rawDelta.y) : undefined;
+	const unconstrainedScaleX = tool === 'scale' ? Math.max(0.01, 1 + rawDelta.x / 100) : 1;
+	const unconstrainedScaleY = tool === 'scale' ? Math.max(0.01, 1 + rawDelta.y / 100) : 1;
+	const constrainedScale = tool === 'scale' && scaleDelta !== undefined
+		? Math.max(0.01, 1 + scaleDelta / 100)
+		: undefined;
+
+	return {
+		delta: constraintDelta,
+		angleDelta: constrained && tool === 'rotate' ? snappedAngleDeltaFor(rawAngleDelta) : rawAngleDelta,
+		scaleXFactor: constrained && tool === 'scale' ? constrainedScale ?? unconstrainedScaleX : unconstrainedScaleX,
+		scaleYFactor: constrained && tool === 'scale' ? constrainedScale ?? unconstrainedScaleY : unconstrainedScaleY
+	};
+};
+
+export const rectangleSizeForGesture = function rectangleSizeForGesture(
+	initialSize: RectangleSize,
+	axis: RectangleResizeAxis,
+	proposedSize: RectangleSize,
+	constrained: boolean
+): RectangleSize {
+	const width = Math.max(1, proposedSize.width);
+	const height = Math.max(1, proposedSize.height);
+
+	if (!constrained) {
+		return axis === 'width'
+			? { width, height: initialSize.height }
+			: { width: initialSize.width, height };
+	}
+
+	const aspectRatio = initialSize.width / Math.max(1, initialSize.height);
+
+	return axis === 'width'
+		? { width, height: Math.max(1, width / aspectRatio) }
+		: { width: Math.max(1, height * aspectRatio), height };
+};
+
 const angleDeltaForGesture = function angleDeltaForGesture(
 	gesture: TransformGesture,
 	point: Point
@@ -195,31 +271,20 @@ const transformForTarget = function transformForTarget(
 		return undefined;
 	}
 
-	const delta = gesture.constrained
-		? Math.abs(rawDelta.x) >= Math.abs(rawDelta.y)
-			? { x: rawDelta.x, y: 0 }
-			: { x: 0, y: rawDelta.y }
-		: rawDelta;
-
 	const rawAngleDelta = angleDeltaForGesture(gesture, point);
-	const angleDelta = gesture.constrained
-		? Math.round(rawAngleDelta / (Math.PI / 12)) * (Math.PI / 12)
-		: rawAngleDelta;
-	const scaleFactor = gesture.constrained
-		? 1 + (Math.abs(rawDelta.x) >= Math.abs(rawDelta.y) ? rawDelta.x : rawDelta.y) / 100
-		: undefined;
+	const values = transformGestureValuesFor(gesture.tool, rawDelta, rawAngleDelta, gesture.constrained);
 	const updates: Record<TransformTool, (transform: LocalTransform) => LocalTransform> = {
-		translate: (transform) => ({ ...transform, x: transform.x + delta.x, y: transform.y + delta.y }),
-		rotate: (transform) => ({ ...transform, rotation: transform.rotation + angleDelta }),
+		translate: (transform) => ({ ...transform, x: transform.x + values.delta.x, y: transform.y + values.delta.y }),
+		rotate: (transform) => ({ ...transform, rotation: transform.rotation + values.angleDelta }),
 		scale: (transform) => ({
 			...transform,
-			scaleX: transform.scaleX * Math.max(0.01, scaleFactor ?? 1 + delta.x / 100),
-			scaleY: transform.scaleY * Math.max(0.01, scaleFactor ?? 1 + delta.y / 100)
+			scaleX: Math.max(0.01, transform.scaleX * values.scaleXFactor),
+			scaleY: Math.max(0.01, transform.scaleY * values.scaleYFactor)
 		}),
 		shear: (transform) => ({
 			...transform,
-			shearX: transform.shearX + (gesture.constrained ? delta.x / 100 : rawDelta.x / 100),
-			shearY: transform.shearY + (gesture.constrained ? delta.y / 100 : rawDelta.y / 100)
+			shearX: transform.shearX + values.delta.x / 100,
+			shearY: transform.shearY + values.delta.y / 100
 		})
 	};
 
@@ -245,20 +310,10 @@ const rectangleSizeForTarget = function rectangleSizeForTarget(
 		return undefined;
 	}
 
-	const width = Math.max(1, initialSize.width + (currentLocal.x - startLocal.x) * 2);
-	const height = Math.max(1, initialSize.height + (currentLocal.y - startLocal.y) * 2);
-
-	if (!gesture.constrained) {
-		return axis === 'width'
-			? { width, height: initialSize.height }
-			: { width: initialSize.width, height };
-	}
-
-	const aspectRatio = initialSize.width / Math.max(1, initialSize.height);
-
-	return axis === 'width'
-		? { width, height: Math.max(1, width / aspectRatio) }
-		: { width: Math.max(1, height * aspectRatio), height };
+	return rectangleSizeForGesture(initialSize, axis, {
+		width: initialSize.width + (currentLocal.x - startLocal.x) * 2,
+		height: initialSize.height + (currentLocal.y - startLocal.y) * 2
+	}, gesture.constrained);
 };
 
 const transformEntities = function transformEntities(

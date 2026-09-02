@@ -14,7 +14,10 @@ drop states use borders, outlines, or placement lines so they remain legible
 without relying on color alone. Row tooltips and descriptions identify the
 entity type and its parent relationship.
 
-Shift-dragging the viewport draws a screen-space marquee and converts its
-corners through the current pan and zoom back into logical-canvas bounds. The
-app selects visible image/gameplay attachments and bone preview segments that
-intersect those bounds. Plain left-dragging remains viewport pan.
+Dragging an empty region with the primary pointer draws a screen-space marquee
+and converts its corners through the current pan and zoom back into
+logical-canvas bounds. The app selects visible image/gameplay attachments and
+bone preview segments that intersect those bounds. A primary click on an
+entity selects it; a primary drag on a selected entity or its active handle
+starts a transform. Middle-drag and Space+primary-drag are reserved for
+viewport pan, so they never change selection.

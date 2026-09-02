@@ -5,7 +5,13 @@ Navigation transforms the display host with CSS while leaving the Pixi canvas
 pixel dimensions and logical coordinate system unchanged.
 
 - The mouse wheel zooms between 25% and 400%, anchored at the pointer.
-- Left-button dragging pans the canvas in screen pixels.
+- Primary dragging is reserved for the editor: click an entity to select it,
+  drag an empty region for a marquee, or drag a selected entity/handle to
+  transform it.
+- Middle-button dragging and Space+primary dragging pan the canvas in screen
+  pixels. Pan takes precedence over selection, marquee, and transform claims.
+- Escape cancels the active pan, marquee, or transform gesture before release
+  can change selection.
 - The `−`, percentage, `+`, and `Center` controls provide keyboard-focusable
   zoom and reset actions.
 
