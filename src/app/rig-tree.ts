@@ -82,24 +82,76 @@ const knownParentId = function knownParentId(
 	return valid ? parentId : null;
 };
 
-const nodeIdOrder = function nodeIdOrder(project: Project): readonly EntityId[] {
-	const orderedBones = project.boneOrder.filter((id) => project.bones.some((bone) => bone.id === id));
-	const missingBones = project.bones.flatMap((bone) => orderedBones.includes(bone.id) ? [] : [bone.id]);
-	const slots = project.slots.map((slot) => slot.id);
-	const attachments = project.attachments.map((attachment) => attachment.id);
+const uniqueIds = function uniqueIds(ids: readonly EntityId[]): readonly EntityId[] {
+	return ids.filter((id, index) => ids.indexOf(id) === index);
+};
 
-	return [...orderedBones, ...missingBones, ...slots, ...attachments];
+const nodeIdOrder = function nodeIdOrder(project: Project): readonly EntityId[] {
+	const boneIds = project.bones.map((bone) => bone.id);
+	const slotIds = project.slots.map((slot) => slot.id);
+	const orderedBones = uniqueIds(project.boneOrder.filter((id) => boneIds.includes(id)));
+	const missingBones = uniqueIds(boneIds).filter((id) => !orderedBones.includes(id));
+	const orderedSlots = uniqueIds(slotIds);
+	const missingSlots: readonly EntityId[] = [];
+	const attachments = uniqueIds(project.attachments.map((attachment) => attachment.id));
+
+	return [...orderedBones, ...missingBones, ...orderedSlots, ...missingSlots, ...attachments];
+};
+
+const cycleBoneIds = function cycleBoneIds(project: Project): ReadonlySet<EntityId> {
+	const parentById = new Map(project.bones.map((bone) => [
+		bone.id,
+		knownParentId(project, 'bone', bone.parentId)
+	] as const));
+	const cycleFor = function cycleFor(
+		id: EntityId,
+		path: readonly EntityId[]
+	): readonly EntityId[] {
+		const cycleStart = path.indexOf(id);
+
+		if (cycleStart >= 0) {
+			return path.slice(cycleStart);
+		}
+
+		const parentId = parentById.get(id);
+
+		return parentId && parentById.has(parentId)
+			? cycleFor(parentId, [...path, id])
+			: [];
+	};
+
+	return project.bones.reduce<ReadonlySet<EntityId>>(
+		(cycles, bone) => new Set([...cycles, ...cycleFor(bone.id, [])]),
+		new Set<EntityId>()
+	);
+};
+
+const boneParentIds = function boneParentIds(project: Project): ReadonlyMap<EntityId, EntityId | null> {
+	const cycles = cycleBoneIds(project);
+
+	return new Map(project.bones.map((bone) => [
+		bone.id,
+		cycles.has(bone.id) ? null : knownParentId(project, 'bone', bone.parentId)
+	] as const));
+};
+
+const freezeNode = function freezeNode(node: RigTreeNode): RigTreeNode {
+	return Object.freeze({
+		...node,
+		children: Object.freeze([...node.children])
+	});
 };
 
 const createNodes = function createNodes(
 	project: Project,
 	selection: Selection
 ): readonly RigTreeNode[] {
+	const parents = boneParentIds(project);
 	const boneNodes = project.bones.map((bone) => ({
 		id: bone.id,
 		kind: 'bone' as const,
 		selectableKind: 'bone' as const,
-		parentId: knownParentId(project, 'bone', bone.parentId),
+		parentId: parents.get(bone.id) ?? null,
 		depth: 0,
 		name: bone.name,
 		children: [],
@@ -131,12 +183,13 @@ const attachmentNodes = project.attachments.map((attachment) => ({
 		children: [],
 		selected: isSelected(selection, { kind: 'attachment', id: attachment.id }),
 		activeAttachment: attachment.kind === 'image'
-			&& project.slots.some((slot) => slot.setupAttachmentId === attachment.id),
+			&& project.slots.some((slot) => slot.id === attachment.slotId && slot.setupAttachmentId === attachment.id),
 		expandable: false,
 		typeLabel: typeLabelFor(attachment.kind)
-}));
-const initialNodes = [...boneNodes, ...slotNodes, ...attachmentNodes];
-const childrenByParent = initialNodes.reduce<ReadonlyMap<EntityId, readonly EntityId[]>>((children, node) => {
+	}));
+	const initialNodes = [...boneNodes, ...slotNodes, ...attachmentNodes]
+		.filter((node, index, nodes) => nodes.findIndex((candidate) => candidate.id === node.id) === index);
+	const childrenByParent = initialNodes.reduce<ReadonlyMap<EntityId, readonly EntityId[]>>((children, node) => {
 		if (!node.parentId) {
 			return children;
 		}
@@ -145,16 +198,30 @@ const childrenByParent = initialNodes.reduce<ReadonlyMap<EntityId, readonly Enti
 
 		return new Map([...children, [node.parentId, [...current, node.id]]]);
 	}, new Map());
-const orderedIds = nodeIdOrder(project);
+	const orderedIds = nodeIdOrder(project);
+	const orderById = new Map(orderedIds.map((id, index) => [id, index] as const));
+	const parentById = new Map(initialNodes.map((node) => [node.id, node.parentId] as const));
+	const depthFor = function depthFor(id: EntityId, path: ReadonlySet<EntityId>): number {
+		const parentId = parentById.get(id);
+
+		if (!parentId || path.has(id) || !parentById.has(parentId)) {
+			return 0;
+		}
+
+		return depthFor(parentId, new Set([...path, id])) + 1;
+	};
 
 	return initialNodes.map((node) => {
-		const children = childrenByParent.get(node.id) ?? [];
+		const children = (childrenByParent.get(node.id) ?? []).toSorted((left, right) => (
+			(orderById.get(left) ?? Number.MAX_SAFE_INTEGER) - (orderById.get(right) ?? Number.MAX_SAFE_INTEGER)
+		));
 
-		return {
+		return freezeNode({
 			...node,
+			depth: depthFor(node.id, new Set()),
 			children,
 			expandable: children.length > 0
-		};
+		});
 	}).toSorted((left, right) => orderedIds.indexOf(left.id) - orderedIds.indexOf(right.id));
 };
 
@@ -170,18 +237,44 @@ const flattenVisible = function flattenVisible(
 		return new Map([...children, [key, [...current, node]]]);
 	}, new Map());
 
-	const visit = function visit(parentId: EntityId | null, depth: number): readonly RigTreeNode[] {
+	const visit = function visit(
+		parentId: EntityId | null,
+		depth: number,
+		ancestors: ReadonlySet<EntityId>
+	): readonly RigTreeNode[] {
 		return (childrenByParent.get(parentId) ?? []).flatMap((node) => {
-			const withDepth = { ...node, depth };
+			if (ancestors.has(node.id)) {
+				return [];
+			}
+
+			const withDepth = freezeNode({ ...node, depth });
 			const descendants = node.expandable && expandedIds.has(node.id)
-				? visit(node.id, depth + 1)
+				? visit(node.id, depth + 1, new Set([...ancestors, node.id]))
 				: [];
 
 			return [withDepth, ...descendants];
 		});
 	};
+	const reachableFrom = function reachableFrom(
+		parentId: EntityId | null,
+		ancestors: ReadonlySet<EntityId>
+	): readonly EntityId[] {
+		return (childrenByParent.get(parentId) ?? []).flatMap((node) => {
+			if (ancestors.has(node.id)) {
+				return [];
+			}
 
-	return visit(null, 0).filter((node) => nodesById.has(node.id));
+			return [node.id, ...reachableFrom(node.id, new Set([...ancestors, node.id]))];
+		});
+	};
+
+	const visible = visit(null, 0, new Set()).filter((node) => nodesById.has(node.id));
+	const reachableIds = new Set(reachableFrom(null, new Set()));
+	const disconnected = nodes
+		.filter((node) => !reachableIds.has(node.id))
+		.map((node) => freezeNode({ ...node, depth: 0 }));
+
+	return [...visible, ...disconnected];
 };
 
 export const buildRigTreeViewModel = function buildRigTreeViewModel(
@@ -192,11 +285,11 @@ export const buildRigTreeViewModel = function buildRigTreeViewModel(
 	const nodes = createNodes(project, selection);
 	const visibleNodes = flattenVisible(nodes, expandedIds);
 
-	return {
-		nodes,
-		visibleNodes,
-		rootIds: nodes.flatMap((node) => node.parentId === null ? [node.id] : [])
-	};
+	return Object.freeze({
+		nodes: Object.freeze([...nodes]),
+		visibleNodes: Object.freeze([...visibleNodes]),
+		rootIds: Object.freeze(visibleNodes.filter((node) => node.depth === 0).map((node) => node.id))
+	});
 };
 
 export const selectableEntityForRigNode = selectableEntityFor;
@@ -276,16 +369,22 @@ export const revealAncestors = function revealAncestors(
 		return expandedIds;
 	}
 
-	const ancestors: EntityId[] = [];
-	const collect = function collect(parentId: EntityId | null): void {
-		if (!parentId) {
-			return;
+	const collect = function collect(
+		parentId: EntityId | null,
+		ancestors: readonly EntityId[],
+		visited: ReadonlySet<EntityId>
+	): readonly EntityId[] {
+		if (!parentId || visited.has(parentId)) {
+			return ancestors;
 		}
 
-		ancestors.push(parentId);
-		collect(nodeById.get(parentId)?.parentId ?? null);
+		return collect(
+			nodeById.get(parentId)?.parentId ?? null,
+			[...ancestors, parentId],
+			new Set([...visited, parentId])
+		);
 	};
-	collect(target.parentId);
+	const ancestors = collect(target.parentId, [], new Set());
 
 	return new Set([...expandedIds, ...ancestors]);
 };
