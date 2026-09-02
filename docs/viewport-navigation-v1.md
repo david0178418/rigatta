@@ -21,5 +21,7 @@ frame dimensions or coordinates.
 
 Move, Rotate, Scale, and Shear are available in a persistent toolbar at the
 canvas edge. The toolbar remains available while the hierarchy/inspector dock
-scrolls and while no entity is selected; it changes the active transform tool
-but does not add new shortcuts or change the viewport navigation state.
+scrolls and while no entity is selected; its buttons expose the same `W`, `E`,
+`R`, and `T` shortcuts documented in [Keyboard shortcuts](keyboard-shortcuts-v1.md).
+Selecting a tool changes the active transform tool but does not add a
+project-history entry or change viewport navigation state.

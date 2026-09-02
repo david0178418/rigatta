@@ -6,9 +6,10 @@ import { frameCountForClip, frameTimeSeconds, type PlaybackDirection, type Playb
 import type { Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
 import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, frameIndexForTime, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
-import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, selectableEntityForTimelineRow, type TimelineClipboard, type TimelineKeyReference, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
+import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, selectableEntityForTimelineRow, type TimelineClipboard, type TimelineKeyReference, type TimelineMarkerKind, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
 import type { SelectableEntity, Selection } from './selection.ts';
 import type { InspectorContext } from './inspector-context.ts';
+import type { TransformTool } from './transform-gesture.ts';
 
 const formNumber = function formNumber(data: FormData, name: string): number | undefined {
 	const value = data.get(name);
@@ -298,6 +299,7 @@ type AnimateTimelineProps = Readonly<{
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 	onPasteKeys: (clipboard: TimelineClipboard) => void;
 	onSelectEntity: (entity: SelectableEntity, additive: boolean) => void;
+	onSelectTransformTool?: (tool: TransformTool) => void;
 	onRowModeChange: (mode: TimelineRowMode) => void;
 	onExpandedRowIdsChange: (ids: ReadonlySet<string>) => void;
 	onTogglePinnedEntity: (entityId: EntityId) => void;
@@ -314,15 +316,23 @@ type TimelineKeyDragSession = Readonly<{
 	trackId: EntityId;
 	keyId: EntityId;
 	startX: number;
+	pixelsPerFrame: number;
 	selectedKeys: readonly TimelineKeyReference[];
+	previousKeys: readonly TimelineKeyReference[];
+	previousTrackId: EntityId | undefined;
+	captureTarget: HTMLButtonElement;
 	}>;
 
 type TimelineMarqueeSession = Readonly<{
 	pointerId: number;
-	trackId: EntityId;
 	startX: number;
 	startY: number;
 	additive: boolean;
+	lane: HTMLDivElement;
+	container: HTMLDivElement;
+	captureTarget: HTMLDivElement;
+	previousKeys: readonly TimelineKeyReference[];
+	previousTrackId: EntityId | undefined;
 	}>;
 
 export const AnimateTimeline = function AnimateTimeline({
@@ -360,6 +370,7 @@ export const AnimateTimeline = function AnimateTimeline({
 	onRetimeKeys,
 	onPasteKeys,
 	onSelectEntity,
+	onSelectTransformTool,
 	onRowModeChange,
 	onExpandedRowIdsChange,
 	onTogglePinnedEntity,
@@ -368,6 +379,7 @@ export const AnimateTimeline = function AnimateTimeline({
 	onAutoKeyChange,
 	onKeyPendingEdits
 }: AnimateTimelineProps): ReactElement {
+	void onCopyKey;
 	const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>(createTimelineViewport);
 	const [trackFilter, setTrackFilter] = useState('');
 	const [selectedTrackId, setSelectedTrackId] = useState<EntityId | undefined>(undefined);
@@ -385,6 +397,8 @@ export const AnimateTimeline = function AnimateTimeline({
 	const keyDragDeltaRef = useRef(0);
 	const keyDragClickSuppressedRef = useRef(false);
 	const marqueeRef = useRef<TimelineMarqueeSession | undefined>(undefined);
+	const timelineKeyAreaRef = useRef<HTMLDivElement | null>(null);
+	const keyFrameCommitRef = useRef<Readonly<{ keyId: EntityId; frameIndex: number }> | undefined>(undefined);
 	const openDetailSurface = function openDetailSurface(detail: TimelineDetail, trigger: HTMLButtonElement): void {
 		detailTriggerRef.current = trigger;
 		setOpenDetails(detail);
@@ -611,26 +625,33 @@ export const AnimateTimeline = function AnimateTimeline({
 			onContextChange(contextForTimelineKeys(nextKeys));
 		}
 	};
-	const submitMoveKey = function submitMoveKey(event: FormEvent<HTMLFormElement>): void {
-		event.preventDefault();
-
+	const moveSelectedKeyToFrame = function moveSelectedKeyToFrame(frame: number): void {
 		if (!selectedRow || !selectedKeyMarker || !activeClip) {
 			return;
 		}
 
-		const frame = formNumber(new FormData(event.currentTarget), 'frame');
-
-		if (frame !== undefined) {
-			onMoveKey(selectedRow.track.id, selectedKeyMarker.keyId, Math.round(frame) - 1);
+		if (frame === undefined || !Number.isInteger(frame) || frame < 1 || frame > frameCount) {
+			setTimelineNotice(`Key frame must be an integer between 1 and ${frameCount}.`);
+			return;
 		}
+
+		if (Math.round(frame) - 1 === selectedKeyMarker.frameIndex) {
+			return;
+		}
+		const frameIndex = Math.round(frame) - 1;
+		const previousCommit = keyFrameCommitRef.current;
+
+		if (previousCommit?.keyId === selectedKeyMarker.keyId && previousCommit.frameIndex === frameIndex) {
+			return;
+		}
+
+		keyFrameCommitRef.current = { keyId: selectedKeyMarker.keyId, frameIndex };
+		onMoveKey(selectedRow.track.id, selectedKeyMarker.keyId, frameIndex);
+		setTimelineNotice(`Moved key to frame ${Math.round(frame)}.`);
 	};
-	const submitRetimeKeys = function submitRetimeKeys(event: FormEvent<HTMLFormElement>): void {
+	const submitMoveKey = function submitMoveKey(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
-		const offsetFrames = formNumber(new FormData(event.currentTarget), 'offsetFrames');
-
-		if (offsetFrames !== undefined && selectedKeys.length > 1) {
-			onRetimeKeys(selectedKeys, Math.round(offsetFrames));
-		}
+		moveSelectedKeyToFrame(formNumber(new FormData(event.currentTarget), 'frame') ?? Number.NaN);
 	};
 	const updateSelectedInterpolation = function updateSelectedInterpolation(value: string): void {
 		if (!selectedRow || !selectedKeyMarker || !selectedNumberKey) {
@@ -704,7 +725,7 @@ export const AnimateTimeline = function AnimateTimeline({
 			: uniqueKeys;
 
 		setSelectedKeys(nextKeys);
-		setSelectedTrackId(uniqueKeys[0]?.trackId);
+		setSelectedTrackId(nextKeys[0]?.trackId);
 		onContextChange(contextForTimelineKeys(nextKeys));
 	};
 	const timelineFrameAtClientX = function timelineFrameAtClientX(clientX: number, bounds: DOMRect): number {
@@ -718,6 +739,17 @@ export const AnimateTimeline = function AnimateTimeline({
 	};
 	const seekTimelinePointer = function seekTimelinePointer(event: Readonly<{ clientX: number; currentTarget: HTMLElement }>): void {
 		onSeekPlayback(timelineFrameAtClientX(event.clientX, event.currentTarget.getBoundingClientRect()));
+	};
+	const timelineRulerKeyDown = function timelineRulerKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+		const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+
+		if (direction === 0) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		onSeekPlayback(Math.max(0, Math.min(frameCount - 1, playback.frameIndex + direction)));
 	};
 	const timelinePropertyRows = function timelinePropertyRows(): readonly Readonly<{ trackId: EntityId; frameIndex: number; keyId: EntityId }>[] {
 		return groupedRows.flatMap((row) => {
@@ -740,11 +772,34 @@ export const AnimateTimeline = function AnimateTimeline({
 
 		onExpandedRowIdsChange(expanded);
 	};
+	const transformToolForTrack = function transformToolForTrack(track: Track | undefined): TransformTool | undefined {
+		if (!track || (track.kind !== 'bone-transform' && track.kind !== 'attachment-transform')) {
+			return undefined;
+		}
+
+		if (track.property === 'x' || track.property === 'y') {
+			return 'translate';
+		}
+		if (track.property === 'rotation') {
+			return 'rotate';
+		}
+		if (track.property === 'scaleX' || track.property === 'scaleY') {
+			return 'scale';
+		}
+
+		return 'shear';
+	};
 	const selectTimelineRow = function selectTimelineRow(row: TimelineRow, additive: boolean): void {
 		const entity = selectableEntityForTimelineRow(project, row);
+		const track = row.trackId ? trackRows.find((candidate) => candidate.track.id === row.trackId)?.track : undefined;
 
 		if (entity) {
 			onSelectEntity(entity, additive);
+		}
+		const transformTool = transformToolForTrack(track);
+
+		if (transformTool && onSelectTransformTool) {
+			onSelectTransformTool(transformTool);
 		}
 		if (row.trackId) {
 			setSelectedTrackId(row.trackId);
@@ -763,17 +818,27 @@ export const AnimateTimeline = function AnimateTimeline({
 			return;
 		}
 
+		event.preventDefault();
 		event.stopPropagation();
 		const reference = { trackId, keyId };
 		const alreadySelected = selectedKeys.some((key) => key.trackId === trackId && key.keyId === keyId);
 		const keysForDrag = alreadySelected ? selectedKeys : [reference];
+		const lane = event.currentTarget.parentElement;
+		const laneWidth = lane?.getBoundingClientRect().width ?? 0;
+		const pixelsPerFrame = timelineVisibleCount > 0 && laneWidth > 0
+			? laneWidth / timelineVisibleCount
+			: timelineViewport.pixelsPerFrame;
 
 		keyDragRef.current = {
 			pointerId: event.pointerId,
 			trackId,
 			keyId,
 			startX: event.clientX,
-			selectedKeys: keysForDrag
+			pixelsPerFrame,
+			selectedKeys: keysForDrag,
+			previousKeys: selectedKeys,
+			previousTrackId: selectedTrackId,
+			captureTarget: event.currentTarget
 		};
 		keyDragDeltaRef.current = 0;
 		keyDragClickSuppressedRef.current = false;
@@ -788,12 +853,21 @@ export const AnimateTimeline = function AnimateTimeline({
 
 		const deltaPixels = event.clientX - session.startX;
 
-		if (Math.abs(deltaPixels) < 3) {
+		if (Math.abs(deltaPixels) < 4) {
 			return;
 		}
 
 		keyDragClickSuppressedRef.current = true;
-		keyDragDeltaRef.current = Math.round(deltaPixels / timelineViewport.pixelsPerFrame);
+		const plan = planKeyDrag(activeClip, session.selectedKeys, deltaPixels, session.pixelsPerFrame);
+
+		if (!plan.ok) {
+			keyDragDeltaRef.current = 0;
+			setTimelineKeyDragDelta(0);
+			setTimelineNotice(plan.error);
+			return;
+		}
+
+		keyDragDeltaRef.current = plan.value.deltaFrames;
 		setTimelineKeyDragDelta(keyDragDeltaRef.current);
 		setSelectedTrackId(session.trackId);
 		setSelectedKeys(session.selectedKeys);
@@ -809,35 +883,55 @@ export const AnimateTimeline = function AnimateTimeline({
 		}
 
 		if (!cancelled && activeClip && keyDragClickSuppressedRef.current) {
-			const plan = planKeyDrag(activeClip, session.selectedKeys, event.clientX - session.startX, timelineViewport.pixelsPerFrame);
+			const plan = planKeyDrag(activeClip, session.selectedKeys, event.clientX - session.startX, session.pixelsPerFrame);
 
 			if (plan.ok && plan.value.deltaFrames !== 0) {
 				onRetimeKeys(session.selectedKeys, plan.value.deltaFrames);
 				setTimelineNotice(`Moved ${session.selectedKeys.length} key${session.selectedKeys.length === 1 ? '' : 's'} by ${plan.value.deltaFrames} frame${Math.abs(plan.value.deltaFrames) === 1 ? '' : 's'}.`);
+			} else if (plan.ok) {
+				setTimelineNotice('The drag did not cross a frame boundary.');
 			} else if (!plan.ok) {
 				setTimelineNotice(plan.error);
 			}
+		} else if (cancelled) {
+			setSelectedKeys(session.previousKeys);
+			setSelectedTrackId(session.previousTrackId);
+			onContextChange(contextForTimelineKeys(session.previousKeys));
 		}
 
-		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-			event.currentTarget.releasePointerCapture(event.pointerId);
+		if (session.captureTarget.hasPointerCapture(event.pointerId)) {
+			session.captureTarget.releasePointerCapture(event.pointerId);
 		}
 		keyDragRef.current = undefined;
 		keyDragDeltaRef.current = 0;
+		if (cancelled) {
+			keyDragClickSuppressedRef.current = false;
+		}
 		setTimelineKeyDragDelta(0);
 	};
-	const beginTimelineMarquee = function beginTimelineMarquee(event: ReactPointerEvent<HTMLDivElement>, trackId: EntityId): void {
+	const beginTimelineMarquee = function beginTimelineMarquee(event: ReactPointerEvent<HTMLDivElement>): void {
 		if (event.button !== 0 || !activeClip) {
 			return;
 		}
 
+		const container = timelineKeyAreaRef.current;
+
+		if (!container) {
+			return;
+		}
+
+		event.preventDefault();
 		event.stopPropagation();
 		marqueeRef.current = {
 			pointerId: event.pointerId,
-			trackId,
 			startX: event.clientX,
 			startY: event.clientY,
-			additive: event.metaKey || event.ctrlKey
+			additive: event.metaKey || event.ctrlKey,
+			lane: event.currentTarget,
+			container,
+			captureTarget: event.currentTarget,
+			previousKeys: selectedKeys,
+			previousTrackId: selectedTrackId
 		};
 		event.currentTarget.setPointerCapture(event.pointerId);
 	};
@@ -848,7 +942,7 @@ export const AnimateTimeline = function AnimateTimeline({
 			return;
 		}
 
-		const bounds = event.currentTarget.getBoundingClientRect();
+		const bounds = session.container.getBoundingClientRect();
 		const left = Math.min(session.startX, event.clientX) - bounds.left;
 		const top = Math.min(session.startY, event.clientY) - bounds.top;
 
@@ -873,8 +967,12 @@ export const AnimateTimeline = function AnimateTimeline({
 
 		const didMove = Math.hypot(event.clientX - session.startX, event.clientY - session.startY) >= 3;
 
-		if (!cancelled && activeClip) {
-			const bounds = event.currentTarget.getBoundingClientRect();
+		if (cancelled) {
+			setSelectedKeys(session.previousKeys);
+			setSelectedTrackId(session.previousTrackId);
+			onContextChange(contextForTimelineKeys(session.previousKeys));
+		} else if (activeClip) {
+			const bounds = session.lane.getBoundingClientRect();
 
 			if (!didMove) {
 				onSeekPlayback(timelineFrameAtClientX(event.clientX, bounds));
@@ -883,16 +981,29 @@ export const AnimateTimeline = function AnimateTimeline({
 				const endFrame = timelineFrameAtClientX(event.clientX, bounds);
 				const minimum = Math.min(startFrame, endFrame);
 				const maximum = Math.max(startFrame, endFrame);
+				const top = Math.min(session.startY, event.clientY);
+				const bottom = Math.max(session.startY, event.clientY);
 				const selected = timelinePropertyRows()
-					.filter((key) => key.frameIndex >= minimum && key.frameIndex <= maximum)
+					.filter((key) => {
+						const laneElement = session.container.querySelector<HTMLElement>(`[data-timeline-lane="${key.trackId}"]`);
+
+						if (!laneElement) {
+							return false;
+						}
+
+						const laneBounds = laneElement.getBoundingClientRect();
+						const verticalOverlap = laneBounds.bottom >= top && laneBounds.top <= bottom;
+
+						return verticalOverlap && key.frameIndex >= minimum && key.frameIndex <= maximum;
+					})
 					.map(({ trackId, keyId }) => ({ trackId, keyId }));
 
 				setSelectedTimelineKeys(selected, session.additive);
 			}
 		}
 
-		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-			event.currentTarget.releasePointerCapture(event.pointerId);
+		if (session.captureTarget.hasPointerCapture(event.pointerId)) {
+			session.captureTarget.releasePointerCapture(event.pointerId);
 		}
 		marqueeRef.current = undefined;
 		setTimelineMarquee(undefined);
@@ -914,8 +1025,29 @@ export const AnimateTimeline = function AnimateTimeline({
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			event.stopPropagation();
+			const keyDrag = keyDragRef.current;
+			const marquee = marqueeRef.current;
+
+			if (keyDrag) {
+				if (keyDrag.captureTarget.hasPointerCapture(keyDrag.pointerId)) {
+					keyDrag.captureTarget.releasePointerCapture(keyDrag.pointerId);
+				}
+				setSelectedKeys(keyDrag.previousKeys);
+				setSelectedTrackId(keyDrag.previousTrackId);
+				onContextChange(contextForTimelineKeys(keyDrag.previousKeys));
+			}
+			if (marquee) {
+				if (marquee.captureTarget.hasPointerCapture(marquee.pointerId)) {
+					marquee.captureTarget.releasePointerCapture(marquee.pointerId);
+				}
+				setSelectedKeys(marquee.previousKeys);
+				setSelectedTrackId(marquee.previousTrackId);
+				onContextChange(contextForTimelineKeys(marquee.previousKeys));
+			}
+
 			keyDragRef.current = undefined;
 			marqueeRef.current = undefined;
+			keyDragClickSuppressedRef.current = false;
 			setTimelineKeyDragDelta(0);
 			setTimelineMarquee(undefined);
 			return;
@@ -949,10 +1081,12 @@ export const AnimateTimeline = function AnimateTimeline({
 			setTimelineNotice(`Pasted ${timelineClipboard.keys.length} key${timelineClipboard.keys.length === 1 ? '' : 's'}.`);
 			return;
 		}
-		if (!modifier && (key === 'delete' || key === 'backspace') && selectedKeys.length > 0) {
+		if (!modifier && (key === 'delete' || key === 'backspace')) {
 			event.preventDefault();
 			event.stopPropagation();
-			deleteSelectedKeys();
+			if (selectedKeys.length > 0) {
+				deleteSelectedKeys();
+			}
 			return;
 		}
 		if (!modifier && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && selectedKeys.length > 0 && activeClip) {
@@ -969,8 +1103,13 @@ export const AnimateTimeline = function AnimateTimeline({
 		}
 	};
 	const deleteSelectedKeys = function deleteSelectedKeys(): void {
+		if (selectedKeys.length === 0) {
+			return;
+		}
+
 		onDeleteKeys(selectedKeys);
 		setSelectedKeys([]);
+		onContextChange({ kind: 'none' });
 	};
 	const deleteSelectedTrack = function deleteSelectedTrack(): void {
 		if (selectedRow) {
@@ -979,31 +1118,30 @@ export const AnimateTimeline = function AnimateTimeline({
 			setSelectedKeys([]);
 		}
 	};
-	const renderSummaryKeys = function renderSummaryKeys(row: TimelineRow): readonly ReactElement[] {
-		return row.keys
-			.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame)
-			.map((key) => (
-				<span
-					aria-label={`Keys at frame ${key.frameIndex + 1}`}
-					className="timeline-summary-key"
-					key={key.id}
-					style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
-				/>
-			));
+	const markerClassForKind = function markerClassForKind(markerKind: TimelineMarkerKind): string {
+		return `timeline-key-marker is-${markerKind.replace('continuous-', '')}`;
 	};
-	const renderTimelineKeys = function renderTimelineKeys(row: TimelineRow, trackId: EntityId): readonly ReactElement[] {
+	const renderKeyMarkers = function renderKeyMarkers(row: TimelineRow): readonly ReactElement[] {
 		return row.keys
-			.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame)
-			.map((key) => {
-				const selected = selectedKeys.some((candidate) => candidate.keyId === key.id && candidate.trackId === trackId);
+			.filter((key) => {
+				const selected = key.trackId ? selectedKeys.some((candidate) => candidate.keyId === key.id && candidate.trackId === key.trackId) : false;
 				const frameIndex = key.frameIndex + (selected ? timelineKeyDragDelta : 0);
+
+				return frameIndex >= timelineRange.startFrame && frameIndex <= timelineRange.endFrame;
+			})
+			.map((key) => {
+				const trackId = key.trackId;
+				const selected = trackId ? selectedKeys.some((candidate) => candidate.keyId === key.id && candidate.trackId === trackId) : false;
+				const frameIndex = key.frameIndex + (selected ? timelineKeyDragDelta : 0);
+				const markerClass = markerClassForKind(key.markerKind);
 
 				return (
 					<button
-						aria-label={`Key frame ${key.frameIndex + 1}`}
-						className={selected ? 'track-key is-selected' : 'track-key'}
+						aria-label={row.kind === 'property' || row.kind === 'draw-order' ? `Key frame ${key.frameIndex + 1}` : `${row.label} key at frame ${key.frameIndex + 1}`}
+						className={`${row.kind === 'property' ? 'track-key' : 'timeline-summary-key'} ${markerClass}${selected ? ' is-selected' : ''}${selected && timelineKeyDragDelta !== 0 ? ' is-preview' : ''}`}
 						data-key-id={key.id}
-						key={key.id}
+						data-key-kind={key.markerKind}
+						key={`${key.id}:${key.trackId ?? 'aggregate'}`}
 						type="button"
 						onClick={(event) => {
 							event.stopPropagation();
@@ -1013,14 +1151,56 @@ export const AnimateTimeline = function AnimateTimeline({
 								return;
 							}
 
-							selectAnimationKey(trackId, key.id, event.metaKey || event.ctrlKey);
+							if (trackId) {
+								selectAnimationKey(trackId, key.id, event.metaKey || event.ctrlKey);
+							}
 						}}
-						onPointerCancel={(event) => endKeyPointerDrag(event, true)}
-						onPointerDown={(event) => beginKeyPointerDrag(event, trackId, key.id)}
-						onPointerMove={updateKeyPointerDrag}
-						onPointerUp={(event) => endKeyPointerDrag(event, false)}
+						onPointerCancel={trackId ? (event) => endKeyPointerDrag(event, true) : undefined}
+						onPointerDown={trackId ? (event) => beginKeyPointerDrag(event, trackId, key.id) : undefined}
+						onPointerMove={trackId ? updateKeyPointerDrag : undefined}
+						onPointerUp={trackId ? (event) => endKeyPointerDrag(event, false) : undefined}
 						style={{ left: `${((frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
-						title={`Frame ${key.frameIndex + 1} · drag to retime`}
+						title={`${row.label} · frame ${key.frameIndex + 1} · drag to retime`}
+					/>
+				);
+			});
+	};
+	const selectTimelineEvent = function selectTimelineEvent(eventId: EntityId): void {
+		if (!activeClip) {
+			return;
+		}
+
+		const event = activeClip.events.find((candidate) => candidate.id === eventId);
+
+		if (!event) {
+			return;
+		}
+
+		const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
+
+		setSelectedEventId(event.id);
+		setEventError(undefined);
+		onSeekPlayback(frameIndex);
+		onContextChange({ kind: 'event', clipId: activeClip.id, eventId: event.id });
+	};
+	const renderEventMarkers = function renderEventMarkers(row: TimelineRow): readonly ReactElement[] {
+		return row.keys
+			.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame)
+			.map((key) => {
+				const event = activeClip?.events.find((candidate) => candidate.id === key.id);
+				const label = event ? `Event ${event.name} at frame ${key.frameIndex + 1}` : `Event at frame ${key.frameIndex + 1}`;
+
+				return (
+					<button
+						aria-label={label}
+						className={selectedEventId === key.id ? 'event-key is-selected' : 'event-key'}
+						data-event-id={key.id}
+						data-key-kind={key.markerKind}
+						key={key.id}
+						onClick={(eventClick) => { eventClick.stopPropagation(); selectTimelineEvent(key.id); }}
+						style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
+						title={label}
+						type="button"
 					/>
 				);
 			});
@@ -1067,14 +1247,14 @@ export const AnimateTimeline = function AnimateTimeline({
 									</div>
 								</div>
 								<div className="clip-playback-controls" aria-label="Playback controls">
-									<button className="quiet-button" type="button" aria-label="Step backward" onClick={() => onStepPlayback(-1)}>◀</button>
-									<button className="secondary-button" type="button" aria-label={playback.playing ? 'Pause animation' : 'Play animation'} onClick={onTogglePlayback}>
+									<button className="quiet-button" type="button" aria-label="Step backward" aria-keyshortcuts="ArrowLeft" onClick={() => onStepPlayback(-1)} title="Step backward · Left Arrow">◀</button>
+									<button className="secondary-button" type="button" aria-label={playback.playing ? 'Pause animation' : 'Play animation'} aria-keyshortcuts="Space" onClick={onTogglePlayback} title={`${playback.playing ? 'Pause animation' : 'Play animation'} · Space`}>
 										{playback.playing ? 'Pause' : 'Play'}
 									</button>
-									<button className="quiet-button" type="button" aria-label="Step forward" onClick={() => onStepPlayback(1)}>▶</button>
+									<button className="quiet-button" type="button" aria-label="Step forward" aria-keyshortcuts="ArrowRight" onClick={() => onStepPlayback(1)} title="Step forward · Right Arrow">▶</button>
 									<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
 									<label className="auto-key-field"><input type="checkbox" aria-label="Auto Key" checked={autoKey} onChange={(event) => onAutoKeyChange(event.target.checked)} /><span>Auto Key</span></label>
-									<button className="quiet-button" type="button" onClick={onKeyPendingEdits} disabled={pendingEditCount === 0}>Key edited properties{pendingEditCount > 0 ? ` (${pendingEditCount})` : ''}</button>
+									<button className="quiet-button" type="button" aria-keyshortcuts="K" onClick={onKeyPendingEdits} disabled={pendingEditCount === 0} title="Key edited properties · K">Key edited properties{pendingEditCount > 0 ? ` (${pendingEditCount})` : ''}</button>
 								</div>
 								<div className="timeline-navigation">
 									<div className="timeline-navigation-actions" aria-label="Timeline navigation">
@@ -1113,33 +1293,46 @@ export const AnimateTimeline = function AnimateTimeline({
 								</div>
 								<div className="dopesheet" aria-label="Animation tracks">
 									<div className="dopesheet-ruler">
-										<span className="track-row-label">Track</span>
-										<div className="timeline-ruler" aria-label="Timeline ruler">
+											<span className="track-row-label timeline-sticky-label">Track</span>
+											<div
+												aria-label="Timeline ruler"
+												aria-valuemax={frameCount - 1}
+													aria-valuemin={0}
+												aria-valuenow={playback.frameIndex}
+												aria-valuetext={`Frame ${playback.frameIndex + 1} of ${frameCount}`}
+												className="timeline-ruler"
+												onClick={seekTimelinePointer}
+												onKeyDown={timelineRulerKeyDown}
+												tabIndex={0}
+												role="slider"
+											>
 											{Array.from({ length: timelineVisibleCount }, (_, index) => timelineRange.startFrame + index).map((frame) => (
 												<span className={frame === playback.frameIndex ? 'timeline-tick is-playhead' : 'timeline-tick'} key={frame}>{frame + 1}</span>
 											))}
 										</div>
 									</div>
-									{trackRows.length === 0 ? (
+									{trackRows.length === 0 && !groupedRows.some((row) => row.kind === 'draw-order' || row.kind === 'events') ? (
 										<div className="dopesheet-empty">No typed tracks match this filter.</div>
-									) : groupedRows.map((row) => {
+										) : (
+											<div className="dopesheet-body" ref={timelineKeyAreaRef}>
+											{groupedRows.map((row) => {
 										if (row.kind === 'overview') {
 											return (
 														<div className="track-row timeline-group-row timeline-overview-row" data-timeline-row-id={row.id} key={row.id}>
-													<div className="track-row-label"><span>Overview</span><small>{row.subLabel}</small></div>
-													<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderSummaryKeys(row)}</div>
+														<div className="track-row-label timeline-sticky-label"><span>Overview</span><small>{row.subLabel}</small></div>
+														<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderKeyMarkers(row)}</div>
 												</div>
 											);
 										}
 										if (row.kind === 'entity') {
 											return (
 																<div className={row.selected ? 'track-row timeline-group-row is-selected' : 'track-row timeline-group-row'} data-entity-id={row.entityId} data-timeline-row-id={row.id} key={row.id}>
-													<div className="timeline-group-label">
+															<div className="timeline-group-label timeline-sticky-label">
 														<button className="timeline-row-expander" type="button" aria-expanded={row.expanded} aria-label={`${row.expanded ? 'Collapse' : 'Expand'} ${row.label}`} onClick={() => toggleTimelineGroup(row.id)}>{row.expanded ? '▾' : '▸'}</button>
 														<button className="timeline-row-select" type="button" aria-pressed={row.selected} onClick={(event) => selectTimelineRow(row, event.metaKey || event.ctrlKey)}><span>{row.label}</span><small>{row.subLabel}</small></button>
 														<button className={pinnedEntityIds.has(row.entityId ?? '') ? 'timeline-pin is-pinned' : 'timeline-pin'} type="button" aria-pressed={pinnedEntityIds.has(row.entityId ?? '')} aria-label={`${pinnedEntityIds.has(row.entityId ?? '') ? 'Unpin' : 'Pin'} ${row.label} timeline rows`} onClick={(event) => { event.stopPropagation(); if (row.entityId) { onTogglePinnedEntity(row.entityId); } }}>{pinnedEntityIds.has(row.entityId ?? '') ? '●' : '○'}</button>
 													</div>
-													<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderSummaryKeys(row)}</div>
+															<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderKeyMarkers(row)}</div>
 												</div>
 											);
 										}
@@ -1153,58 +1346,42 @@ export const AnimateTimeline = function AnimateTimeline({
 
 											return (
 							<div className={selectedRow?.track.id === trackId ? 'track-row timeline-property-row is-selected' : 'track-row timeline-property-row'} data-track-id={trackId} data-timeline-row-id={row.id} key={row.id} onClick={(event) => selectTimelineRow(row, event.metaKey || event.ctrlKey)}>
-													<div className="track-row-label" style={{ paddingLeft: `${row.depth * 16}px` }}><span>{row.label}</span><small>{row.subLabel ?? track.track.kind}</small></div>
-													<div className="track-key-lane" onClick={seekTimelinePointer} onPointerCancel={(event) => endTimelineMarquee(event, true)} onPointerDown={(event) => beginTimelineMarquee(event, trackId)} onPointerMove={updateTimelineMarquee} onPointerUp={(event) => endTimelineMarquee(event, false)}>
-														{renderTimelineKeys(row, trackId)}
-														{timelineMarquee && marqueeRef.current?.trackId === trackId && <div className="timeline-marquee" style={{ left: timelineMarquee.left, top: timelineMarquee.top, width: timelineMarquee.width, height: timelineMarquee.height }} />}
+															<div className="track-row-label timeline-sticky-label" style={{ paddingLeft: `${row.depth * 16}px` }}><span>{row.label}</span><small>{row.subLabel ?? track.track.kind}</small></div>
+															<div className="track-key-lane" data-timeline-lane={trackId} onPointerCancel={(event) => endTimelineMarquee(event, true)} onPointerDown={beginTimelineMarquee} onPointerMove={updateTimelineMarquee} onPointerUp={(event) => endTimelineMarquee(event, false)}>
+																{renderKeyMarkers(row)}
 													</div>
 												</div>
 											);
 										}
-										if (row.kind === 'draw-order') {
+												if (row.kind === 'draw-order') {
 											const track = trackRows.find((candidate) => candidate.track.kind === 'slot-draw-order');
 
 											return track ? (
 														<div className="track-row timeline-group-row timeline-special-row" data-track-id={track.track.id} data-timeline-row-id={row.id} key={row.id}>
-													<div className="track-row-label"><span>{row.label}</span><small>{row.subLabel}</small></div>
-													<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderTimelineKeys(row, track.track.id)}</div>
+															<div className="track-row-label timeline-sticky-label"><span>{row.label}</span><small>{row.subLabel}</small></div>
+															<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderKeyMarkers(row)}</div>
 												</div>
-											) : null;
-										}
-
-										return null;
-									})}
-									<div className="event-track" aria-label="Animation events">
-										<div className="track-row-label event-row-label">
-											<div><span>Events</span><small>{activeClip.events.length} event{activeClip.events.length === 1 ? '' : 's'}</small></div>
-											<button className="quiet-button" type="button" onClick={addTimelineEvent}>Add event</button>
-										</div>
-										<div className="track-key-lane">
-											{activeClip.events
-												.filter((event) => {
-													const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
-
-													return frameIndex >= timelineRange.startFrame && frameIndex <= timelineRange.endFrame;
-												})
-												.map((event) => {
-													const frameIndex = frameIndexForTime(activeClip, event.timeSeconds);
-
+													) : null;
+												}
+												if (row.kind === 'events') {
 													return (
-														<button
-															aria-label={`Event ${event.name} at frame ${frameIndex + 1}`}
-															className={selectedEventId === event.id ? 'event-key is-selected' : 'event-key'}
-															key={event.id}
-															onClick={() => { setSelectedEventId(event.id); setEventError(undefined); onSeekPlayback(frameIndex); onContextChange({ kind: 'event', clipId: activeClip.id, eventId: event.id }); }}
-															type="button"
-															style={{ left: `${((frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
-															title={`${event.name} · frame ${frameIndex + 1}`}
-														/>
+														<div className="event-track timeline-event-row" aria-label="Animation events" data-timeline-row-id={row.id} key={row.id}>
+															<div className="track-row-label event-row-label timeline-sticky-label">
+																<div><span>{row.label}</span><small>{row.subLabel}</small></div>
+																<button className="quiet-button" type="button" onClick={addTimelineEvent}>Add event</button>
+															</div>
+															<div className="track-key-lane" onClick={seekTimelinePointer}>{renderEventMarkers(row)}</div>
+														</div>
 													);
+												}
+
+												return null;
 												})}
-										</div>
+													{timelineMarquee && <div className="timeline-marquee" style={{ left: timelineMarquee.left, top: timelineMarquee.top, width: timelineMarquee.width, height: timelineMarquee.height }} />}
+												</div>
+										)}
 									</div>
-								</div>
-								<label className="playhead-field">
+									<label className="playhead-field">
 									<span className="field-label">Playhead</span>
 									<input
 										aria-label="Playhead"
@@ -1213,11 +1390,11 @@ export const AnimateTimeline = function AnimateTimeline({
 										max={frameCountForClip(activeClip) - 1}
 										step="1"
 										value={playback.frameIndex}
-										onChange={(event) => onSeekPlayback(Number(event.target.value))}
-									/>
-								</label>
-							</div>
-							{openDetails === 'clip' && (
+											onChange={(event) => onSeekPlayback(Number(event.target.value))}
+										/>
+									</label>
+								</div>
+								{openDetails === 'clip' && (
 								<section className="timeline-detail-surface" aria-label="Clip settings" role="dialog">
 									<div className="timeline-detail-heading">
 										<div><p className="eyebrow">Details</p><h2>Clip settings</h2></div>
@@ -1287,18 +1464,11 @@ export const AnimateTimeline = function AnimateTimeline({
 										<div><p className="eyebrow">Details</p><h2>Key details</h2></div>
 										<button className="quiet-button" type="button" aria-label="Close Key details" onClick={closeDetailSurface}>Close</button>
 									</div>
-									{selectedKeyMarkers.length > 1 && (
-										<form className="key-editor" onSubmit={submitRetimeKeys}>
-											<span className="muted-copy">{selectedKeyMarkers.length} keys selected</span>
-											<label><span className="field-label">Offset frames</span><input name="offsetFrames" type="number" step="1" defaultValue="0" /></label>
-											<button className="secondary-button" type="submit">Retime selected keys</button>
-											<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete selected keys</button>
-										</form>
-									)}
-									{selectedKeyMarker && selectedRow && (
-										<form className="key-editor" key={`${selectedKeyMarker.keyId}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
-											<span className="muted-copy">Key frame {selectedKeyMarker.frameIndex + 1}</span>
-											<label><span className="field-label">Frame</span><input name="frame" type="number" min="1" max={frameCount} step="1" defaultValue={selectedKeyMarker.frameIndex + 1} /></label>
+										{selectedKeyMarkers.length > 1 && <p className="muted-copy key-editor-help">{selectedKeyMarkers.length} keys selected · drag, copy, delete, or nudge from the timeline</p>}
+										{selectedKeyMarker && selectedRow && (
+											<form className="key-editor" key={`${selectedKeyMarker.keyId}:${selectedKeyMarker.frameIndex}`} onSubmit={submitMoveKey}>
+												<span className="muted-copy">Key frame {selectedKeyMarker.frameIndex + 1}</span>
+												<label><span className="field-label">Frame</span><input name="frame" type="number" min="1" max={frameCount} step="1" defaultValue={selectedKeyMarker.frameIndex + 1} onBlur={(event) => moveSelectedKeyToFrame(Number(event.currentTarget.value))} /></label>
 											{selectedNumberKey && (
 												<label>
 													<span className="field-label">Interpolation to next key</span>
@@ -1348,24 +1518,7 @@ export const AnimateTimeline = function AnimateTimeline({
 													</ol>
 												</div>
 											)}
-											<button className="secondary-button" type="submit">Move key</button>
-											<button className="quiet-button" type="button" onClick={(event) => {
-												const form = event.currentTarget.form;
-												const frame = form ? form.elements.namedItem('frame') : undefined;
-
-												if (frame instanceof HTMLInputElement) {
-													const copiedId = onCopyKey(selectedRow.track.id, selectedKeyMarker.keyId, Math.round(Number(frame.value)) - 1);
-
-													if (copiedId) {
-														const nextKeys = [{ trackId: selectedRow.track.id, keyId: copiedId }];
-
-														setSelectedKeys(nextKeys);
-														onContextChange(contextForTimelineKeys(nextKeys));
-													}
-												}
-											}}>Copy key</button>
-											<button className="danger-button" type="button" onClick={deleteSelectedKeys}>Delete key</button>
-										</form>
+											</form>
 									)}
 								</section>
 							)}

@@ -25,21 +25,30 @@ The timeline navigation keeps a clamped frame window over longer clips. Zoom
 uses the active frame as its anchor, pan moves by visible pixel distance, and
 the track filter is case-insensitive and matches the typed track label. The
 ruler and dopesheet live in an independently scrollable timeline pane, while
-the event row and playhead remain in that pane below the track rows.
+the event row and playhead remain in that pane below the track rows. The ruler
+and empty property lanes seek directly to the clicked frame.
 
-Typed tracks are represented as dopesheet rows. Each row includes the target
-and property label, the track kind, and key markers snapped to the nearest
-integer frame. Markers outside the current navigated frame window are hidden.
+Typed tracks are represented in a grouped dopesheet with an overview row,
+collapsible entity rows, and property rows. Each row includes the target and
+property label, the track kind, and key markers snapped to the nearest integer
+frame. Aggregate keys appear in overview and entity rows. Marker shapes and
+line styles distinguish continuous linear, stepped, Bezier, attachment,
+draw-order, enabled, and event data. Markers outside the current navigated
+frame window are hidden.
 
 Available typed properties can be added from the contextual Track details
-surface. The selected track accepts keys at the current playhead frame, and
-selected key markers can be edited from Key details: moved, copied to another
-frame, or deleted. Numeric, boolean, slot-attachment, and draw-order key
-inputs use the corresponding typed domain command.
+surface. The selected track accepts keys at the current playhead frame. Numeric,
+boolean, slot-attachment, and draw-order key inputs use the corresponding typed
+domain command.
 
-Key markers support additive selection with Ctrl or Command. A multi-selection
-can be retimed by an integer frame offset in one validated command; collisions,
-duplicate target frames, and out-of-range results are rejected atomically.
+Clicking a key selects it and seeks to its frame; Ctrl/Cmd-click toggles it.
+Selected keys can be dragged by whole frames, selected with a two-dimensional
+marquee, copied and pasted at the playhead, deleted, or nudged one frame with
+the arrow keys. Every multi-key operation is validated before dispatch and is
+one recoverable history transaction; collisions, duplicate target frames, and
+out-of-range results are rejected atomically. The timeline handles these
+operations directly, so Key details is reserved for the exact frame,
+interpolation, Bezier, attachment, draw-order, enabled, and event editors.
 
 Numeric key interpolation is stored on the key as the outgoing mode for the
 segment leading to the next key. The selected-key editor can choose Stepped,

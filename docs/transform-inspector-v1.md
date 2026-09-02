@@ -14,7 +14,8 @@ Move, Rotate, Scale, and Shear are selected from the persistent toolbar beside
 the canvas. This keeps tool access independent of inspector scroll position and
 selection type while preserving the existing pressed state and pointer gesture
 transactions. Inspector fields remain the place to edit numeric values
-directly; the toolbar does not add shortcuts or history entries.
+directly; the toolbar also exposes the documented `W`, `E`, `R`, and `T`
+shortcuts, and selecting a tool does not add a project-history entry.
 
 In Animate mode, animatable numeric fields also expose a current-frame key
 diamond. Hollow, amber patterned, and filled diamonds distinguish unkeyed,

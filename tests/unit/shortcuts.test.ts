@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { shortcutActionFor, type ShortcutKeyState } from '../../src/app/shortcuts.ts';
+import { shortcutActionFor, shortcutLabelFor, shortcutReference, type ShortcutKeyState } from '../../src/app/shortcuts.ts';
 
 const key = function key(value: string, overrides: Partial<ShortcutKeyState> = {}): ShortcutKeyState {
 	return {
@@ -27,5 +27,54 @@ describe('editor keyboard shortcuts', () => {
 		expect(shortcutActionFor(key('ArrowRight', { shiftKey: true }))).toBeUndefined();
 		expect(shortcutActionFor(key(' ', { ctrlKey: true }))).toBeUndefined();
 		expect(shortcutActionFor(key('z', { altKey: true, ctrlKey: true }))).toBeUndefined();
+	});
+
+	test('maps the documented W/E/R/T tools and editing actions', () => {
+		expect(shortcutActionFor(key('w'))).toBe('tool-translate');
+		expect(shortcutActionFor(key('e'))).toBe('tool-rotate');
+		expect(shortcutActionFor(key('r'))).toBe('tool-scale');
+		expect(shortcutActionFor(key('t'))).toBe('tool-shear');
+		expect(shortcutActionFor(key('F2'))).toBe('rename-selection');
+		expect(shortcutActionFor(key('Delete'))).toBe('delete-selection');
+		expect(shortcutActionFor(key('Backspace'))).toBe('delete-selection');
+		expect(shortcutActionFor(key('K'))).toBe('key-selection');
+		expect(shortcutActionFor(key('Escape'))).toBe('cancel');
+		expect(shortcutActionFor(key('PageUp'))).toBe('select-previous');
+		expect(shortcutActionFor(key('PageDown'))).toBe('select-next');
+	});
+
+	test('does not retain the competing legacy transform mapping', () => {
+		expect(shortcutActionFor(key('v'))).toBeUndefined();
+		expect(shortcutActionFor(key('c'))).toBeUndefined();
+		expect(shortcutActionFor(key('x'))).toBeUndefined();
+		expect(shortcutActionFor(key('z'))).toBeUndefined();
+	});
+
+	test('publishes one reference entry for every global action and the W/E/R/T labels', () => {
+		const globalActions = new Set(shortcutReference.filter((entry) => entry.scope === 'global').map((entry) => entry.id));
+
+		expect(globalActions).toEqual(new Set([
+			'undo',
+			'redo',
+			'toggle-playback',
+			'step-backward',
+			'step-forward',
+			'open-reference',
+			'tool-translate',
+			'tool-rotate',
+			'tool-scale',
+			'tool-shear',
+			'rename-selection',
+			'delete-selection',
+			'key-selection',
+			'cancel',
+			'select-previous',
+			'select-next',
+			'pan-canvas'
+		]));
+		expect(shortcutLabelFor('tool-translate')).toBe('W');
+		expect(shortcutLabelFor('tool-rotate')).toBe('E');
+		expect(shortcutLabelFor('tool-scale')).toBe('R');
+		expect(shortcutLabelFor('tool-shear')).toBe('T');
 	});
 });

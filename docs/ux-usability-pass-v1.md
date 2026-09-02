@@ -156,7 +156,7 @@ Recommended behavior:
 - Keep Undo and Redo visible, using familiar icons plus tooltips and shortcut
   labels. Disabled state must remain clear.
 - Add tooltips to every icon-only control. Tooltips should include the action and
-  shortcut, for example `Rotate (C)`.
+  shortcut, for example `Rotate (E)`.
 - Show validation failures near the affected control or dock. Keep the global
   diagnostics summary available, but do not make the timeline the only place
   errors can appear.
@@ -214,10 +214,9 @@ current order comes from setup or a keyed override and offer a direct key button
 
 - Move transform tools into a persistent vertical toolbar on the left edge of
   the canvas. Use Move, Rotate, Scale, and Shear icons with text tooltips.
-- Add shortcuts based on the familiar Spine layout (`V`, `C`, `X`, `Z`) unless
-  usability testing shows that the more general DCC `W`, `E`, `R` convention is
-  preferable. Pick one mapping, document it, and show it in tooltips; do not
-  support two hidden mappings.
+- Use the general DCC `W`, `E`, `R`, `T` mapping for Move, Rotate, Scale, and
+  Shear. Document the mapping and show it in tooltips; do not support competing
+  hidden mappings such as `V`, `C`, `X`, or unmodified `Z`.
 - Reserve primary click/drag for select, marquee, and active-tool manipulation.
   Pan with middle-drag or Space+primary-drag; wheel zoom should remain pointer-
   anchored. A right-drag option may be added if browser context-menu behavior is

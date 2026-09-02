@@ -7,10 +7,13 @@ the first release.
 
 Use the top-toolbar `?` button or press `?` to open the shortcut reference.
 History shortcuts use the platform modifier (`Ctrl` on Windows/Linux and
-`Cmd` on macOS). Space and the arrow keys operate on the active animation clip
-in Animate mode. Focus a form field when editing a numeric value or name;
-global shortcuts are intentionally disabled for input, textarea, select, and
-contenteditable elements.
+`Cmd` on macOS. `W`, `E`, `R`, and `T` select Move, Rotate, Scale, and Shear;
+`F2`, `Delete`, `K`, `Escape`, `Page Up`, and `Page Down` provide the direct
+rig and keying workflows described in [Keyboard shortcuts](keyboard-shortcuts-v1.md).
+Space and the arrow keys operate on the active animation clip in Animate mode.
+Focus a form field when editing a numeric value or name; global shortcuts are
+intentionally disabled for input, textarea, select, and contenteditable
+elements.
 
 ## Recovery workflow
 

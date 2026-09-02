@@ -1,15 +1,27 @@
 import { isEntityId, type EntityId } from '../domain/ids.ts';
 import type { TrackDefinition } from '../domain/animation.ts';
-import type { Clip, DiscreteKey, NumberKey, Project, Track } from '../domain/model.ts';
+import type { ProjectCommand } from '../domain/commands.ts';
+import type { Clip, CubicBezier, DiscreteKey, Interpolation, NumberKey, Project, Track } from '../domain/model.ts';
 import type { SelectableEntity, Selection } from './selection.ts';
 import { trackLabel } from './timeline.ts';
 
 export type TimelineRowKind = 'overview' | 'entity' | 'property' | 'draw-order' | 'events';
 export type TimelineRowMode = 'selection' | 'all-keyed';
 
+export type TimelineMarkerKind =
+	| 'continuous-stepped'
+	| 'continuous-linear'
+	| 'continuous-bezier'
+	| 'attachment'
+	| 'draw-order'
+	| 'enabled'
+	| 'event';
+
 export type TimelineKeyMarker = Readonly<{
 	id: EntityId;
 	frameIndex: number;
+	trackId?: EntityId;
+	markerKind: TimelineMarkerKind;
 	}>;
 
 export type TimelineRow = Readonly<{
@@ -161,12 +173,39 @@ const trackDefinition = function trackDefinition(track: Track): TrackDefinition 
 	return { kind: 'rectangle-enabled', targetId: track.targetId };
 };
 
+const markerKindForKey = function markerKindForKey(track: Track, key: Track['keys'][number]): TimelineMarkerKind {
+	if (track.kind === 'slot-attachment') {
+		return 'attachment';
+	}
+	if (track.kind === 'slot-draw-order') {
+		return 'draw-order';
+	}
+	if (track.kind === 'point-enabled' || track.kind === 'rectangle-enabled') {
+		return 'enabled';
+	}
+
+	if ('interpolation' in key) {
+		return key.interpolation === 'bezier'
+			? 'continuous-bezier'
+			: key.interpolation === 'stepped'
+				? 'continuous-stepped'
+				: 'continuous-linear';
+	}
+
+	return 'continuous-linear';
+};
+
 const markersForTrack = function markersForTrack(
 	clip: Clip,
 	track: Track
 ): readonly TimelineKeyMarker[] {
 	return track.keys
-		.map((key) => ({ id: key.id, frameIndex: frameIndexForTime(clip, key.timeSeconds) }))
+		.map((key) => ({
+			id: key.id,
+			frameIndex: frameIndexForTime(clip, key.timeSeconds),
+			trackId: track.id,
+			markerKind: markerKindForKey(track, key)
+		}))
 		.toSorted((left, right) => left.frameIndex - right.frameIndex || left.id.localeCompare(right.id));
 };
 
@@ -325,7 +364,7 @@ const dedicatedRows = function dedicatedRows(
 		selected: false,
 		keyed: clip.events.length > 0,
 		keys: clip.events
-			.map((event) => ({ id: event.id, frameIndex: frameIndexForTime(clip, event.timeSeconds) }))
+			.map((event) => ({ id: event.id, frameIndex: frameIndexForTime(clip, event.timeSeconds), markerKind: 'event' as const }))
 			.toSorted((left, right) => left.frameIndex - right.frameIndex || left.id.localeCompare(right.id))
 	};
 
@@ -518,18 +557,163 @@ const definitionsMatch = function definitionsMatch(left: TrackDefinition, right:
 		&& ('property' in left ? 'property' in right && left.property === right.property : true);
 };
 
+const isRecord = function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+};
+
+const isInterpolation = function isInterpolation(value: unknown): value is Interpolation {
+	return value === 'stepped' || value === 'linear' || value === 'bezier';
+};
+
+const isCubicBezier = function isCubicBezier(value: unknown): value is CubicBezier {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	const x1 = value.x1;
+	const y1 = value.y1;
+	const x2 = value.x2;
+	const y2 = value.y2;
+
+	return typeof x1 === 'number'
+		&& typeof y1 === 'number'
+		&& typeof x2 === 'number'
+		&& typeof y2 === 'number'
+		&& Number.isFinite(x1)
+		&& Number.isFinite(y1)
+		&& Number.isFinite(x2)
+		&& Number.isFinite(y2)
+		&& x1 >= 0
+		&& x1 <= 1
+		&& x2 >= 0
+		&& x2 <= 1;
+};
+
+const isTrackDefinition = function isTrackDefinition(value: unknown): value is TrackDefinition {
+	if (!isRecord(value) || typeof value.kind !== 'string') {
+		return false;
+	}
+
+	if (value.kind === 'slot-draw-order') {
+		return true;
+	}
+	if (!isEntityId(value.targetId)) {
+		return false;
+	}
+	if (value.kind === 'bone-transform' || value.kind === 'attachment-transform') {
+		return typeof value.property === 'string'
+			&& ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'shearX', 'shearY'].includes(value.property);
+	}
+	if (value.kind === 'attachment-opacity' || value.kind === 'slot-attachment' || value.kind === 'point-enabled' || value.kind === 'rectangle-enabled') {
+		return true;
+	}
+
+	return value.kind === 'rectangle-size'
+		&& (value.property === 'width' || value.property === 'height');
+};
+
+const projectEntityIds = function projectEntityIds(project: Project): readonly EntityId[] {
+	return [
+		project.id,
+		...project.assets.map((asset) => asset.id),
+		...project.bones.map((bone) => bone.id),
+		...project.slots.map((slot) => slot.id),
+		...project.attachments.map((attachment) => attachment.id),
+		...project.clips.flatMap((clip) => [clip.id, ...clip.tracks.flatMap((track) => [track.id, ...track.keys.map((key) => key.id)]), ...clip.events.map((event) => event.id)])
+	];
+};
+
+const validClipboardKey = function validClipboardKey(
+	key: unknown,
+	project: Project
+): key is TimelineClipboardKey {
+	if (!isRecord(key) || !isTrackDefinition(key.definition)) {
+		return false;
+	}
+	const frameOffset = key.frameOffset;
+
+	if (typeof frameOffset !== 'number' || !Number.isInteger(frameOffset) || frameOffset < 0) {
+		return false;
+	}
+
+	const definition = key.definition;
+	const value = key.value;
+	const interpolation = key.interpolation;
+	const curve = key.curve;
+
+	if (isNumberKeyDefinition(definition)) {
+
+		return typeof value === 'number'
+			&& Number.isFinite(value)
+			&& (interpolation === undefined || isInterpolation(interpolation))
+			&& (curve === undefined || curve === null || isCubicBezier(curve))
+			&& (interpolation === 'bezier' ? isCubicBezier(curve) : curve === undefined || curve === null);
+	}
+	if (definition.kind === 'slot-attachment') {
+		return (value === null || isEntityId(value))
+			&& (value === null || project.attachments.some((attachment) => attachment.kind === 'image' && attachment.id === value && attachment.slotId === definition.targetId));
+	}
+	if (definition.kind === 'slot-draw-order') {
+		return Array.isArray(value)
+			&& value.every((slotId) => isEntityId(slotId))
+			&& value.length === project.slots.length
+			&& new Set(value).size === project.slots.length
+			&& value.every((slotId) => project.slots.some((slot) => slot.id === slotId));
+	}
+
+	return typeof value === 'boolean';
+};
+
+const isTimelineClipboard = function isTimelineClipboard(
+	value: unknown,
+	project: Project
+): value is TimelineClipboard {
+	if (!isRecord(value)) {
+		return false;
+	}
+	const earliestFrame = value.earliestFrame;
+
+	return typeof earliestFrame === 'number'
+		&& Number.isInteger(earliestFrame)
+		&& earliestFrame >= 0
+		&& Array.isArray(value.keys)
+		&& value.keys.length > 0
+		&& value.keys.every((key) => validClipboardKey(key, project));
+};
+
 export const planPasteTimelineClipboard = function planPasteTimelineClipboard(
 	clip: Clip,
-	clipboard: TimelineClipboard,
+	clipboard: unknown,
 	playheadFrame: number,
 	idFactory: () => EntityId,
 	project: Project
 ): TimelineEditResult<readonly import('../domain/commands.ts').ProjectCommand[]> {
-	if (clipboard.keys.length === 0) {
+	if (!project.clips.some((candidate) => candidate.id === clip.id)) {
+		return { ok: false, error: 'Paste requires the active clip to belong to the project.' };
+	}
+	if (!Number.isFinite(clip.durationSeconds) || clip.durationSeconds <= 0 || !Number.isFinite(clip.fps) || clip.fps <= 0) {
+		return { ok: false, error: 'Paste requires valid clip timing.' };
+	}
+	const hasClipboardKeys = isRecord(clipboard)
+		&& Array.isArray(clipboard.keys)
+		&& clipboard.keys.length > 0;
+
+	if (!hasClipboardKeys) {
 		return { ok: false, error: 'The key clipboard is empty.' };
 	}
+	if (!isTimelineClipboard(clipboard, project)) {
+		return { ok: false, error: 'The key clipboard contains invalid typed data.' };
+	}
+	if (!Number.isFinite(playheadFrame)) {
+		return { ok: false, error: 'The playhead frame is unavailable.' };
+	}
 
-	const frameCount = Math.max(1, Math.ceil(clip.durationSeconds * clip.fps));
+	const frameCount = frameCountForClip(clip);
+
+	if (frameCount === undefined) {
+		return { ok: false, error: 'Paste requires valid clip timing.' };
+	}
+
 	const startFrame = Math.max(0, Math.floor(playheadFrame));
 	const pasted = clipboard.keys.map((key) => ({ ...key, frameIndex: startFrame + key.frameOffset }));
 
@@ -556,12 +740,31 @@ export const planPasteTimelineClipboard = function planPasteTimelineClipboard(
 		return { ok: false, error: 'Paste would collide with an existing key on the same track.' };
 	}
 
-	const commands = targetPairs.map(({ key, track }) => {
-		const id = idFactory();
+	const existingIds = projectEntityIds(project);
+	const allocatedIds = targetPairs.flatMap(() => {
+		try {
+			return [idFactory()];
+		} catch {
+			return [];
+		}
+	});
+
+	if (allocatedIds.some((id) => !isEntityId(id))
+		|| new Set(allocatedIds).size !== allocatedIds.length
+		|| allocatedIds.some((id) => existingIds.includes(id))) {
+		return { ok: false, error: 'Paste could not allocate unique key IDs.' };
+	}
+
+	const commands = targetPairs.flatMap(({ key, track }, index): readonly ProjectCommand[] => {
+		const id = allocatedIds[index];
+
+		if (!id) {
+			return [];
+		}
 		const timeSeconds = key.frameIndex / clip.fps;
 
 		if (isNumberKeyDefinition(key.definition)) {
-			return {
+			return [{
 				kind: 'add-number-key' as const,
 				id,
 				clipId: clip.id,
@@ -572,27 +775,31 @@ export const planPasteTimelineClipboard = function planPasteTimelineClipboard(
 					interpolation: key.interpolation,
 					curve: key.curve
 				}
-			};
+			}];
 		}
 		if (key.definition.kind === 'slot-attachment' && track.kind === 'slot-attachment') {
-			return { kind: 'add-attachment-key' as const, id, clipId: clip.id, trackId: track.id, input: { timeSeconds, value: key.value === null || typeof key.value === 'string' ? key.value : null } };
+			return [{ kind: 'add-attachment-key' as const, id, clipId: clip.id, trackId: track.id, input: { timeSeconds, value: key.value === null || typeof key.value === 'string' ? key.value : null } }];
 		}
 		if (key.definition.kind === 'slot-draw-order' && track.kind === 'slot-draw-order') {
-			const value = Array.isArray(key.value) && key.value.every((slotId) => isEntityId(slotId))
-				? key.value
+			const value = Array.isArray(key.value)
+				? key.value.filter((slotId: unknown): slotId is EntityId => isEntityId(slotId))
 				: project.setupDrawOrder;
 
-			return { kind: 'add-draw-order-key' as const, id, clipId: clip.id, trackId: track.id, input: { timeSeconds, value } };
+			return [{ kind: 'add-draw-order-key' as const, id, clipId: clip.id, trackId: track.id, input: { timeSeconds, value } }];
 		}
 
-		return {
+		return [{
 			kind: 'add-boolean-key' as const,
 			id,
 			clipId: clip.id,
 			trackId: track.id,
 			input: { timeSeconds, value: typeof key.value === 'boolean' ? key.value : false }
-		};
+		}];
 	});
+
+	if (commands.length !== targetPairs.length) {
+		return { ok: false, error: 'Paste could not allocate key commands.' };
+	}
 
 	return { ok: true, value: commands };
 };

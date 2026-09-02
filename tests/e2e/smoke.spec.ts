@@ -255,13 +255,18 @@ test('creates, moves, copies, and deletes typed animation keys', async ({ page }
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
 	await page.getByRole('button', { name: 'Key details' }).click();
 	await page.getByRole('spinbutton', { name: 'Frame', exact: true }).fill('3');
-	await page.getByRole('button', { name: 'Move key', exact: true }).click();
+	await page.getByRole('spinbutton', { name: 'Frame', exact: true }).press('Enter');
 	await expect(page.getByRole('button', { name: 'Key frame 3' })).toBeVisible();
-	await page.getByRole('spinbutton', { name: 'Frame', exact: true }).fill('4');
-	await page.getByRole('button', { name: 'Copy key', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Key frame 4' })).toBeVisible();
-	await page.getByRole('button', { name: 'Delete key', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Key frame 4' })).toHaveCount(0);
+	await page.getByTestId('animate-timeline').focus();
+	await page.keyboard.press('Control+c');
+	await page.getByLabel('Playhead').fill('5');
+	await page.getByTestId('animate-timeline').focus();
+	await page.keyboard.press('Control+v');
+	await expect(page.getByRole('button', { name: 'Key frame 6' })).toBeVisible();
+	await page.getByRole('button', { name: 'Key frame 6' }).click();
+	await page.getByTestId('animate-timeline').focus();
+	await page.keyboard.press('Delete');
+	await expect(page.getByRole('button', { name: 'Key frame 6' })).toHaveCount(0);
 });
 
 test('creates and edits timeline events', async ({ page }) => {
@@ -398,10 +403,10 @@ test('retimes multiple selected animation keys together', async ({ page }) => {
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
 	await page.getByRole('button', { name: 'Key details' }).click();
-	await expect(page.getByText('2 keys selected', { exact: true })).toBeVisible();
-	await page.getByRole('spinbutton', { name: 'Offset frames', exact: true }).fill('2');
-	await page.getByRole('button', { name: 'Retime selected keys', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Key frame 3' })).toHaveCount(2);
+	await expect(page.getByText('2 keys selected', { exact: false })).toBeVisible();
+	await page.getByTestId('animate-timeline').focus();
+	await page.keyboard.press('ArrowRight');
+	await expect(page.getByRole('button', { name: 'Key frame 2' })).toHaveCount(2);
 });
 
 test('undoes a multi-key animation deletion as one action', async ({ page }) => {
@@ -421,8 +426,8 @@ test('undoes a multi-key animation deletion as one action', async ({ page }) => 
 	await page.getByRole('button', { name: 'Close Track details' }).click();
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
-	await page.getByRole('button', { name: 'Key details' }).click();
-	await page.getByRole('button', { name: 'Delete selected keys', exact: true }).click();
+	await page.getByTestId('animate-timeline').focus();
+	await page.keyboard.press('Delete');
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(0);
 
 	await page.getByRole('button', { name: 'Undo', exact: true }).click();

@@ -97,7 +97,7 @@ export const PropertiesInspector = function PropertiesInspector({
 											onCommit={onRenameSelected}
 										/>
 										<div className="inspector-actions">
-											<button className="danger-button" type="button" onClick={onDeleteSelected}>Delete</button>
+											<button className="danger-button" type="button" aria-keyshortcuts="Delete Backspace" onClick={onDeleteSelected} title="Delete selection · Delete / Backspace">Delete</button>
 										</div>
 									</div>
 									{selectedTransform && (

@@ -6,13 +6,16 @@ import {
 	addEvent,
 	addNumberKey,
 	createClip,
-	createTrack
+	createTrack,
+	setNumberKeyInterpolation
 } from '../../src/domain/animation.ts';
 import type { Clip, Project, Track } from '../../src/domain/model.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
 import {
 	buildGroupedTimelineRows,
+	createTimelineClipboard,
 	planKeyDrag,
+	planPasteTimelineClipboard,
 	selectableEntityForTimelineRow
 } from '../../src/app/timeline-model.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
@@ -221,6 +224,31 @@ describe('UX P1-16 grouped timeline model', () => {
 		expect(reorderedRows.map((row) => row.id)).toEqual(rows.map((row) => row.id));
 	});
 
+	test('classifies aggregate markers by key type and interpolation', () => {
+		const { project, clip } = timelineFixture();
+		const steppedProject = unwrap(setNumberKeyInterpolation(project, clip.id, ids.rootTrack, ids.rootKey, { interpolation: 'stepped' }));
+		const classifiedProject = unwrap(setNumberKeyInterpolation(steppedProject, clip.id, ids.rootTrack, ids.rootSecondKey, { interpolation: 'bezier' }));
+		const classifiedClip = clipFromProject(classifiedProject);
+		const rows = buildGroupedTimelineRows(classifiedProject, classifiedClip, {
+			mode: 'all-keyed',
+			expandedIds: new Set()
+		});
+		const rootProperty = rows.find((row) => row.id === `property:${ids.rootTrack}`);
+		const drawOrder = rows.find((row) => row.kind === 'draw-order');
+		const events = rows.find((row) => row.kind === 'events');
+		const enabled = rows.find((row) => row.id === `property:${ids.pointTrack}`);
+		const attachment = rows.find((row) => row.id === `property:${ids.slotTrack}`);
+
+		expect(rootProperty?.keys).toMatchObject([
+			{ id: ids.rootKey, trackId: ids.rootTrack, markerKind: 'continuous-stepped' },
+			{ id: ids.rootSecondKey, trackId: ids.rootTrack, markerKind: 'continuous-bezier' }
+		]);
+		expect(enabled?.keys[0]?.markerKind).toBe('enabled');
+		expect(attachment?.keys[0]?.markerKind).toBe('attachment');
+		expect(drawOrder?.keys[0]?.markerKind).toBe('draw-order');
+		expect(events?.keys[0]?.markerKind).toBe('event');
+	});
+
 	test('supports selected entities, selected tracks, filtering, and safe malformed targets', () => {
 		const { project, clip } = timelineFixture();
 		const selectedRows = buildGroupedTimelineRows(project, clip, {
@@ -362,5 +390,27 @@ describe('UX P1-19 pure key-drag planning', () => {
 		expect(malformedKey).toMatchObject({ ok: false });
 		expect(malformedTiming).toMatchObject({ ok: false });
 		expect(nonfinitePointer).toMatchObject({ ok: false });
+	});
+
+	test('validates typed clipboard data and fresh IDs before producing paste commands', () => {
+		const { project, clip } = timelineFixture();
+		const copied = createTimelineClipboard(clip, [
+			{ trackId: ids.rootTrack, keyId: ids.rootKey },
+			{ trackId: ids.rootTrack, keyId: ids.rootSecondKey }
+		]);
+
+		if (!copied.ok) {
+			throw new Error(copied.error);
+		}
+
+		const invalid = {
+			...copied.value,
+			keys: copied.value.keys.map((key, index) => index === 1 ? { ...key, value: Number.NaN } : key)
+		};
+		const invalidResult = planPasteTimelineClipboard(clip, invalid, 0, () => ids.missingKey, project);
+		const collidingIdResult = planPasteTimelineClipboard(clip, copied.value, 12, () => ids.rootKey, project);
+
+		expect(invalidResult).toEqual({ ok: false, error: 'The key clipboard contains invalid typed data.' });
+		expect(collidingIdResult).toEqual({ ok: false, error: 'Paste could not allocate unique key IDs.' });
 	});
 });

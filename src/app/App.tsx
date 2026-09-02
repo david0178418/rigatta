@@ -42,7 +42,7 @@ import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
 import { createExportDiagnostics, formatByteCount } from '../export/diagnostics.ts';
 import { createExampleAssetBlobs, exampleProject } from '../examples/example-project.ts';
-import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
+import { shortcutActionFor, shortcutReference, type ShortcutAction } from './shortcuts.ts';
 import { nextAvailableName } from './entity-names.ts';
 import { SETUP_TIMELINE_HEIGHT, clampTimelineHeight } from './timeline-layout.ts';
 import type { AssetImportSummary } from './asset-browser.tsx';
@@ -370,15 +370,6 @@ const ExportControls = function ExportControls({
 };
 
 const ShortcutReference = function ShortcutReference({ onClose }: Readonly<{ onClose: () => void }>): ReactElement {
-	const shortcuts: readonly Readonly<{ keys: string; action: string }>[] = [
-		{ keys: 'Ctrl/Cmd + Z', action: 'Undo' },
-		{ keys: 'Ctrl/Cmd + Shift + Z', action: 'Redo' },
-		{ keys: 'Ctrl/Cmd + Y', action: 'Redo' },
-		{ keys: 'Space', action: 'Play or pause the active clip' },
-		{ keys: '← / →', action: 'Step the active clip by one frame' },
-		{ keys: '?', action: 'Open this reference' }
-	];
-
 	return (
 		<div className="shortcut-panel-overlay">
 			<section className="shortcut-panel" aria-label="Keyboard shortcuts">
@@ -390,10 +381,10 @@ const ShortcutReference = function ShortcutReference({ onClose }: Readonly<{ onC
 					<button className="quiet-button" type="button" aria-label="Close keyboard shortcuts" onClick={onClose}>Close</button>
 				</div>
 				<dl className="shortcut-list">
-					{shortcuts.map((shortcut) => (
-						<div key={shortcut.keys}>
+					{shortcutReference.map((shortcut) => (
+						<div data-shortcut-scope={shortcut.scope} key={shortcut.id}>
 							<dt><kbd>{shortcut.keys}</kbd></dt>
-							<dd>{shortcut.action}</dd>
+							<dd>{shortcut.action} · {shortcut.description}</dd>
 						</div>
 					))}
 				</dl>
@@ -842,11 +833,17 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				renameInputRef.current?.select();
 			},
 			'delete-selection': () => deleteSelected(),
-			'key-selection': () => keySelectedProperties(),
+			'key-selection': () => keyPendingAnimationEdits(),
 			cancel: () => {
+				const contextualSurfaceWasOpen = exportPanelOpen || shortcutPanelOpen;
+
 				setExportPanelOpen(false);
 				setShortcutPanelOpen(false);
 				updateCanvasTransform({ x: 0, y: 0 }, 'cancel');
+
+				if (!contextualSurfaceWasOpen) {
+					setSelectionFromSurface(createSelection());
+				}
 			},
 			'select-previous': () => navigateSelectionHistory(-1),
 			'select-next': () => navigateSelectionHistory(1),
@@ -876,7 +873,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		return function cleanup(): void {
 			window.removeEventListener('keydown', onKeyDown);
 		};
-	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, activePlayback.playing, history, mode, selection]);
+	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, activePlayback.playing, exportPanelOpen, history, mode, pendingAnimationEdits, selection, selectionHistory, shortcutPanelOpen]);
 
 	const commitHistory = function commitHistory(
 		nextHistory: HistoryState,
@@ -1728,22 +1725,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				? 'Select a bone before dropping on the canvas. Drop on a slot to add an attachment.'
 				: 'Drop on the canvas to create a root bone, slot, and attachment.';
 	const renameInputRef = useRef<HTMLInputElement>(null);
-	const keyablePropertiesFor = function keyablePropertiesFor(entity: SelectableEntity | undefined): readonly KeyableProperty[] {
-		if (!entity || entity.kind === 'asset' || entity.kind === 'slot') {
-			return [];
-		}
-		if (entity.kind === 'bone') {
-			return animationProperties;
-		}
-
-		const attachment = project.attachments.find((candidate) => candidate.id === entity.id);
-
-		return attachment?.kind === 'image'
-			? [...animationProperties, 'opacity']
-			: attachment?.kind === 'rectangle'
-				? [...animationProperties, 'width', 'height']
-				: animationProperties;
-	};
 	const keyStateForProperty = function keyStateForProperty(
 		entityId: EntityId,
 		property: KeyableProperty
@@ -1782,28 +1763,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 		if (plan.reason) {
 			setCommandError(plan.reason);
-		}
-	};
-	const keySelectedProperties = function keySelectedProperties(): void {
-		if (!selectedEntity || !activeClip || mode !== 'animate') {
-			return;
-		}
-
-		const properties = keyablePropertiesFor(selectedEntity);
-		const commands = properties.flatMap((property) => planPropertyKeyToggle({
-			project,
-			clip: activeClip,
-			targetId: selectedEntity.id,
-			property,
-			frameIndex: activePlayback.frameIndex,
-			autoKey,
-			pendingEdits: pendingAnimationEdits
-		}).commands);
-
-		if (commands.length > 0 && applyCommandSequence(commands)) {
-			setPendingAnimationEdits((current) => current.filter((pending) => pending.targetId !== selectedEntity.id));
-			const count = pendingAnimationEdits.length;
-			setKeyingAnnouncement(`Keyed ${count} pending propert${count === 1 ? 'y' : 'ies'} at frame ${activePlayback.frameIndex + 1}.`);
 		}
 	};
 	const commitDirectProperty = function commitDirectProperty(property: NumericProperty, value: number): string | undefined {
@@ -1948,6 +1907,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			updatePresentation((current) => ({ ...current, rigExpandedIds: [...expanded] }));
 			window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-row-id="${target.id}"]`)?.scrollIntoView({ block: 'nearest' }));
 		}
+	};
+	const canNavigateSelectionHistory = function canNavigateSelectionHistory(direction: -1 | 1): boolean {
+		const nextIndex = selectionHistoryCursorRef.current + direction;
+
+		return nextIndex >= 0 && nextIndex < selectionHistory.length;
 	};
 	const currentDrawOrder = function currentDrawOrder(): readonly EntityId[] {
 		const track = activeClip?.tracks.find((candidate) => candidate.kind === 'slot-draw-order');
@@ -2386,10 +2350,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							))}
 				</nav>
 				<div className="toolbar-actions">
-					<button className="quiet-button" type="button" disabled={!canUndo(history)} onClick={() => stepHistory(undo(history))}>Undo</button>
-					<button className="quiet-button" type="button" disabled={!canRedo(history)} onClick={() => stepHistory(redo(history))}>Redo</button>
+					<button className="quiet-button" type="button" aria-keyshortcuts="Control+Z Meta+Z" disabled={!canUndo(history)} onClick={() => stepHistory(undo(history))} title="Undo · Ctrl/Cmd + Z">Undo</button>
+					<button className="quiet-button" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" disabled={!canRedo(history)} onClick={() => stepHistory(redo(history))} title="Redo · Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y">Redo</button>
+					<button className="quiet-button" type="button" aria-label="Previous selection" aria-keyshortcuts="PageUp" disabled={!canNavigateSelectionHistory(-1)} onClick={() => navigateSelectionHistory(-1)} title="Previous selection · Page Up">Previous</button>
+					<button className="quiet-button" type="button" aria-label="Next selection" aria-keyshortcuts="PageDown" disabled={!canNavigateSelectionHistory(1)} onClick={() => navigateSelectionHistory(1)} title="Next selection · Page Down">Next</button>
 					<button className="quiet-button" type="button" onClick={loadExampleProject}>Load example</button>
-					<button className="quiet-button" type="button" aria-label="Keyboard shortcuts" onClick={() => setShortcutPanelOpen(true)}>?</button>
+					<button className="quiet-button" type="button" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={() => setShortcutPanelOpen(true)} title="Keyboard shortcuts · ?">?</button>
 					<button className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel}>Export</button>
 				</div>
 			</header>
@@ -2531,6 +2497,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								onRetimeKeys={retimeAnimationKeys}
 								onPasteKeys={pasteAnimationKeys}
 								onSelectEntity={(entity, additive) => updateSelection(entity, additive)}
+								onSelectTransformTool={setTransformTool}
 								onRowModeChange={(nextMode) => updatePresentation((current) => ({ ...current, timelineRowMode: nextMode }))}
 								onExpandedRowIdsChange={(ids) => updatePresentation((current) => ({ ...current, timelineExpandedIds: [...ids] }))}
 								onTogglePinnedEntity={(entityId) => updatePresentation((current) => ({

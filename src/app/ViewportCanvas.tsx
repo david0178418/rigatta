@@ -9,6 +9,7 @@ import { createViewportState, formatViewportCoordinate, formatViewportZoom, norm
 import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from './grid.ts';
 import type { Selection } from './selection.ts';
 import { canvasGestureModeFor, type CanvasGestureMode, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
+import { isShortcutTypingTarget } from './shortcuts.ts';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -340,12 +341,18 @@ export const ViewportCanvas = function ViewportCanvas({
 
 	useEffect(() => {
 		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
+			if (isShortcutTypingTarget(event.target)) {
+				return;
+			}
 			if (event.key === ' ') {
 				event.preventDefault();
 				spacePressedRef.current = true;
 			}
 		};
 		const onKeyUp = function onKeyUp(event: KeyboardEvent): void {
+			if (isShortcutTypingTarget(event.target)) {
+				return;
+			}
 			if (event.key === ' ') {
 				spacePressedRef.current = false;
 			}

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import type { GridSettings } from './grid.ts';
-import { Popover } from './ui-primitives.tsx';
+import { Popover, Tooltip } from './ui-primitives.tsx';
+import { shortcutLabelFor, type ShortcutAction } from './shortcuts.ts';
 import type { TransformTool } from './transform-gesture.ts';
 
 const transformToolLabels: Readonly<Record<TransformTool, string>> = {
@@ -8,6 +9,13 @@ const transformToolLabels: Readonly<Record<TransformTool, string>> = {
 	rotate: 'Rotate',
 	scale: 'Scale',
 	shear: 'Shear'
+};
+
+const transformToolShortcutActions: Readonly<Record<TransformTool, ShortcutAction>> = {
+	translate: 'tool-translate',
+	rotate: 'tool-rotate',
+	scale: 'tool-scale',
+	shear: 'tool-shear'
 };
 
 export type CanvasToolbarProps = Readonly<{
@@ -34,16 +42,18 @@ export const CanvasToolbar = function CanvasToolbar({
 	return (
 			<div className="canvas-tool-toolbar" data-testid="canvas-toolbar" aria-label="Transform tools">
 				{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
-					<button
-						className={transformTool === tool ? 'tool-button is-active' : 'tool-button'}
-						key={tool}
-						type="button"
-						onClick={() => onTransformToolChange(tool)}
-						aria-pressed={transformTool === tool}
-						title={transformToolLabels[tool]}
-					>
-						{transformToolLabels[tool]}
-					</button>
+					<Tooltip key={tool} label={transformToolLabels[tool]} shortcut={shortcutLabelFor(transformToolShortcutActions[tool])}>
+						<button
+							aria-keyshortcuts={shortcutLabelFor(transformToolShortcutActions[tool])}
+							aria-pressed={transformTool === tool}
+							className={transformTool === tool ? 'tool-button is-active' : 'tool-button'}
+							title={`${transformToolLabels[tool]} · ${shortcutLabelFor(transformToolShortcutActions[tool])}`}
+							type="button"
+							onClick={() => onTransformToolChange(tool)}
+						>
+							{transformToolLabels[tool]}
+						</button>
+					</Tooltip>
 				))}
 				<Popover label="Grid settings" className="grid-popover">
 					<div className="grid-controls" aria-label="Grid controls">
