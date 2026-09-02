@@ -1953,12 +1953,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		applyCommandSequence(commands);
 	};
-	const keyCurrentDrawOrder = function keyCurrentDrawOrder(): void {
+	const keyCurrentDrawOrder = function keyCurrentDrawOrder(displayedOrder?: readonly EntityId[]): void {
 		if (!activeClip) {
 			return;
 		}
 
-		const order = currentDrawOrder();
+		const order = displayedOrder ?? currentDrawOrder();
 		const track = activeClip.tracks.find((candidate) => candidate.kind === 'slot-draw-order');
 		const key = track?.kind === 'slot-draw-order'
 			? track.keys.find((candidate) => frameIndexForTime(activeClip, candidate.timeSeconds) === activePlayback.frameIndex)

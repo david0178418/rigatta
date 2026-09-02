@@ -18,7 +18,7 @@ Playwright tests exercise the supported Chrome editor workflow.
 | --- | --- |
 | One root with descendant bones | `tests/unit/validation.test.ts` covers roots, cycles, and dangling parents; `tests/unit/operations.test.ts` covers root and child creation. |
 | Bone translation, rotation, nonuniform scale, and shear | `tests/unit/coordinates.test.ts` and `tests/unit/transform-gesture.test.ts` cover affine values and all setup tools. |
-| Slots with independently keyable draw order | `tests/unit/animation.test.ts` covers draw-order keys; `tests/unit/slot-dnd.test.ts` and the slot reorder flow in `tests/e2e/smoke.spec.ts` cover setup and keyed ordering. |
+| Slots with independently keyable draw order | `tests/unit/animation.test.ts` covers draw-order keys; `tests/unit/draw-order-model.test.ts` and `tests/unit/draw-order-panel.test.tsx` cover setup fallback, preceding keyed evaluation, and panel source labels; `tests/e2e/p1-draw-order.spec.ts` covers the dedicated panel, setup drag reorder, and current-frame keying. |
 | Multiple image attachments with one active slot attachment | `tests/unit/operations.test.ts` covers assignment and reference rejection; the image import and attachment-swap flow in `tests/e2e/smoke.spec.ts` covers the browser path. |
 | Image local transforms, opacity, and fixed pivots | `tests/unit/operations.test.ts` covers transform and image-property updates; `tests/unit/pose-images.test.ts` covers setup and evaluated image instances. |
 | Named point and rectangle gameplay attachments | `tests/unit/operations.test.ts` creates both attachment kinds; the gameplay guide and keying flows in `tests/e2e/smoke.spec.ts` exercise them. |

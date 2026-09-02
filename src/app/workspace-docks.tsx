@@ -120,7 +120,7 @@ export const WorkspaceDocks = function WorkspaceDocks({
 					) : <RigTreeView {...rigTreeProps} />}
 				</div>
 				<div aria-labelledby="left-dock-draw-order-tab" className="dock-tabpanel" hidden={leftDockTab !== 'draw-order'} id="left-dock-draw-order-panel" role="tabpanel" tabIndex={0}>
-					<DrawOrderPanel {...drawOrderProps} />
+					<DrawOrderPanel {...drawOrderProps} mode={mode} />
 				</div>
 			</>}
 		</aside>
