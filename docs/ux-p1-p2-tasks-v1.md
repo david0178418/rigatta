@@ -36,11 +36,15 @@ checkboxes below remain the source of truth for final acceptance.
 ### Repository state
 
 - Branch: `master`.
-- Implementation checkpoint commits: `5514d62 Add P1 structure
-  characterization`, `8beefbe Complete P1 keying contracts`, `e91c175
-  Complete P2 layout and presentation persistence integration`, `cb5cf67
-  Complete persistent inspector disclosures`, and `ed71f08 Complete P1
-  semantic Rig tree interactions`.
+- Implementation checkpoint commits through `HEAD` (`3940596 Complete UX P1-04
+  UI primitives`): `5514d62 Add P1 structure characterization`, `8beefbe
+  Complete P1 keying contracts`, `e91c175 Complete P2 layout and presentation
+  persistence integration`, `cb5cf67 Complete persistent inspector
+  disclosures`, `ed71f08 Complete P1 semantic Rig tree interactions`, `49eb197
+  Implement UX P1-24 autosave lifecycle`, `029a1f1 Complete UX P1-07 Rig tree
+  visuals`, `5cbea53 Implement UX P2 viewport gestures and constraints`,
+  `98a2404 Implement UX P1-14 key diamonds`, and `3940596 Complete UX P1-04 UI
+  primitives`.
 - Remaining unchecked tasks are still in progress. Preserve unrelated working
   tree changes when resuming; do not reset or discard them.
 - Browser checks use `http://localhost:3000/`; reuse an occupied local Bun
@@ -62,9 +66,23 @@ checkboxes below remain the source of truth for final acceptance.
   browser workflows are verified.
 - Property draft parsing, direct numeric/name editing, current-frame key
   planning, automatic continuous-track creation, pending Auto Key state, and
-  interactive key controls are present. Entity name and transform editing now
+  interactive key controls are present. Key diamonds now use distinct hollow,
+  amber patterned, and filled states with accessible action labels, live
+  pending/keyed announcements, one-transaction add/remove history, and a
+  compact pending action beside Auto Key. Entity name and transform editing now
   commit on Enter/blur; the duplicate `Rename` and `Apply values` actions have
   been removed while clip/timeline-specific actions remain.
+- Typed autosave lifecycle callbacks report queued, saving, saved, and failed
+  writes beside the project name, with page-hide flushing and later-success
+  recovery.
+- Reusable accessible menu, popover, dialog, toolbar, tooltip, and tab
+  primitives cover keyboard focus, dismissal, restoration, and viewport
+  containment. Rig rows use durable typed icons and non-color-only state
+  annotations.
+- Canvas navigation reserves primary drag for selection/transform, supports
+  middle-drag and Space+primary-drag panning, retains anchored wheel zoom, and
+  reports Shift axis/angle/aspect transform constraints in one gesture history
+  transaction.
 - Versioned, runtime-validated UI preferences, project-scoped layout state,
   density modes, asset previews/usage metadata, editor-only visibility, canvas
   pan/zoom/selection gestures, transform constraints, and the typed shared
@@ -78,24 +96,26 @@ checkboxes below remain the source of truth for final acceptance.
 
 ### Validation already recorded
 
-- `bun test src tests/unit`: 219 tests passed, including semantic Rig-tree,
+- `bun test src tests/unit`: 232 tests passed, including semantic Rig-tree,
   grouped timeline/key-drag, preference migration, storage failure, layout
   matrix, and stale-ID coverage.
 - `bun run lint`: passed with three pre-existing missing-return-type warnings in
   `src/app/project-menu.tsx` and `tests/unit/ux-models.test.ts`.
 - `bun run typecheck`, `bun run build`, and `git diff --check` pass.
 - Focused Chromium workflows cover direct field commits and validation, mixed
-  multi-selection display, import conflicts/drop hints, coordinate/origin
-  overlays, grid popover dismissal, supported layouts, dock resizing and
-  collapse, project-scoped presentation restoration, and inspector disclosure
-  persistence/isolation.
-- `bun run test:e2e`: 46 Chromium tests passed.
+  multi-selection display, current-frame key diamonds and undo, import
+  conflicts/drop hints, coordinate/origin overlays, grid popover dismissal,
+  supported layouts, dock resizing and collapse, project-scoped presentation
+  restoration, inspector disclosure persistence/isolation, canvas gesture
+  precedence, and transform constraints.
+- `bun run test:e2e`: 57 Chromium tests passed.
 
 ### Resume from here
 
-1. The shared inspector styles, mixed-value helpers, direct field wiring, and
-   entity field cleanup are complete and covered by typecheck/unit/browser
-   validation.
+1. The shared inspector styles, mixed-value helpers, direct field wiring, entity
+   field cleanup, accessible UI primitives, durable Rig visuals, key diamonds,
+   autosave lifecycle, canvas gesture precedence, and transform constraints are
+   complete and covered by typecheck/unit/browser validation.
 2. P2-07 import/drop outcomes and P2-13 canvas overlays are complete for the
    verified workflows below; their focused coverage is retained in the smoke
    suite.
@@ -225,7 +245,7 @@ type assertions to bypass validation.
   import, asset selection, and every drag/drop target. Active tabs remain local
   UI state until P2.
 
-- [ ] **UX-P1-04** Add reusable accessible menu, popover, tooltip, and toolbar
+- [x] **UX-P1-04** Add reusable accessible menu, popover, tooltip, and toolbar
   primitives. Depends on UX-P1-02. Follow the WAI-ARIA
   [menu button](https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/),
   [dialog](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/), and
@@ -246,7 +266,7 @@ type assertions to bypass validation.
   selection model, and type-ahead. Collapsing a branch hides descendants without
   clearing their project selection. Expanding/revealing must not mutate history.
 
-- [ ] **UX-P1-07** Add durable tree row visuals and annotations. Depends on
+- [x] **UX-P1-07** Add durable tree row visuals and annotations. Depends on
   UX-P1-06. Replace text glyphs with consistent icons and non-color-only states
   for hover, focus, selection, multi-selection, active slot attachment, and drag
   target. Tooltips/accessibility text identify entity type and relevant relation.
@@ -287,7 +307,7 @@ type assertions to bypass validation.
   delete-key commands. Cover every continuous property type and missing-clip
   state with unit tests.
 
-- [ ] **UX-P1-14** Replace verbose inspector key labels with interactive key
+- [x] **UX-P1-14** Replace verbose inspector key labels with interactive key
   diamonds. Depends on UX-P1-12 and UX-P1-13. Use hollow, filled, and amber
   shapes plus accessible text. Clicking adds/removes the current-frame key in one
   history transaction. Keep the compact pending-edit action near Auto Key and
@@ -348,7 +368,7 @@ type assertions to bypass validation.
 
 ### Application feedback and discoverability
 
-- [ ] **UX-P1-24** Add autosave lifecycle reporting. Extend the autosave
+- [x] **UX-P1-24** Add autosave lifecycle reporting. Extend the autosave
   scheduler with typed scheduled/saving/saved/error callbacks and tests. Show
   `Saving...`, `Saved locally`, or `Save failed` beside the project name without
   adding project history or layout movement. A later successful save clears the
@@ -484,7 +504,7 @@ or `Move key`, and without document scrolling.
 
 ### Canvas efficiency
 
-- [ ] **UX-P2-12** Resolve canvas navigation gestures. Reserve primary drag for
+- [x] **UX-P2-12** Resolve canvas navigation gestures. Reserve primary drag for
   select/marquee/transform, use middle-drag and Space+primary-drag for pan, and
   retain pointer-anchored wheel zoom. Escape cancels the active gesture before it
   clears selection. Add unit and browser coverage for gesture precedence.
@@ -495,7 +515,7 @@ or `Move key`, and without document scrolling.
   pasteboard boundaries clear. Verify no collision with tools, warnings, handles,
   or P0 detail surfaces.
 
-- [ ] **UX-P2-14** Add transform constraints and feedback. Depends on UX-P2-12.
+- [x] **UX-P2-14** Add transform constraints and feedback. Depends on UX-P2-12.
   Use Shift for supported axis, angle, and aspect constraints; show the active
   constraint in a status line; keep one history transaction per gesture; and add
   pure transform-gesture tests for constrained values.
