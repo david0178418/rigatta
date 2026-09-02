@@ -34,10 +34,6 @@ describe('P1 presentation boundaries', () => {
 				allSelectedRectangles={false}
 				collapsedSections={new Set()}
 				keyStateForProperty={() => undefined}
-				onAddChildBone={() => undefined}
-				onAddPointAttachment={() => undefined}
-				onAddRectangleAttachment={() => undefined}
-				onAddSlot={() => undefined}
 				onCommitDirectProperty={() => undefined}
 				onDeleteSelected={() => undefined}
 				onRenameSelected={() => undefined}

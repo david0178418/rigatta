@@ -1367,6 +1367,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			input: { name: 'root', parentId: null }
 		});
 	};
+	const openImageAttachmentWorkflow = function openImageAttachmentWorkflow(): void {
+		setAssetError(undefined);
+		updatePresentation((current) => ({ ...current, rightDockTab: 'assets' }));
+	};
 
 	const stepHistory = function stepHistory(nextHistory: HistoryState): void {
 		commitHistory(nextHistory);
@@ -2310,10 +2314,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		collapsedSections: collapsedInspectorSections,
 		keyingAnnouncement,
 		keyStateForProperty,
-		onAddChildBone: addChildBone,
-		onAddPointAttachment: addPointAttachment,
-		onAddRectangleAttachment: addRectangleAttachment,
-		onAddSlot: addSlot,
 		onCommitDirectProperty: commitDirectProperty,
 		onDeleteSelected: deleteSelected,
 		onRenameSelected: renameSelected,
@@ -2323,7 +2323,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		renameInputRef,
 		selectedAttachmentIsMixed,
 		selectedAttachmentValue,
-		selectedBone,
 		selectedEntity,
 		selectedName,
 		selectedSlot,
@@ -2418,6 +2417,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					onAddRectangleAttachment={addRectangleAttachment}
 					onAddSlot={addSlot}
 					onCreateRootBone={createRootBone}
+					onOpenImageAttachmentWorkflow={openImageAttachmentWorkflow}
 					onImportDirectory={() => void importDirectory()}
 					onLayoutChange={(layout) => updatePresentation((current) => ({ ...current, layout }))}
 					onLeftDockTabChange={(leftDockTab) => updatePresentation((current) => ({ ...current, leftDockTab }))}
@@ -2430,6 +2430,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					rigSearch={rigSearch}
 					rigTreeProps={rigTreeProps}
 					selectedBone={selectedBone}
+					selectedSlot={selectedSlot}
 					viewport={workspaceViewport}
 					rightDockTab={presentation.rightDockTab}
 				>

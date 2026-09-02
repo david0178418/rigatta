@@ -288,7 +288,8 @@ test('keys point transform and enabled state', async ({ page }) => {
 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add point' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Point attachment', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await page.getByRole('button', { name: 'Track details' }).click();
@@ -307,7 +308,8 @@ test('keys rectangle rotation, dimensions, and enabled state', async ({ page }) 
 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add rectangle' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Rectangle attachment', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await page.getByRole('button', { name: 'Track details' }).click();
@@ -335,9 +337,11 @@ test('selects point and rectangle gameplay guides in setup', async ({ page }) =>
 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add point' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Point attachment', exact: true }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add rectangle' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Rectangle attachment', exact: true }).click();
 
 	const attachments = page.locator('.attachment-row');
 	await expect(attachments).toHaveCount(2);
@@ -634,7 +638,8 @@ test('builds and edits a hierarchy through the inspector', async ({ page }) => {
 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Child bone', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'bone', exact: true })).toBeVisible();
 	const hierarchyX = page.locator('input[name="x"]');
 	await hierarchyX.fill('24');
@@ -651,11 +656,13 @@ test('builds and edits a hierarchy through the inspector', async ({ page }) => {
 	await hierarchyName.fill('arm');
 	await hierarchyName.press('Enter');
 	await expect(page.getByRole('button', { name: 'arm', exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Add slot' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Slot', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'slot', exact: true })).toBeVisible();
 
 	await page.getByRole('button', { name: 'arm', exact: true }).click();
-	await page.getByRole('button', { name: 'Add point' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Point attachment', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'point', exact: true })).toBeVisible();
 	page.once('dialog', async (dialog) => {
 		expect(dialog.type()).toBe('confirm');
@@ -676,9 +683,11 @@ test('reparents a bone through hierarchy drag and drop', async ({ page }) => {
 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Child bone', exact: true }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Child bone', exact: true }).click();
 
 	const bones = page.locator('.bone-row');
 	await expect(bones).toHaveCount(3);
@@ -697,9 +706,11 @@ test('reorders setup slots through hierarchy drag and drop', async ({ page }) =>
 
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add slot' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Slot', exact: true }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add slot' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Slot', exact: true }).click();
 
 	const slots = page.locator('.slot-row');
 	await expect(slots).toHaveCount(2);

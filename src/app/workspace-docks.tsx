@@ -25,6 +25,7 @@ export type WorkspaceDocksProps = Readonly<{
 	project: Project;
 	rigSearch: string;
 	selectedBone?: Project['bones'][number];
+	selectedSlot?: Project['slots'][number];
 	isImporting: boolean;
 	onLayoutChange: (layout: WorkspaceLayout) => void;
 	onLeftDockTabChange: (tab: LeftDockTab) => void;
@@ -37,6 +38,7 @@ export type WorkspaceDocksProps = Readonly<{
 	onAddSlot: () => void;
 	onAddPointAttachment: () => void;
 	onAddRectangleAttachment: () => void;
+	onOpenImageAttachmentWorkflow: () => void;
 	onImportDirectory: () => void;
 	rigTreeProps: RigTreeViewProps;
 	drawOrderProps: DrawOrderPanelProps;
@@ -54,6 +56,7 @@ export const WorkspaceDocks = function WorkspaceDocks({
 	project,
 	rigSearch,
 	selectedBone,
+	selectedSlot,
 	isImporting,
 	onLayoutChange,
 	onLeftDockTabChange,
@@ -66,6 +69,7 @@ export const WorkspaceDocks = function WorkspaceDocks({
 	onAddSlot,
 	onAddPointAttachment,
 	onAddRectangleAttachment,
+	onOpenImageAttachmentWorkflow,
 	onImportDirectory,
 	rigTreeProps,
 	drawOrderProps,
@@ -86,6 +90,7 @@ export const WorkspaceDocks = function WorkspaceDocks({
 						{ id: 'root-bone', label: 'Root bone', description: project.bones.length > 0 ? 'A root bone already exists' : 'Create the first bone', disabled: project.bones.length > 0, onSelect: onCreateRootBone },
 						{ id: 'child-bone', label: 'Child bone', description: selectedBone ? `Under ${selectedBone.name}` : 'Select a bone first', disabled: !selectedBone, onSelect: onAddChildBone },
 						{ id: 'slot', label: 'Slot', description: selectedBone ? `Under ${selectedBone.name}` : 'Select a bone first', disabled: !selectedBone, onSelect: onAddSlot },
+						{ id: 'image-attachment', label: 'Image attachment', description: selectedSlot ? `Select an image, then drop it on ${selectedSlot.name}` : selectedBone ? `Select an image, then drop it on the canvas under ${selectedBone.name}` : 'Select a bone or slot first', disabled: !selectedBone && !selectedSlot, onSelect: onOpenImageAttachmentWorkflow },
 						{ id: 'point', label: 'Point attachment', description: selectedBone ? 'Gameplay point under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: onAddPointAttachment },
 						{ id: 'rectangle', label: 'Rectangle attachment', description: selectedBone ? 'Gameplay rectangle under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: onAddRectangleAttachment }
 					]} />}
@@ -95,24 +100,28 @@ export const WorkspaceDocks = function WorkspaceDocks({
 			{!layout.leftDockCollapsed && <>
 				<Tabs
 					label="Left dock"
-					options={[{ value: 'rig', label: 'Rig' }, { value: 'draw-order', label: 'Draw Order' }]}
+					options={[
+						{ value: 'rig', label: 'Rig', id: 'left-dock-rig-tab', panelId: 'left-dock-rig-panel' },
+						{ value: 'draw-order', label: 'Draw Order', id: 'left-dock-draw-order-tab', panelId: 'left-dock-draw-order-panel' }
+					]}
 					value={leftDockTab}
 					onChange={onLeftDockTabChange}
 				/>
-				{leftDockTab === 'rig' ? (
-					<>
-						<label className="search-field">
-							<span className="sr-only">Search rig</span>
-							<input aria-label="Search rig" type="search" placeholder="Search rig" value={rigSearch} onChange={(event) => onRigSearchChange(event.target.value)} />
-						</label>
-						{project.bones.length === 0 ? (
-							<div className="tree-empty">
-								<p>Create a root bone to see the rig.</p>
-								<button className="secondary-button" type="button" onClick={onCreateRootBone}>Create root bone</button>
-							</div>
-						) : <RigTreeView {...rigTreeProps} />}
-					</>
-				) : <DrawOrderPanel {...drawOrderProps} />}
+				<div aria-labelledby="left-dock-rig-tab" className="dock-tabpanel" hidden={leftDockTab !== 'rig'} id="left-dock-rig-panel" role="tabpanel" tabIndex={0}>
+					<label className="search-field">
+						<span className="sr-only">Search rig</span>
+						<input aria-label="Search rig" type="search" placeholder="Search rig" value={rigSearch} onChange={(event) => onRigSearchChange(event.target.value)} />
+					</label>
+					{project.bones.length === 0 ? (
+						<div className="tree-empty">
+							<p>Create a root bone to see the rig.</p>
+							<button className="secondary-button" type="button" onClick={onCreateRootBone}>Create root bone</button>
+						</div>
+					) : <RigTreeView {...rigTreeProps} />}
+				</div>
+				<div aria-labelledby="left-dock-draw-order-tab" className="dock-tabpanel" hidden={leftDockTab !== 'draw-order'} id="left-dock-draw-order-panel" role="tabpanel" tabIndex={0}>
+					<DrawOrderPanel {...drawOrderProps} />
+				</div>
 			</>}
 		</aside>
 		<DockSplitter dock="left" layout={layout} viewport={viewport} onChange={onLayoutChange} />
@@ -122,20 +131,27 @@ export const WorkspaceDocks = function WorkspaceDocks({
 			<div className="right-dock-heading">
 				{!layout.rightDockCollapsed && <Tabs
 					label="Right dock"
-					options={[{ value: 'properties', label: 'Properties' }, { value: 'assets', label: 'Assets' }]}
+					options={[
+						{ value: 'properties', label: 'Properties', id: 'right-dock-properties-tab', panelId: 'right-dock-properties-panel' },
+						{ value: 'assets', label: 'Assets', id: 'right-dock-assets-tab', panelId: 'right-dock-assets-panel' }
+					]}
 					value={rightDockTab}
 					onChange={onRightDockTabChange}
 				/>}
 				<button className="icon-button" type="button" aria-controls="right-dock" aria-expanded={!layout.rightDockCollapsed} aria-label={layout.rightDockCollapsed ? 'Expand right dock' : 'Collapse right dock'} onClick={onToggleRightDock}>{layout.rightDockCollapsed ? '«' : '»'}</button>
 			</div>
 			{!layout.rightDockCollapsed && <>
-				{rightDockTab === 'properties' && (
-					<button className="secondary-button asset-import-shortcut" type="button" disabled={isImporting} onClick={onImportDirectory}>
-						Import image directory
-					</button>
-				)}
-				{rightDockTab === 'assets' && <AssetBrowser {...assetBrowserProps} />}
-				<PropertiesInspector {...propertiesProps} showSharedInspector={rightDockTab === 'properties'} />
+				<div aria-labelledby="right-dock-properties-tab" className="dock-tabpanel" hidden={rightDockTab !== 'properties'} id="right-dock-properties-panel" role="tabpanel" tabIndex={0}>
+					{rightDockTab === 'properties' && <>
+						<button className="secondary-button asset-import-shortcut" type="button" disabled={isImporting} onClick={onImportDirectory}>
+							Import image directory
+						</button>
+						<PropertiesInspector {...propertiesProps} showSharedInspector />
+					</>}
+				</div>
+				<div aria-labelledby="right-dock-assets-tab" className="dock-tabpanel" hidden={rightDockTab !== 'assets'} id="right-dock-assets-panel" role="tabpanel" tabIndex={0}>
+					{rightDockTab === 'assets' && <AssetBrowser {...assetBrowserProps} />}
+				</div>
 			</>}
 		</aside>
 	</main>

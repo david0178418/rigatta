@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'bun:test';
-import { Dialog, Tooltip, Toolbar } from '../../src/app/ui-primitives.tsx';
+import { Dialog, Tabs, Tooltip, Toolbar } from '../../src/app/ui-primitives.tsx';
 
 describe('UI accessibility primitives', () => {
 	test('associates tooltip text with its focusable child', () => {
@@ -26,6 +26,22 @@ describe('UI accessibility primitives', () => {
 		expect(markup).toContain('role="toolbar"');
 		expect(markup).toContain('aria-label="Transform tools"');
 		expect(markup).toContain('aria-orientation="vertical"');
+	});
+
+	test('links tab triggers to their owned tabpanels', () => {
+		const markup = renderToStaticMarkup(
+			<Tabs
+				label="Dock"
+				options={[{ value: 'one', label: 'One', id: 'one-tab', panelId: 'one-panel' }, { value: 'two', label: 'Two', id: 'two-tab', panelId: 'two-panel' }]}
+				value="one"
+				onChange={() => undefined}
+			/>
+		);
+
+		expect(markup).toContain('id="one-tab"');
+		expect(markup).toContain('aria-controls="one-panel"');
+		expect(markup).toContain('id="two-tab"');
+		expect(markup).toContain('aria-controls="two-panel"');
 	});
 
 	test('labels modal dialogs by their visible heading', () => {

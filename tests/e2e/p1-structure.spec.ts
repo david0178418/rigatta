@@ -26,9 +26,11 @@ test('characterizes bone reparenting and setup slot reordering by drag and drop'
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Child bone', exact: true }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Child bone', exact: true }).click();
 
 	const bones = page.locator('.bone-row');
 	await expect(bones).toHaveCount(3);
@@ -42,9 +44,11 @@ test('characterizes bone reparenting and setup slot reordering by drag and drop'
 	await expect(bones.nth(2)).toHaveAttribute('data-parent-id', targetId);
 
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add slot' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Slot', exact: true }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add slot' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Slot', exact: true }).click();
 
 	const slots = page.locator('.slot-row');
 	await expect(slots).toHaveCount(2);

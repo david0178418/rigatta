@@ -82,7 +82,9 @@ const useFloatingOffset = function useFloatingOffset(
 export type TabOption<TValue extends string> = Readonly<{
 	value: TValue;
 	label: string;
-	}>;
+	id?: string;
+	panelId?: string;
+}>;
 
 export const Tabs = function Tabs<TValue extends string>({
 	label,
@@ -114,7 +116,9 @@ export const Tabs = function Tabs<TValue extends string>({
 			{options.map((option) => (
 				<button
 					aria-selected={option.value === value}
+					aria-controls={option.panelId}
 					className={option.value === value ? 'dock-tab is-active' : 'dock-tab'}
+					id={option.id}
 					key={option.value}
 					ref={(element) => {
 						tabRefs.current[option.value] = element;
@@ -363,7 +367,9 @@ export const MenuButton = function MenuButton({
 				<div aria-label={label} aria-orientation="vertical" className="context-menu" id={menuId} ref={menuRef} role="menu" style={floatingStyle} tabIndex={-1}>
 					{items.map((item) => (
 						<button
+							aria-label={item.label}
 							aria-disabled={item.disabled || undefined}
+							aria-describedby={item.description ? `${menuId}-${item.id}-description` : undefined}
 							className="context-menu-item"
 							disabled={item.disabled}
 							key={item.id}
@@ -376,7 +382,7 @@ export const MenuButton = function MenuButton({
 							onKeyDown={onMenuItemKeyDown}
 						>
 							<span>{item.label}</span>
-							{item.description && <small>{item.description}</small>}
+							{item.description && <small id={`${menuId}-${item.id}-description`}>{item.description}</small>}
 						</button>
 					))}
 				</div>

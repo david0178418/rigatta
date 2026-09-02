@@ -21,3 +21,12 @@ bone preview segments that intersect those bounds. A primary click on an
 entity selects it; a primary drag on a selected entity or its active handle
 starts a transform. Middle-drag and Space+primary-drag are reserved for
 viewport pan, so they never change selection.
+
+The Rig tree's search is presentation-only. It matches names and type labels,
+shows matching rows with marked ancestor context, and omits unrelated branches
+without changing the typed project selection or selection history. Search-only
+ancestor expansion is labelled separately from a saved collapsed state and is
+not persisted. Clearing the query restores the expansion and focused row that
+were active before filtering. Inline rename selects the edited entity through
+the same selection path, and committing or cancelling returns focus to that
+row so the inspector remains synchronized with the selected ID.

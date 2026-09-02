@@ -29,22 +29,25 @@ P1 and P2 must preserve those guarantees.
 ## Implementation checkpoint — 2026-09-02
 
 This document records the 2026-09-02 implementation checkpoint and the
-subsequent verified P1/P2 increments. The focused implementation and its tests
-are committed, but this is not yet a completed P1/P2 release; the task
-checkboxes below remain the source of truth for final acceptance.
+subsequent verified P1/P2 increments. The checkpoint commits are listed below;
+the current working tree also contains uncommitted follow-up implementation and
+tests. This is not yet a completed P1/P2 release; the task checkboxes below
+remain the source of truth for final acceptance.
 
 ### Repository state
 
 - Branch: `master`.
-- Implementation checkpoint commits through `HEAD` (`3940596 Complete UX P1-04
-  UI primitives`): `5514d62 Add P1 structure characterization`, `8beefbe
-  Complete P1 keying contracts`, `e91c175 Complete P2 layout and presentation
-  persistence integration`, `cb5cf67 Complete persistent inspector
-  disclosures`, `ed71f08 Complete P1 semantic Rig tree interactions`, `49eb197
-  Implement UX P1-24 autosave lifecycle`, `029a1f1 Complete UX P1-07 Rig tree
-  visuals`, `5cbea53 Implement UX P2 viewport gestures and constraints`,
-  `98a2404 Implement UX P1-14 key diamonds`, and `3940596 Complete UX P1-04 UI
-  primitives`.
+- Implementation checkpoint commits through `HEAD` (`33d1435 Extract P1 editor
+  presentation boundaries`): `5514d62 Add P1 structure characterization`,
+  `8beefbe Complete P1 keying contracts`, `e91c175 Complete P2 layout and
+  presentation persistence integration`, `cb5cf67 Complete persistent
+  inspector disclosures`, `ed71f08 Complete P1 semantic Rig tree
+  interactions`, `49eb197 Implement UX P1-24 autosave lifecycle`, `029a1f1
+  Complete UX P1-07 Rig tree visuals`, `5cbea53 Implement UX P2 viewport
+  gestures and constraints`, `98a2404 Implement UX P1-14 key diamonds`,
+  `3940596 Complete UX P1-04 UI primitives`, `88f34bc Implement UX P2 asset
+  density and preview`, `cd4c4df Complete UX P2-09 editor visibility proof`,
+  and `33d1435 Extract P1 editor presentation boundaries`.
 - Remaining unchecked tasks are still in progress. Preserve unrelated working
   tree changes when resuming; do not reset or discard them.
 - Browser checks use `http://localhost:3000/`; reuse an occupied local Bun
@@ -96,19 +99,24 @@ checkboxes below remain the source of truth for final acceptance.
 
 ### Validation already recorded
 
-- `bun test src tests/unit`: 232 tests passed, including semantic Rig-tree,
-  grouped timeline/key-drag, preference migration, storage failure, layout
-  matrix, and stale-ID coverage.
+- `bun test src tests/unit`: 248 tests passed, including semantic Rig-tree,
+  contextual workspace Add actions, linked tabpanels, grouped timeline/key-drag,
+  preference migration, storage failure, layout matrix, and stale-ID coverage.
 - `bun run lint`: passed with three pre-existing missing-return-type warnings in
   `src/app/project-menu.tsx` and `tests/unit/ux-models.test.ts`.
 - `bun run typecheck`, `bun run build`, and `git diff --check` pass.
 - Focused Chromium workflows cover direct field commits and validation, mixed
   multi-selection display, current-frame key diamonds and undo, import
   conflicts/drop hints, coordinate/origin overlays, grid popover dismissal,
-  supported layouts, dock resizing and collapse, project-scoped presentation
-  restoration, inspector disclosure persistence/isolation, canvas gesture
-  precedence, and transform constraints.
-- `bun run test:e2e`: 57 Chromium tests passed.
+  supported layouts, dock resizing and collapse, linked dock tabpanels,
+  contextual Add actions and image-attachment workflow, project-scoped
+  presentation restoration, inspector disclosure persistence/isolation, canvas
+  gesture precedence, and transform constraints. The workspace/Add-menu suite
+  passes all 3 tests, and the affected existing suites pass all 16 tests.
+- The latest full `bun run test:e2e` run passes 67 of 72 Chromium tests. Five
+  failures remain in the uncommitted sibling Rig-rename/shortcut work and its
+  dependent smoke multi-selection workflow; the full P1/P2 gate is therefore
+  still open.
 
 ### Resume from here
 
@@ -233,13 +241,13 @@ type assertions to bypass validation.
   export overlay containment. Add P1 tests separately rather than weakening P0
   assertions.
 
-- [ ] **UX-P1-02** Extract editor presentation boundaries from `App.tsx` without
+- [x] **UX-P1-02** Extract editor presentation boundaries from `App.tsx` without
   changing behavior. Depends on UX-P1-01. Introduce focused components for the
   workspace docks, Rig tree, Properties inspector, asset browser, canvas toolbar,
   and Animate timeline. Keep project mutation orchestration in the shell and pass
   typed callbacks/value objects to presentation components.
 
-- [ ] **UX-P1-03** Recompose the fixed workspace docks. Depends on UX-P1-02.
+- [x] **UX-P1-03** Recompose the fixed workspace docks. Depends on UX-P1-02.
   Move Rig/Draw Order to the left and Properties/Assets to the right using
   accessible tabs. Preserve independent scrolling, focus restoration, asset
   import, asset selection, and every drag/drop target. Active tabs remain local
@@ -271,7 +279,7 @@ type assertions to bypass validation.
   for hover, focus, selection, multi-selection, active slot attachment, and drag
   target. Tooltips/accessibility text identify entity type and relevant relation.
 
-- [ ] **UX-P1-08** Replace ambiguous Rig creation controls with a contextual Add
+- [x] **UX-P1-08** Replace ambiguous Rig creation controls with a contextual Add
   menu. Depends on UX-P1-04 and UX-P1-06. Menu contents follow selection: root
   bone, child bone, slot, image attachment workflow, point, or rectangle.
   Unavailable items explain their required context. Preserve unique naming and
@@ -461,13 +469,13 @@ or `Move key`, and without document scrolling.
 
 ### Asset and import efficiency
 
-- [ ] **UX-P2-05** Add list/compact/thumbnail asset density modes. Depends on
+- [x] **UX-P2-05** Add list/compact/thumbnail asset density modes. Depends on
   UX-P2-04. Generate thumbnail object URLs from existing asset blobs, revoke them
   when assets or component lifetime change, preserve folder hierarchy/search,
   and avoid decoding offscreen assets unnecessarily. Selection and drag behavior
   must be identical in every density.
 
-- [ ] **UX-P2-06** Add asset preview and usage metadata. Depends on UX-P2-05.
+- [x] **UX-P2-06** Add asset preview and usage metadata. Depends on UX-P2-05.
   On hover/focus/selection show image dimensions, format, relative path, and the
   slots/attachments using the asset. Preview surfaces must not steal focus or
   obscure the drop target.
@@ -485,7 +493,7 @@ or `Move key`, and without document scrolling.
   and focus returns to the row. Preserve unique-name validation and one history
   entry. Inspector naming remains synchronized.
 
-- [ ] **UX-P2-09** Add editor-only visibility controls. Depends on UX-P1-07 and
+- [x] **UX-P2-09** Add editor-only visibility controls. Depends on UX-P1-07 and
   UX-P2-01. Store hidden bone/attachment IDs per project preference, exclude
   hidden items from authoring rendering and hit testing, and leave pose/export
   evaluation unchanged. Parent visibility may hide descendants visually without

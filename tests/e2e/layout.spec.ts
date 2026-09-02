@@ -167,7 +167,8 @@ test('keeps editor docks and the timeline independently scrollable', async ({ pa
 		await expect(page.getByText('asset-24.png', { exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'Create root bone' }).click();
 		await page.getByRole('button', { name: 'root', exact: true }).click();
-		await page.getByRole('button', { name: 'Add point' }).click();
+		await page.getByRole('button', { name: 'Add', exact: true }).click();
+		await page.getByRole('menuitem', { name: 'Point attachment', exact: true }).click();
 		await page.getByRole('button', { name: 'root', exact: true }).click();
 		await page.getByRole('button', { name: 'Animate' }).click();
 		await page.getByRole('button', { name: 'Create animation clip' }).click();

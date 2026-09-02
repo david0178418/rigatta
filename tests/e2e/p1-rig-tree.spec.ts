@@ -4,9 +4,11 @@ const createThreeBoneRig = async function createThreeBoneRig(page: Page): Promis
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Child bone', exact: true }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Child bone', exact: true }).click();
 
 	const rows = page.getByRole('tree', { name: 'Rig hierarchy' }).locator('.bone-row');
 	await expect(rows).toHaveCount(3);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { validateProject } from '../../src/domain/validation.ts';
 import { buildRigTreeViewModel, revealAncestors, type RigTreeNode } from '../../src/app/rig-tree.ts';
+import { rigRenameValidationMessageFor, rigTreeFilterForQuery, rigTreeNodeMatchesQuery } from '../../src/app/rig-tree-view.tsx';
 import { fixtureIds, createRigProject } from '../fixtures.ts';
 
 const nodeFor = function nodeFor(
@@ -154,5 +155,39 @@ describe('Rig tree view model', () => {
 		expect(model.nodes.every((node) => model.visibleNodes.some((visibleNode) => visibleNode.id === node.id))).toBe(true);
 		expect(revealAncestors(model, fixtureIds.root, new Set())).toEqual(new Set());
 		expect(model.rootIds).toContain(fixtureIds.root);
+	});
+
+	test('matches names and type labels and retains only contextual ancestors', () => {
+		const project = createRigProject();
+		const model = buildRigTreeViewModel(project, [], allExpanded(project));
+		const point = nodeFor(model, fixtureIds.point);
+		const filter = rigTreeFilterForQuery(model, 'POINT attachment');
+
+		expect(rigTreeNodeMatchesQuery(point, 'point attachment')).toBe(true);
+		expect(rigTreeNodeMatchesQuery(point, 'muzzle')).toBe(true);
+		expect(rigTreeNodeMatchesQuery(point, 'rectangle')).toBe(false);
+		expect(filter && [...filter.matchingIds]).toEqual([fixtureIds.point]);
+		expect(filter && filter.contextIds).toEqual(new Set([fixtureIds.root, fixtureIds.parentA, fixtureIds.child]));
+		expect(filter && filter.visibleIds).toEqual(new Set([
+			fixtureIds.point,
+			fixtureIds.root,
+			fixtureIds.parentA,
+			fixtureIds.child
+		]));
+		expect(rigTreeFilterForQuery(model, '   ')).toBeUndefined();
+	});
+
+	test('rejects empty and duplicate inline names within the node collection', () => {
+		const project = createRigProject();
+		const model = buildRigTreeViewModel(project, [], allExpanded(project));
+		const root = nodeFor(model, fixtureIds.root);
+		const child = nodeFor(model, fixtureIds.child);
+		const point = nodeFor(model, fixtureIds.point);
+
+		expect(rigRenameValidationMessageFor(project, root, '   ')).toBe('Name cannot be empty.');
+		expect(rigRenameValidationMessageFor(project, root, 'parent A')).toBe('A bone named “parent A” already exists.');
+		expect(rigRenameValidationMessageFor(project, root, ' root ')).toBeUndefined();
+		expect(rigRenameValidationMessageFor(project, child, 'body')).toBeUndefined();
+		expect(rigRenameValidationMessageFor(project, point, 'hitbox')).toBe('A point attachment named “hitbox” already exists.');
 	});
 });

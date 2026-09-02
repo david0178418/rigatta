@@ -19,7 +19,6 @@ export type PropertiesInspectorProps = Readonly<{
 	selectedEntity?: SelectableEntity;
 	selectedName?: string;
 	selection: Selection;
-	selectedBone?: Project['bones'][number];
 	selectedSlot?: Project['slots'][number];
 	selectedTransform?: LocalTransform;
 	selectedTransformValue: (property: BoneTransformProperty) => number | undefined;
@@ -36,10 +35,6 @@ export type PropertiesInspectorProps = Readonly<{
 	onRenameSelected: (name: string) => string | undefined;
 	onDeleteSelected: () => void;
 	onUpdateSlotAttachment: (slotId: EntityId, attachmentId: EntityId | null) => void;
-	onAddChildBone: () => void;
-	onAddSlot: () => void;
-	onAddPointAttachment: () => void;
-	onAddRectangleAttachment: () => void;
 	keyingAnnouncement?: string;
 }>;
 
@@ -51,7 +46,6 @@ export const PropertiesInspector = function PropertiesInspector({
 	selectedEntity,
 	selectedName,
 	selection,
-	selectedBone,
 	selectedSlot,
 	selectedTransform,
 	selectedTransformValue,
@@ -68,10 +62,6 @@ export const PropertiesInspector = function PropertiesInspector({
 	onRenameSelected,
 	onDeleteSelected,
 	onUpdateSlotAttachment,
-	onAddChildBone,
-	onAddSlot,
-	onAddPointAttachment,
-	onAddRectangleAttachment,
 	keyingAnnouncement
 }: PropertiesInspectorProps): ReactElement {
 	return (
@@ -162,14 +152,6 @@ export const PropertiesInspector = function PropertiesInspector({
 											</label>
 											<p className="muted-copy">Draw order {project.setupDrawOrder.indexOf(selectedSlot.id) + 1} of {project.setupDrawOrder.length}. Drag slots to reorder them.</p>
 											<p className="muted-copy">Drop an image from the library onto this slot to add a setup attachment.</p>
-										</div>
-									)}
-									{selectedBone && (
-										<div className="inspector-actions inspector-create-actions">
-											<button className="secondary-button" type="button" onClick={onAddChildBone}>Add child bone</button>
-											<button className="secondary-button" type="button" onClick={onAddSlot}>Add slot</button>
-											<button className="secondary-button" type="button" onClick={onAddPointAttachment}>Add point</button>
-											<button className="secondary-button" type="button" onClick={onAddRectangleAttachment}>Add rectangle</button>
 										</div>
 									)}
 								</>

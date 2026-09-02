@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactElement } from 'react';
 import type { EntityId } from '../domain/ids.ts';
 import type { Project } from '../domain/model.ts';
 import {
@@ -34,7 +34,7 @@ export type RigTreeViewProps = Readonly<{
 	onFocusChange?: (node: RigTreeNode) => void;
 	onRenameRequest?: (node: RigTreeNode) => void;
 	renamingId?: EntityId;
-	onRenameCommit?: (node: RigTreeNode, name: string) => void;
+	onRenameCommit?: (node: RigTreeNode, name: string) => boolean | void;
 	onRenameCancel?: () => void;
 	onToggleVisibility?: (node: RigTreeNode) => void;
 	onDragBone?: (event: ReactDragEvent<HTMLElement>, boneId: EntityId) => void;
@@ -46,22 +46,62 @@ export type RigTreeViewProps = Readonly<{
 	onAssetDragEnd?: () => void;
 }>;
 
-const matchesQuery = function matchesQuery(node: RigTreeNode, query: string): boolean {
-	const normalized = query.trim().toLowerCase();
+export type RigTreeFilter = Readonly<{
+	matchingIds: ReadonlySet<EntityId>;
+	contextIds: ReadonlySet<EntityId>;
+	visibleIds: ReadonlySet<EntityId>;
+}>;
 
-	return normalized.length === 0 || `${node.name} ${node.typeLabel}`.toLowerCase().includes(normalized);
+const searchTermsFor = function searchTermsFor(query: string): readonly string[] {
+	return query.trim().toLowerCase().split(/\s+/).filter((term) => term.length > 0);
 };
 
-const idsForFilteredTree = function idsForFilteredTree(
+export const rigTreeNodeMatchesQuery = function rigTreeNodeMatchesQuery(node: RigTreeNode, query: string): boolean {
+	const terms = searchTermsFor(query);
+	const name = node.name.trim().toLowerCase();
+	const type = node.typeLabel.trim().toLowerCase();
+
+	return terms.length === 0 || terms.every((term) => name.includes(term) || type.includes(term));
+};
+
+export const rigTreeFilterForQuery = function rigTreeFilterForQuery(
 	model: ReturnType<typeof buildRigTreeViewModel>,
 	query: string
-): ReadonlySet<EntityId> {
-	const matching = model.nodes.filter((node) => matchesQuery(node, query));
+	): RigTreeFilter | undefined {
+	if (searchTermsFor(query).length === 0) {
+		return undefined;
+	}
 
-	return matching.reduce<ReadonlySet<EntityId>>(
+	const matching = model.nodes.filter((node) => rigTreeNodeMatchesQuery(node, query));
+	const matchingIds = new Set<EntityId>(matching.map((node) => node.id));
+	const visibleIds = matching.reduce<ReadonlySet<EntityId>>(
 		(current, node) => revealAncestors(model, node.id, current),
-		new Set<EntityId>(matching.map((node) => node.id))
+		matchingIds
 	);
+	const contextIds = new Set([...visibleIds].filter((id) => !matchingIds.has(id)));
+
+	return Object.freeze({ matchingIds, contextIds, visibleIds });
+};
+
+export const rigRenameValidationMessageFor = function rigRenameValidationMessageFor(
+	project: Project,
+	node: RigTreeNode,
+	name: string
+): string | undefined {
+	const normalizedName = name.trim();
+
+	if (normalizedName.length === 0) {
+		return 'Name cannot be empty.';
+	}
+
+	const names = node.kind === 'bone'
+		? project.bones
+		: node.kind === 'slot'
+			? project.slots
+			: project.attachments;
+	const duplicate = names.some((candidate) => candidate.id !== node.id && candidate.name.trim() === normalizedName);
+
+	return duplicate ? `A ${node.typeLabel.toLowerCase()} named “${normalizedName}” already exists.` : undefined;
 };
 
 const disclosureLabel = function disclosureLabel(node: RigTreeNode, expanded: boolean): string {
@@ -149,6 +189,122 @@ const relationshipDescription = function relationshipDescription(
 		: 'Parent reference unavailable';
 };
 
+type RenameSessionState = 'editing' | 'committing' | 'completed' | 'cancelled';
+
+const focusRigTreeItem = function focusRigTreeItem(id: EntityId): void {
+	window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-treeitem-id="${id}"]`)?.focus());
+};
+
+const RigInlineRename = function RigInlineRename({
+	project,
+	node,
+	onCommit,
+	onCancel
+}: Readonly<{
+	project: Project;
+	node: RigTreeNode;
+	onCommit?: (node: RigTreeNode, name: string) => boolean | void;
+	onCancel?: () => void;
+}>): ReactElement {
+	const [draft, setDraft] = useState(node.name);
+	const [error, setError] = useState<string | undefined>(undefined);
+	const inputRef = useRef<HTMLInputElement>(null);
+	const sessionStateRef = useRef<RenameSessionState>('editing');
+	const errorId = `rig-rename-error-${node.id}`;
+	const descriptionId = `rig-node-description-${node.id}`;
+
+	const refocusInput = function refocusInput(): void {
+		window.requestAnimationFrame(() => {
+			inputRef.current?.focus();
+			inputRef.current?.select();
+		});
+	};
+	const finishAndFocusRow = function finishAndFocusRow(): void {
+		focusRigTreeItem(node.id);
+	};
+	const cancel = function cancel(): void {
+		if (sessionStateRef.current !== 'editing') {
+			return;
+		}
+
+		sessionStateRef.current = 'cancelled';
+		onCancel?.();
+		finishAndFocusRow();
+	};
+	const commit = function commit(value: string): void {
+		if (sessionStateRef.current !== 'editing') {
+			return;
+		}
+
+		const normalizedName = value.trim();
+		const validationMessage = rigRenameValidationMessageFor(project, node, normalizedName);
+
+		if (validationMessage) {
+			setError(validationMessage);
+			refocusInput();
+			return;
+		}
+		if (normalizedName === node.name.trim()) {
+			sessionStateRef.current = 'completed';
+			onCancel?.();
+			finishAndFocusRow();
+			return;
+		}
+
+		sessionStateRef.current = 'committing';
+		const committed = onCommit?.(node, normalizedName);
+
+		if (committed === false) {
+			sessionStateRef.current = 'editing';
+			setError('The name could not be committed.');
+			refocusInput();
+			return;
+		}
+
+		sessionStateRef.current = 'completed';
+		finishAndFocusRow();
+	};
+
+	return (
+		<div className="rig-inline-rename-field">
+			<RigIcon kind={node.kind} />
+			<input
+				aria-describedby={error ? `${descriptionId} ${errorId}` : descriptionId}
+				aria-invalid={error ? 'true' : undefined}
+				aria-label={`Rename ${node.name}`}
+				autoFocus
+				className="rig-inline-rename"
+				ref={inputRef}
+				value={draft}
+				onBlur={(event) => commit(event.currentTarget.value)}
+				onChange={(event) => {
+					setDraft(event.currentTarget.value);
+					setError(undefined);
+				}}
+				onFocus={(event) => event.currentTarget.select()}
+				onKeyDown={(event) => {
+					if (event.key === 'Enter') {
+						event.preventDefault();
+						event.stopPropagation();
+						commit(event.currentTarget.value);
+						return;
+					}
+					if (event.key === 'Escape') {
+						event.preventDefault();
+						event.stopPropagation();
+						cancel();
+					}
+				}}
+			/>
+			{error && <span className="rig-inline-rename-error" id={errorId} role="alert">{error}</span>}
+		</div>
+	);
+};
+
+const setsMatch = function setsMatch(left: ReadonlySet<EntityId>, right: ReadonlySet<EntityId>): boolean {
+	return left.size === right.size && [...left].every((id) => right.has(id));
+};
+
 export const RigTreeView = function RigTreeView({
 	project,
 	selection,
@@ -178,21 +334,77 @@ export const RigTreeView = function RigTreeView({
 	const typeaheadTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const typeaheadRef = useRef('');
 	const anchorIdRef = useRef<EntityId | undefined>(selection.at(-1)?.id);
+	const filterSessionRef = useRef<Readonly<{
+		expandedIds: ReadonlySet<EntityId>;
+		focusedId: EntityId | undefined;
+	}> | undefined>(undefined);
+	const filterFocusRestoreIdRef = useRef<EntityId | undefined>(undefined);
 	const baseModel = buildRigTreeViewModel(project, selection, expandedIds);
-	const filteredIds = searchQuery.trim().length > 0 ? idsForFilteredTree(baseModel, searchQuery) : undefined;
-	const filterExpandedIds = filteredIds
-		? [...filteredIds].reduce((current, id) => revealAncestors(baseModel, id, current), expandedIds)
+	const filter = rigTreeFilterForQuery(baseModel, searchQuery);
+	const filterExpandedIds = filter
+		? [...filter.visibleIds].reduce((current, id) => revealAncestors(baseModel, id, current), expandedIds)
 		: expandedIds;
-	const model = filterExpandedIds === expandedIds
-		? baseModel
-		: buildRigTreeViewModel(project, selection, filterExpandedIds);
-	const visibleNodes = model.visibleNodes.filter((node) => !filteredIds || filteredIds.has(node.id));
+	const model = filter
+		? buildRigTreeViewModel(project, selection, filterExpandedIds)
+		: baseModel;
+	const visibleNodes = model.visibleNodes.filter((node) => !filter || filter.visibleIds.has(node.id));
 	const activeFocusedId = focusedId && visibleNodes.some((node) => node.id === focusedId)
 		? focusedId
 		: visibleNodes[0]?.id;
+	const filterActive = filter !== undefined;
+	const visibleNodeIds = visibleNodes.map((node) => node.id).join('|');
+
+	useEffect(() => {
+		if (filterActive) {
+			if (!filterSessionRef.current) {
+				filterSessionRef.current = {
+					expandedIds: new Set(expandedIds),
+					focusedId
+				};
+			}
+
+			return;
+		}
+
+		const snapshot = filterSessionRef.current;
+
+		if (!snapshot) {
+			return;
+		}
+
+		filterSessionRef.current = undefined;
+		filterFocusRestoreIdRef.current = snapshot.focusedId;
+
+		if (!setsMatch(snapshot.expandedIds, expandedIds)) {
+			onExpandedChange(new Set(snapshot.expandedIds));
+		}
+	}, [expandedIds, filterActive, focusedId, onExpandedChange]);
+
+	useEffect(() => {
+		if (filterActive) {
+			return;
+		}
+
+		const focusId = filterFocusRestoreIdRef.current;
+
+		if (!focusId) {
+			return;
+		}
+		if (!model.nodes.some((node) => node.id === focusId)) {
+			filterFocusRestoreIdRef.current = undefined;
+			return;
+		}
+		if (!visibleNodes.some((node) => node.id === focusId)) {
+			return;
+		}
+
+		filterFocusRestoreIdRef.current = undefined;
+		window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-treeitem-id="${focusId}"]`)?.focus());
+	}, [filterActive, model.nodes, visibleNodeIds]);
+
 	const siblingNodesFor = function siblingNodesFor(node: RigTreeNode): readonly RigTreeNode[] {
 		return model.nodes.filter((candidate) => candidate.parentId === node.parentId
-			&& (!filteredIds || filteredIds.has(candidate.id)));
+			&& (!filter || filter.visibleIds.has(candidate.id)));
 	};
 
 	const setFocusedNode = function setFocusedNode(node: RigTreeNode | undefined): void {
@@ -212,6 +424,11 @@ export const RigTreeView = function RigTreeView({
 		window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-treeitem-id="${node.id}"]`)?.focus());
 	};
 	const toggleExpanded = function toggleExpanded(node: RigTreeNode): void {
+		if (filterActive) {
+			focusNode(node);
+			return;
+		}
+
 		const next = new Set(expandedIds);
 
 		if (next.has(node.id)) {
@@ -287,6 +504,12 @@ export const RigTreeView = function RigTreeView({
 			selectNode(node, event.key === ' ' ? { ctrlOrMeta: true } : {});
 			return;
 		}
+		if (event.key.toLowerCase() === 'f2') {
+			event.preventDefault();
+			event.stopPropagation();
+			onRenameRequest?.(node);
+			return;
+		}
 		if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
 			typeaheadRef.current = `${typeaheadRef.current}${event.key}`;
 			if (typeaheadTimerRef.current !== undefined) {
@@ -299,45 +522,74 @@ export const RigTreeView = function RigTreeView({
 			focusNode(treeNodeForTypeahead(visibleNodes, typeaheadRef.current, node.id));
 		}
 	};
-	const onInlineRenameKeyDown = function onInlineRenameKeyDown(event: ReactKeyboardEvent<HTMLInputElement>, node: RigTreeNode): void {
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			onRenameCommit?.(node, event.currentTarget.value);
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			onRenameCancel?.();
-		}
-	};
+	const filterStatus = filter
+		? filter.matchingIds.size === 0
+			? `No rig items match “${searchQuery.trim()}”. Filtered-out branches are hidden; saved collapsed state is unchanged.`
+			: `Showing ${filter.matchingIds.size} matching rig ${filter.matchingIds.size === 1 ? 'item' : 'items'}${filter.contextIds.size > 0 ? ` and ${filter.contextIds.size} context ${filter.contextIds.size === 1 ? 'ancestor' : 'ancestors'}` : ''}. Filtered-out branches are hidden; saved collapsed state returns when search clears.`
+		: undefined;
 
 	return (
-		<div className="rig-tree" role="tree" aria-label="Rig hierarchy" aria-multiselectable="true">
-			{visibleNodes.length === 0 && <div className="tree-empty">No rig items match “{searchQuery}”.</div>}
+		<div
+			aria-describedby={filterStatus ? 'rig-tree-filter-status' : undefined}
+			className={filterActive ? 'rig-tree is-filter-active' : 'rig-tree'}
+			data-filter-active={filterActive ? 'true' : 'false'}
+			role="tree"
+			aria-label="Rig hierarchy"
+			aria-multiselectable="true"
+		>
+			{filterStatus && <div className="rig-tree-filter-status" id="rig-tree-filter-status" role="status">{filterStatus}</div>}
+			{visibleNodes.length === 0 && <div className="tree-empty">No rig items match “{searchQuery.trim()}”.</div>}
 			{visibleNodes.map((node) => {
 				const isHidden = hiddenIds.has(node.id);
 				const selected = isSelected(selection, selectableEntityForRigNode(node));
 				const multiSelected = selected && selection.length > 1;
-				const expanded = expandedIds.has(node.id) || Boolean(filteredIds?.has(node.id));
+				const filterState = !filter ? 'none' : filter.matchingIds.has(node.id) ? 'match' : 'context';
+				const expandedByFilter = Boolean(filter?.contextIds.has(node.id) && !expandedIds.has(node.id));
+				const expanded = expandedByFilter || expandedIds.has(node.id);
+				const expansionState = !node.expandable
+					? 'leaf'
+					: expandedByFilter && !expandedIds.has(node.id)
+						? 'filter-expanded'
+						: expanded
+							? 'expanded'
+							: 'collapsed';
 				const siblings = siblingNodesFor(node);
 				const siblingIndex = siblings.findIndex((candidate) => candidate.id === node.id);
 				const relationship = relationshipDescription(node, model.nodes);
+				const nodeDescriptionId = `rig-node-description-${node.id}`;
+				const filterDescriptionId = `rig-node-filter-description-${node.id}`;
 				const nodeDescription = [
 					`${node.typeLabel}: ${node.name}.`,
 					`${relationship}.`,
 					multiSelected ? 'Part of the current multi-selection.' : selected ? 'Selected.' : '',
 					node.activeAttachment ? 'Active setup attachment.' : '',
-					isHidden ? 'Hidden in the editor.' : ''
+					isHidden ? 'Hidden in the editor.' : '',
+					!filter && node.expandable && !expanded ? 'Collapsed.' : ''
 				].filter(Boolean).join(' ');
+				const filterDescription = filterState === 'context'
+					? 'Search context ancestor. This row is shown to reveal a matching descendant and is not itself a search match.'
+					: filterState === 'match'
+						? 'Matches the active Rig search.'
+						: '';
+				const expansionDescription = filter && expandedByFilter && !expandedIds.has(node.id) && node.expandable
+					? 'Expanded by search to reveal matches. Its saved collapsed state will return when search clears.'
+					: '';
 				const rowClasses = [
 					node.kind === 'bone' ? 'bone-row' : node.kind === 'slot' ? 'slot-row' : 'attachment-row',
 					selected ? 'is-selected' : '',
 					multiSelected ? 'is-multi-selected' : '',
 					node.activeAttachment ? 'is-active-attachment' : '',
 					isHidden ? 'is-hidden-editor-item' : '',
+					filterState === 'context' ? 'is-filter-context' : '',
+					filterState === 'match' ? 'is-filter-match' : '',
 					node.kind === 'bone' && boneDropPreview?.boneId === node.id ? `drop-${boneDropPreview.zone}` : '',
 					node.kind === 'slot' && assetSlotDropPreview === node.id ? 'drop-target' : '',
 					node.kind === 'slot' && slotOrderDropPreview?.slotId === node.id ? `drop-order-${slotOrderDropPreview.zone}` : ''
 				].filter(Boolean).join(' ');
+				const rowDescriptionIds = [nodeDescriptionId, filterDescription ? filterDescriptionId : ''].filter(Boolean).join(' ');
+				const disclosureTitle = filter && expandedByFilter
+					? `Expanded to show search matches for ${node.typeLabel.toLowerCase()} ${node.name}; clear search to restore saved expansion.`
+					: disclosureLabel(node, expanded);
 
 				return (
 					<div
@@ -347,14 +599,17 @@ export const RigTreeView = function RigTreeView({
 						aria-posinset={Math.max(0, siblingIndex) + 1}
 						aria-selected={selected}
 						aria-setsize={siblings.length}
-						aria-describedby={`rig-node-description-${node.id}`}
-						className="rig-tree-item"
+						aria-describedby={rowDescriptionIds}
+						className={`rig-tree-item ${filterState === 'context' ? 'is-filter-context' : ''}`}
 						key={node.id}
 						role="treeitem"
 						data-rig-tree-id={node.id}
 						data-rig-treeitem-id={node.id}
 						data-selection-state={multiSelected ? 'multi-selected' : selected ? 'selected' : 'unselected'}
 						data-active-attachment={node.activeAttachment ? 'true' : 'false'}
+						data-filter-state={filterState}
+						data-expanded-by-filter={expandedByFilter ? 'true' : 'false'}
+						data-expansion-state={expansionState}
 						style={{ paddingLeft: `${node.depth * 16}px` }}
 						tabIndex={activeFocusedId === node.id ? 0 : -1}
 						onFocus={() => setFocusedNode(node)}
@@ -362,12 +617,13 @@ export const RigTreeView = function RigTreeView({
 					>
 						{node.expandable && (
 							<button
-								aria-describedby={`rig-node-description-${node.id}`}
+								aria-describedby={rowDescriptionIds}
 								aria-label={expanded ? 'Collapse' : 'Expand'}
 								className="tree-disclosure"
+								data-expanded-by-filter={expandedByFilter ? 'true' : 'false'}
 								tabIndex={-1}
 								type="button"
-								title={disclosureLabel(node, expanded)}
+								title={disclosureTitle}
 								onClick={(event) => {
 									event.stopPropagation();
 									toggleExpanded(node);
@@ -380,71 +636,84 @@ export const RigTreeView = function RigTreeView({
 						)}
 						{!node.expandable && <span className="tree-disclosure-placeholder" aria-hidden="true" />}
 						{renamingId === node.id ? (
-							<input
-									aria-label={`Rename ${node.name}`}
-									autoFocus
-									className="rig-inline-rename"
-								defaultValue={node.name}
-								key={`rename:${node.id}:${node.name}`}
-								onBlur={(event) => onRenameCommit?.(node, event.currentTarget.value)}
-								onKeyDown={(event) => onInlineRenameKeyDown(event, node)}
+							<RigInlineRename
+								node={node}
+								onCancel={onRenameCancel}
+								onCommit={onRenameCommit}
+								project={project}
 							/>
-			) : <button
+						) : <button
 								aria-label={node.name}
 								aria-pressed={selected}
-								aria-describedby={`rig-node-description-${node.id}`}
+								aria-describedby={rowDescriptionIds}
 								className={rowClasses}
-							data-bone-id={node.kind === 'bone' ? node.id : undefined}
-							data-parent-id={node.kind === 'bone' ? node.parentId ?? 'root' : undefined}
-							data-rig-row-id={node.id}
-							data-slot-id={node.kind === 'slot' ? node.id : undefined}
+								data-bone-id={node.kind === 'bone' ? node.id : undefined}
+								data-parent-id={node.kind === 'bone' ? node.parentId ?? 'root' : undefined}
+								data-rig-row-id={node.id}
+								data-slot-id={node.kind === 'slot' ? node.id : undefined}
+								data-filter-state={filterState}
 								data-draw-order-index={node.kind === 'slot' ? project.setupDrawOrder.indexOf(node.id) : undefined}
 								draggable={node.kind === 'bone' || node.kind === 'slot'}
 								role="button"
 								tabIndex={-1}
-								title={`${node.typeLabel}: ${node.name} · ${relationship}${node.activeAttachment ? ' · active setup attachment' : ''}`}
+								title={`${node.typeLabel}: ${node.name} · ${relationship}${node.activeAttachment ? ' · active setup attachment' : ''}${filterState === 'context' ? ' · search context ancestor' : ''}`}
 								type="button"
-								onClick={(event) => selectNode(node, { ctrlOrMeta: event.metaKey || event.ctrlKey, shift: event.shiftKey })}
-								onDoubleClick={() => onRenameRequest?.(node)}
+								onMouseDown={(event) => {
+									if (event.detail < 2) {
+										return;
+									}
+
+									event.preventDefault();
+									onRenameRequest?.(node);
+								}}
+								onDoubleClick={(event) => {
+									event.preventDefault();
+									onRenameRequest?.(node);
+								}}
+								onClick={(event) => {
+									selectNode(node, { ctrlOrMeta: event.metaKey || event.ctrlKey, shift: event.shiftKey });
+								}}
 								onFocus={() => setFocusedNode(node)}
 								onDragStart={(event) => {
-								if (node.kind === 'bone') {
-									onDragBone?.(event, node.id);
-								}
-								if (node.kind === 'slot') {
-									onDragSlot?.(event, node.id);
-								}
-							}}
-							onDragEnd={onAssetDragEnd}
-							onDragOver={(event) => {
-								if (node.kind === 'bone') {
-									onDragOverBone?.(event, node.id);
-								}
-								if (node.kind === 'slot') {
-									onDragOverSlot?.(event, node.id);
-								}
-							}}
-							onDrop={(event) => {
-								if (node.kind === 'bone') {
-									onDropBone?.(event, node.id);
-								}
-								if (node.kind === 'slot') {
-									onDropSlot?.(event, node.id);
-								}
-							}}
-						>
-							<RigIcon kind={node.kind} />
-							<span className="rig-row-name">{node.name}</span>
-							<span className="rig-row-type">{node.typeLabel}</span>
-						</button>}
-		{onToggleVisibility && node.kind !== 'slot' && (
+									if (node.kind === 'bone') {
+										onDragBone?.(event, node.id);
+									}
+									if (node.kind === 'slot') {
+										onDragSlot?.(event, node.id);
+									}
+								}}
+								onDragEnd={onAssetDragEnd}
+								onDragOver={(event) => {
+									if (node.kind === 'bone') {
+										onDragOverBone?.(event, node.id);
+									}
+									if (node.kind === 'slot') {
+										onDragOverSlot?.(event, node.id);
+									}
+								}}
+								onDrop={(event) => {
+									if (node.kind === 'bone') {
+										onDropBone?.(event, node.id);
+									}
+									if (node.kind === 'slot') {
+										onDropSlot?.(event, node.id);
+									}
+								}}
+							>
+								<RigIcon kind={node.kind} />
+								<span className="rig-row-name">{node.name}</span>
+								<span className="rig-row-type">{node.typeLabel}</span>
+								{filterState === 'context' && <span className="rig-row-filter-state" aria-hidden="true">context</span>}
+								{filterState === 'match' && <span className="rig-row-filter-state is-match" aria-hidden="true">match</span>}
+							</button>}
+						{onToggleVisibility && node.kind !== 'slot' && (
 							<button
-								aria-describedby={`rig-node-description-${node.id}`}
+								aria-describedby={rowDescriptionIds}
 								aria-label={isHidden ? 'Show' : 'Hide'}
 								className={isHidden ? 'tree-visibility is-hidden' : 'tree-visibility'}
 								tabIndex={-1}
 								type="button"
-									 title={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}
+								title={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}
 								onClick={(event) => {
 									event.stopPropagation();
 									onToggleVisibility(node);
@@ -455,8 +724,9 @@ export const RigTreeView = function RigTreeView({
 								<VisibilityIcon hidden={isHidden} />
 							</button>
 						)}
-						<span className="sr-only" id={`rig-node-description-${node.id}`}>{nodeDescription}</span>
-	</div>
+						<span className="sr-only" id={nodeDescriptionId}>{nodeDescription}</span>
+						{filterDescription && <span className="sr-only" id={filterDescriptionId}>{`${filterDescription} ${expansionDescription}`}</span>}
+					</div>
 				);
 			})}
 		</div>
