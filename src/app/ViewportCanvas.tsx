@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactElement, type WheelEvent as ReactWheelEvent } from 'react';
 import type { Project } from '../domain/model.ts';
+import type { EntityId } from '../domain/ids.ts';
 import type { EvaluatedPose } from '../domain/pose.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
-import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
+import { createViewportState, formatViewportCoordinate, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
 import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from './grid.ts';
 import type { Selection } from './selection.ts';
 import type { TransformModifiers, TransformPhase, TransformTool } from './transform-gesture.ts';
@@ -33,7 +34,8 @@ export const ViewportCanvas = function ViewportCanvas({
 	onCanvasTransform,
 	gridVisible,
 	gridSpacing,
-	snapToGrid
+	snapToGrid,
+	hiddenIds = new Set<EntityId>()
 }: Readonly<{
 	project: Project;
 	assets: ProjectAssetBlobs;
@@ -48,6 +50,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	gridVisible?: boolean;
 	gridSpacing?: number;
 	snapToGrid?: boolean;
+	hiddenIds?: ReadonlySet<EntityId>;
 }>): ReactElement {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
@@ -62,6 +65,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	const [viewport, setViewport] = useState<ViewportState>(createViewportState);
 	const [isPanning, setIsPanning] = useState(false);
 	const [marquee, setMarquee] = useState<ViewportRectangle | undefined>(undefined);
+	const [pointerPoint, setPointerPoint] = useState<ViewportPoint | undefined>(undefined);
 	const viewportStateRef = useRef(viewport);
 	const projectRef = useRef(project);
 	const canvasSelectRef = useRef(onCanvasSelect);
@@ -143,6 +147,7 @@ export const ViewportCanvas = function ViewportCanvas({
 					? await renderer.renderPose(project, pose, assets, {
 						gridVisible,
 						gridSpacing,
+						hiddenIds,
 						showBones: true,
 						showGameplay: true
 					})
@@ -150,7 +155,8 @@ export const ViewportCanvas = function ViewportCanvas({
 						selectedIds: selection?.map((entity) => entity.id),
 						transformTool,
 						gridVisible,
-						gridSpacing
+						gridSpacing,
+						hiddenIds
 					});
 
 				if (cancelled || renderRequestRef.current !== requestId) {
@@ -174,7 +180,7 @@ export const ViewportCanvas = function ViewportCanvas({
 		return function cleanup(): void {
 			cancelled = true;
 		};
-	}, [assets, gridSpacing, gridVisible, pose, project, renderer, selection, transformTool]);
+	}, [assets, gridSpacing, gridVisible, hiddenIds, pose, project, renderer, selection, transformTool]);
 
 	const logicalPointAt = function logicalPointAt(
 		screenPoint: ViewportPoint,
@@ -395,6 +401,19 @@ export const ViewportCanvas = function ViewportCanvas({
 		}));
 	};
 
+	const updatePointerPoint = function updatePointerPoint(event: ReactPointerEvent<HTMLDivElement>): void {
+		const bounds = event.currentTarget.getBoundingClientRect();
+
+		setPointerPoint(screenToLogicalPoint(
+			{ x: event.clientX, y: event.clientY },
+			bounds,
+			viewportStateRef.current,
+			projectRef.current.logicalCanvas
+		));
+	};
+
+	const viewportTransform = `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.zoom})`;
+
 	const dragOverViewport = function dragOverViewport(event: ReactDragEvent<HTMLDivElement>): void {
 		if (!event.dataTransfer.types.includes('application/x-bone-animation-asset')) {
 			return;
@@ -425,6 +444,8 @@ export const ViewportCanvas = function ViewportCanvas({
 			className="pixi-viewport"
 			ref={viewportRef}
 			aria-label="Pixi fixed logical canvas"
+			onPointerLeave={() => setPointerPoint(undefined)}
+			onPointerMove={updatePointerPoint}
 			onWheel={zoomWithWheel}
 			onDragOver={dragOverViewport}
 			onDrop={dropAsset}
@@ -432,14 +453,26 @@ export const ViewportCanvas = function ViewportCanvas({
 			<div
 				className={isPanning ? 'pixi-host is-panning' : 'pixi-host'}
 				ref={hostRef}
-				style={{ transform: `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.zoom})` }}
+				style={{ transform: viewportTransform }}
 			/>
 			{marquee && <div className="viewport-marquee" style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }} />}
-			<div className="viewport-controls" aria-label="Viewport controls">
-				<button type="button" aria-label="Zoom out" onClick={() => zoomAtCenter(1)}>−</button>
-				<button type="button" aria-label="Reset viewport">{formatViewportZoom(viewport.zoom)}</button>
-				<button type="button" aria-label="Zoom in" onClick={() => zoomAtCenter(-1)}>+</button>
-				<button type="button" aria-label="Center viewport" onClick={() => setViewport(resetViewport())}>Center</button>
+			<div className="viewport-content-overlay" style={{ transform: viewportTransform }}>
+				<div className="viewport-canvas-boundary" />
+				{!pose && (
+					<div className="viewport-origin-marker" role="img" aria-label="Setup origin at X 0, Y 0">
+						<span className="viewport-origin-crosshair" aria-hidden="true" />
+						<span className="viewport-origin-label" aria-hidden="true">0,0</span>
+					</div>
+				)}
+			</div>
+			<div className="viewport-overlay">
+				<div className="viewport-coordinate-readout" aria-label="Canvas coordinate readout" role="status">{formatViewportCoordinate(pointerPoint)}</div>
+				<div className="viewport-controls" aria-label="Viewport controls">
+					<button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoomAtCenter(1)}>−</button>
+					<button type="button" aria-label="Reset viewport" title="Reset viewport" onClick={() => setViewport(resetViewport())}>{formatViewportZoom(viewport.zoom)}</button>
+					<button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoomAtCenter(-1)}>+</button>
+					<button type="button" aria-label="Center viewport" title="Center viewport" onClick={() => setViewport(resetViewport())}>Center</button>
+				</div>
 			</div>
 			{error && <div className="renderer-error" role="alert">{error}</div>}
 		</div>

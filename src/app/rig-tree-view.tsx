@@ -315,7 +315,7 @@ export const RigTreeView = function RigTreeView({
 							<span className="rig-row-name">{node.name}</span>
 							<span className="rig-row-type">{node.typeLabel}</span>
 						</button>}
-		{onToggleVisibility && (node.kind === 'bone' || node.kind !== 'slot') && (
+		{onToggleVisibility && node.kind !== 'slot' && (
 			<button
 				aria-describedby={`rig-node-description-${node.id}`}
 				aria-label={isHidden ? 'Show' : 'Hide'}

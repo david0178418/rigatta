@@ -4,6 +4,7 @@ import type { Attachment, ImageAttachment, Project } from '../domain/model.ts';
 import { evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { SelectableEntity } from './selection.ts';
 import type { LogicalBounds } from './viewport.ts';
+import { isEditorEntityVisible } from './editor-visibility.ts';
 
 const BONE_PREVIEW_LENGTH = 56;
 const BONE_HIT_RADIUS = 9;
@@ -161,12 +162,16 @@ const attachmentBounds = function attachmentBounds(
 const hitAttachment = function hitAttachment(
 	project: Project,
 	point: Point,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	hiddenIds: ReadonlySet<EntityId>
 ): SelectableEntity | undefined {
 	const activeImageIds = new Set(project.slots.flatMap((slot) => slot.setupAttachmentId ? [slot.setupAttachmentId] : []));
 	const attachments = [...project.attachments].reverse();
 
 	const hit = attachments.find((attachment) => {
+		if (!isEditorEntityVisible(project, attachment.id, hiddenIds)) {
+			return false;
+		}
 		if (attachment.kind === 'image' && !activeImageIds.has(attachment.id)) {
 			return false;
 		}
@@ -180,9 +185,10 @@ const hitAttachment = function hitAttachment(
 const hitBone = function hitBone(
 	project: Project,
 	point: Point,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	hiddenIds: ReadonlySet<EntityId>
 ): SelectableEntity | undefined {
-	const hit = [...project.boneOrder].reverse().map((boneId) => {
+	const hit = [...project.boneOrder].reverse().filter((boneId) => isEditorEntityVisible(project, boneId, hiddenIds)).map((boneId) => {
 		const matrix = matrixByBone.get(boneId);
 
 		if (!matrix) {
@@ -201,26 +207,29 @@ const hitBone = function hitBone(
 
 export const hitTestProject = function hitTestProject(
 	project: Project,
-	point: Point
+	point: Point,
+	hiddenIds: ReadonlySet<EntityId> = new Set<EntityId>()
 ): SelectableEntity | undefined {
 	const evaluation = evaluateBoneWorldMatrices(project);
-	const attachment = hitAttachment(project, point, evaluation.matrices);
+	const attachment = hitAttachment(project, point, evaluation.matrices, hiddenIds);
 
 	if (attachment) {
 		return attachment;
 	}
 
-	return hitBone(project, point, evaluation.matrices);
+	return hitBone(project, point, evaluation.matrices, hiddenIds);
 };
 
 export const entitiesInBounds = function entitiesInBounds(
 	project: Project,
-	bounds: LogicalBounds
+	bounds: LogicalBounds,
+	hiddenIds: ReadonlySet<EntityId> = new Set<EntityId>()
 ): readonly SelectableEntity[] {
 	const evaluation = evaluateBoneWorldMatrices(project);
 	const activeImageIds = new Set(project.slots.flatMap((slot) => slot.setupAttachmentId ? [slot.setupAttachmentId] : []));
 	const attachmentEntities = project.attachments.flatMap((attachment) => {
-		const isVisible = attachment.kind === 'image' ? activeImageIds.has(attachment.id) : true;
+		const isVisible = isEditorEntityVisible(project, attachment.id, hiddenIds)
+			&& (attachment.kind === 'image' ? activeImageIds.has(attachment.id) : true);
 		const attachmentBoundsValue = isVisible ? attachmentBounds(project, attachment, evaluation.matrices) : undefined;
 
 		return attachmentBoundsValue && intersects(bounds, attachmentBoundsValue)
@@ -228,6 +237,10 @@ export const entitiesInBounds = function entitiesInBounds(
 			: [];
 	});
 const boneEntities = project.boneOrder.flatMap((boneId) => {
+		if (!isEditorEntityVisible(project, boneId, hiddenIds)) {
+			return [];
+		}
+
 		const matrix = evaluation.matrices.get(boneId);
 
 		if (!matrix) {

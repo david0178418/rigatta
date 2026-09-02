@@ -74,4 +74,18 @@ describe('recursive asset import', () => {
 		expect(duplicate).toMatchObject({ ok: false });
 		expect(duplicateDroppedFiles).toMatchObject({ ok: false });
 	});
+
+	test('reports unsupported and malformed files as skipped', async () => {
+		const result = await importDroppedItems([
+			{ getAsFile: function getAsFile(): File { return file('hero.png'); } },
+			{ getAsFile: function getAsFile(): File { return new File(['notes'], 'notes.txt', { type: 'text/plain' }); } },
+			{ getAsFile: function getAsFile(): File { return new File([Uint8Array.from([1, 2, 3])], 'broken.png', { type: 'image/png' }); } }
+		]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.value.map((image) => image.relativePath)).toEqual(['hero.png']);
+			expect(result.skipped?.map((item) => item.relativePath)).toEqual(['notes.txt', 'broken.png']);
+		}
+	});
 });

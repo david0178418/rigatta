@@ -22,20 +22,16 @@ export type KeyingPlan = Readonly<{
 	reason?: string;
 }>;
 
-const transformProperties: readonly BoneTransformProperty[] = [
-	'x',
-	'y',
-	'rotation',
-	'scaleX',
-	'scaleY',
-	'shearX',
-	'shearY'
-];
-
 const isTransformProperty = function isTransformProperty(
 	property: KeyableProperty
 ): property is BoneTransformProperty {
-	return transformProperties.includes(property as BoneTransformProperty);
+	return property === 'x'
+		|| property === 'y'
+		|| property === 'rotation'
+		|| property === 'scaleX'
+		|| property === 'scaleY'
+		|| property === 'shearX'
+		|| property === 'shearY';
 };
 
 const trackMatchesDefinition = function trackMatchesDefinition(

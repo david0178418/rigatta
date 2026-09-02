@@ -12,8 +12,13 @@ export type ImportedImage = ValidatedImage & Readonly<{
 	relativePath: string;
 }>;
 
+export type AssetImportSkip = Readonly<{
+	relativePath: string;
+	reason: string;
+}>;
+
 export type AssetImportResult<TValue = readonly ImportedImage[]> =
-	| Readonly<{ ok: true; value: TValue }>
+	| Readonly<{ ok: true; value: TValue; skipped?: readonly AssetImportSkip[] }>
 	| Readonly<{ ok: false; error: string }>;
 
 type DirectoryEntry = FileSystemHandle & Readonly<{
@@ -152,19 +157,25 @@ const importFiles = async function importFiles(
 		return normalized;
 	}
 
-	const imageCandidates = normalized.value.filter((entry) => (
-		mimeTypeForFile(entry.file, entry.relativePath) !== undefined
-	));
-	const results = await Promise.all(imageCandidates.map((entry) => validateImportedFile(entry.file, entry.relativePath)));
-	const failed = results.find((result) => !result.ok);
-
-	if (failed && !failed.ok) {
-		return failed;
-	}
+	const unsupported = normalized.value.flatMap((entry) => mimeTypeForFile(entry.file, entry.relativePath)
+		? []
+		: [{ relativePath: entry.relativePath, reason: 'Unsupported image type.' }]);
+	const imageCandidates = normalized.value.filter((entry) => mimeTypeForFile(entry.file, entry.relativePath) !== undefined);
+	const results = await Promise.all(imageCandidates.map(async (entry) => ({
+		entry,
+		result: await validateImportedFile(entry.file, entry.relativePath)
+	})));
+	const skipped = [
+		...unsupported,
+		...results.flatMap(({ entry, result }) => result.ok
+			? []
+			: [{ relativePath: entry.relativePath, reason: result.error }])
+	];
 
 	return {
 		ok: true,
-		value: results.flatMap((result) => result.ok ? [result.value] : [])
+		value: results.flatMap(({ result }) => result.ok ? [result.value] : []),
+		...(skipped.length > 0 ? { skipped } : {})
 	};
 };
 
@@ -214,6 +225,7 @@ export const importDroppedItems = async function importDroppedItems(
 	}
 
 	const imported = itemResults.flatMap((result) => result.ok ? result.value : []);
+	const skipped = itemResults.flatMap((result) => result.ok ? result.skipped ?? [] : []);
 	const paths = imported.map((image) => image.relativePath);
 
 	if (new Set(paths).size !== paths.length) {
@@ -222,7 +234,8 @@ export const importDroppedItems = async function importDroppedItems(
 
 	return {
 		ok: true,
-		value: imported
+		value: imported,
+		...(skipped.length > 0 ? { skipped } : {})
 	};
 };
 

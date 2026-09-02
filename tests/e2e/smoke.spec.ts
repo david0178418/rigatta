@@ -93,6 +93,7 @@ test('supports viewport zoom controls and reset', async ({ page }) => {
 
 test('configures setup grid visibility, spacing, and snapping', async ({ page }) => {
 	await page.goto('/');
+	await page.getByRole('button', { name: 'Grid settings' }).click();
 
 	const showGrid = page.getByLabel('Show grid');
 	const gridSpacing = page.getByLabel('Grid spacing');
@@ -106,6 +107,30 @@ test('configures setup grid visibility, spacing, and snapping', async ({ page })
 	await expect(gridSpacing).toHaveValue('16');
 	await snapToGrid.check();
 	await expect(snapToGrid).toBeChecked();
+});
+
+test('shows canvas coordinates and setup origin overlays', async ({ page }) => {
+	await page.goto('/');
+
+	const coordinateReadout = page.getByLabel('Canvas coordinate readout');
+	await expect(coordinateReadout).toHaveText('X — · Y —');
+	await expect(page.getByRole('img', { name: 'Setup origin at X 0, Y 0' })).toBeVisible();
+	const viewport = page.locator('.pixi-viewport');
+	const bounds = await viewport.boundingBox();
+
+	if (!bounds) {
+		throw new Error('The viewport bounds are unavailable.');
+	}
+
+	await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+	await expect(coordinateReadout).toHaveText(/X -?\d+ · Y -?\d+/);
+	await page.getByRole('button', { name: 'Grid settings' }).click();
+	await expect(page.getByRole('dialog', { name: 'Grid settings' })).toBeVisible();
+	await page.locator('.viewport-readout').click();
+	await expect(page.getByRole('dialog', { name: 'Grid settings' })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Grid settings' }).click();
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: 'Grid settings' })).toHaveCount(0);
 });
 
 test('creates, duplicates, renames, and configures animation clips', async ({ page }) => {
@@ -408,8 +433,9 @@ test('auto-keys changed transform properties by default', async ({ page }) => {
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await expect(page.getByLabel('Auto Key')).toBeChecked();
-	await page.locator('input[name="x"]').fill('48');
-	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
+	const autoKeyX = page.locator('input[name="x"]');
+	await autoKeyX.fill('48');
+	await autoKeyX.press('Enter');
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toBeVisible();
 	await page.getByLabel('Auto Key').uncheck();
@@ -424,8 +450,9 @@ test('queues edited properties when Auto Key is disabled', async ({ page }) => {
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await page.getByLabel('Auto Key').uncheck();
-	await page.locator('input[name="x"]').fill('48');
-	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
+	const pendingX = page.locator('input[name="x"]');
+	await pendingX.fill('48');
+	await pendingX.press('Enter');
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Key edited properties (1)', exact: true })).toBeEnabled();
 	await page.getByRole('button', { name: 'Key edited properties (1)', exact: true }).click();
@@ -442,8 +469,9 @@ test('shows unkeyed, pending, and keyed property states', async ({ page }) => {
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await expect(page.getByText('Unkeyed', { exact: true }).first()).toBeVisible();
 	await page.getByLabel('Auto Key').uncheck();
-	await page.locator('input[name="x"]').fill('48');
-	await page.getByRole('button', { name: 'Apply values', exact: true }).click();
+	const pendingStateX = page.locator('input[name="x"]');
+	await pendingStateX.fill('48');
+	await pendingStateX.press('Enter');
 	await expect(page.getByText('Pending', { exact: true }).first()).toBeVisible();
 	await page.getByRole('button', { name: 'Key edited properties (1)', exact: true }).click();
 	await expect(page.getByText('Keyed', { exact: true }).first()).toBeVisible();
@@ -487,11 +515,18 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.getByRole('button', { name: 'Import image directory' }).click();
 	await expect(page.getByText('hero.png', { exact: true })).toBeVisible();
 	await expect(page.getByText('alt.png', { exact: true })).toBeVisible();
+	await expect(page.getByText('Imported 2 images.', { exact: true })).toBeVisible();
+	await expect(page.getByText('Drop on the canvas to create a root bone, slot, and attachment.', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Import image directory' }).click();
+	await expect(page.getByText('Imported 0 images · 2 conflicts.', { exact: true })).toBeVisible();
+	await page.getByText('Show import details', { exact: true }).click();
+	await expect(page.getByText('Conflict', { exact: true }).first()).toBeVisible();
 	await page.locator('.asset-row').filter({ hasText: 'hero.png' }).dragTo(page.locator('.pixi-viewport'));
 
 	await expect(page.getByText('root', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
 	await page.getByRole('button', { name: 'root' }).click();
+	await expect(page.getByText(/Drop on the canvas to create a slot and attachment under root\./)).toBeVisible();
 	const viewport = page.locator('.pixi-viewport');
 	const bounds = await viewport.boundingBox();
 
@@ -508,6 +543,7 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.keyboard.up('Shift');
 	await page.keyboard.up('Control');
 	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
+	await expect(page.getByText('Mixed', { exact: true }).first()).toBeVisible();
 	const multiSelectionX = page.locator('input[name="x"]');
 	const multiSelectionY = page.getByRole('spinbutton', { name: 'Y', exact: true });
 	const originalMultiSelectionX = await multiSelectionX.inputValue();
@@ -525,6 +561,7 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.mouse.up();
 	await expect(multiSelectionX).not.toHaveValue(originalMultiSelectionX);
 	await page.locator('.slot-row').click();
+	await expect(page.getByText(/Drop on .* to add an attachment\./, { exact: false })).toBeVisible();
 	const setupImage = page.getByRole('combobox', { name: 'Setup image' });
 	await expect(setupImage).toHaveValue(/.+/);
 	await page.locator('.asset-row').filter({ hasText: 'alt.png' }).dragTo(page.locator('.slot-row'));
@@ -593,13 +630,20 @@ test('builds and edits a hierarchy through the inspector', async ({ page }) => {
 	await page.getByRole('button', { name: 'root', exact: true }).click();
 	await page.getByRole('button', { name: 'Add child bone' }).click();
 	await expect(page.getByRole('button', { name: 'bone', exact: true })).toBeVisible();
-	await page.locator('input[name="x"]').fill('24');
-	await page.getByLabel('Rotation (deg)', { exact: true }).fill('15');
-	await page.getByRole('button', { name: 'Apply values' }).click();
+	const hierarchyX = page.locator('input[name="x"]');
+	await hierarchyX.fill('24');
+	await hierarchyX.press('Enter');
+	const hierarchyRotation = page.getByLabel('Rotation (deg)', { exact: true });
+	await hierarchyRotation.fill('15');
+	await hierarchyRotation.press('Enter');
 	await expect(page.locator('input[name="x"]')).toHaveValue('24');
 
-	await page.getByLabel('Selected name').fill('arm');
-	await page.getByRole('button', { name: 'Rename' }).click();
+	const hierarchyName = page.getByLabel('Selected name');
+	await hierarchyName.fill('');
+	await hierarchyName.press('Enter');
+	await expect(page.getByText('Name cannot be empty.', { exact: true })).toBeVisible();
+	await hierarchyName.fill('arm');
+	await hierarchyName.press('Enter');
 	await expect(page.getByRole('button', { name: 'arm', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Add slot' }).click();
 	await expect(page.getByRole('button', { name: 'slot', exact: true })).toBeVisible();

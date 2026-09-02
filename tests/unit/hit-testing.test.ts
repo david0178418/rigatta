@@ -48,4 +48,19 @@ describe('logical canvas hit testing', () => {
 		expect(hitTestProject(project, point)).toEqual({ kind: 'attachment', id: fixtureIds.point });
 		expect(entitiesInBounds(project, { x: point.x - 4, y: point.y - 4, w: 8, h: 8 })).toContainEqual({ kind: 'attachment', id: fixtureIds.point });
 	});
+
+	test('excludes hidden bones and descendants from hit testing only', () => {
+		const project = createRigProject();
+		const matrix = evaluateBoneWorldMatrices(project).matrices.get(fixtureIds.child);
+
+		if (!matrix) {
+			throw new Error('Fixture child matrix is unavailable.');
+		}
+
+		const point = transformPoint(matrix, { x: 20, y: 0 });
+		const hidden = new Set([fixtureIds.parentA]);
+
+		expect(hitTestProject(project, point, hidden)).toBeUndefined();
+		expect(entitiesInBounds(project, { x: 60, y: 20, w: 100, h: 100 }, hidden)).not.toContainEqual({ kind: 'bone', id: fixtureIds.child });
+	});
 });

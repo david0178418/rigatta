@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type ViewportState } from '../../src/app/viewport.ts';
+import { createViewportState, formatViewportCoordinate, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type ViewportState } from '../../src/app/viewport.ts';
 
 describe('viewport navigation state', () => {
 	test('pans without changing zoom', () => {
@@ -25,6 +25,11 @@ describe('viewport navigation state', () => {
 		expect(zoomed.zoom).toBe(4);
 		expect(formatViewportZoom(zoomed.zoom)).toBe('400%');
 		expect(resetViewport()).toEqual({ zoom: 1, offsetX: 0, offsetY: 0 });
+	});
+
+	test('formats the coordinate readout for setup and pointer states', () => {
+		expect(formatViewportCoordinate(undefined)).toBe('X — · Y —');
+		expect(formatViewportCoordinate({ x: 12.6, y: -4.4 })).toBe('X 13 · Y -4');
 	});
 
 	test('maps a screen drop through pan and zoom into logical coordinates', () => {

@@ -1,13 +1,14 @@
 import { Application, Container, Graphics, Matrix, Sprite, Texture } from 'pixi.js';
 import { decodeImageBlob } from '../assets/images.ts';
 import { localTransformToMatrix, multiplyAffine, transformPoint, type AffineMatrix } from '../domain/coordinates.ts';
-import type { CanvasSize, Project } from '../domain/model.ts';
+import type { Attachment, CanvasSize, ImageAttachment, Project } from '../domain/model.ts';
 import type { EntityId } from '../domain/ids.ts';
-import type { EvaluatedPose } from '../domain/pose.ts';
+import type { EvaluatedAttachment, EvaluatedImageAttachment, EvaluatedPose } from '../domain/pose.ts';
 import { evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import { validateProject } from '../domain/validation.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import { poseImageRenderInstances, setupImageRenderInstances, type ImageRenderInstance } from './pose-images.ts';
+import { isEditorEntityVisible } from '../app/editor-visibility.ts';
 
 export type RendererError = Readonly<{
 	code: 'unsupported-browser' | 'invalid-project' | 'invalid-asset' | 'renderer-failure';
@@ -25,6 +26,7 @@ export type FixedCanvasRenderOptions = Readonly<{
 	showGameplay?: boolean;
 	selectedIds?: readonly EntityId[];
 	transformTool?: 'translate' | 'rotate' | 'scale' | 'shear';
+	hiddenIds?: ReadonlySet<EntityId>;
 }>;
 
 export type FixedCanvasRenderer = Readonly<{
@@ -49,6 +51,16 @@ type RendererState = {
 
 const DEFAULT_GRID_SPACING = 32;
 const BONE_PREVIEW_LENGTH = 56;
+type GameplayAttachment = Exclude<Attachment, ImageAttachment>;
+type EvaluatedGameplayAttachment = Exclude<EvaluatedAttachment, EvaluatedImageAttachment>;
+
+const isGameplayAttachment = function isGameplayAttachment(attachment: Attachment): attachment is GameplayAttachment {
+	return attachment.kind !== 'image';
+};
+
+const isEvaluatedGameplayAttachment = function isEvaluatedGameplayAttachment(attachment: EvaluatedAttachment): attachment is EvaluatedGameplayAttachment {
+	return attachment.kind !== 'image';
+};
 
 const success = function success<TValue>(value: TValue): RendererResult<TValue> {
 	return { ok: true, value };
@@ -111,9 +123,10 @@ const drawGrid = function drawGrid(
 const drawBones = function drawBones(
 	graphics: Graphics,
 	project: Project,
-	matrixByBone: ReadonlyMap<string, AffineMatrix>
+	matrixByBone: ReadonlyMap<string, AffineMatrix>,
+	hiddenIds: ReadonlySet<EntityId>
 ): void {
-	project.bones.forEach((bone) => {
+	project.bones.filter((bone) => isEditorEntityVisible(project, bone.id, hiddenIds)).forEach((bone) => {
 		const matrix = matrixByBone.get(bone.id);
 
 		if (!matrix) {
@@ -191,14 +204,16 @@ const addGameplayAttachments = function addGameplayAttachments(
 	container: Container,
 	project: Project,
 	matrixByBone: ReadonlyMap<string, AffineMatrix>,
-	showGameplay: boolean
+	showGameplay: boolean,
+	hiddenIds: ReadonlySet<EntityId>
 ): void {
 	if (!showGameplay) {
 		return;
 	}
 
 	project.attachments
-		.filter((attachment) => attachment.kind !== 'image')
+		.filter(isGameplayAttachment)
+		.filter((attachment) => isEditorEntityVisible(project, attachment.id, hiddenIds))
 		.forEach((attachment) => {
 			const boneId = attachment.boneId;
 			const boneMatrix = matrixByBone.get(boneId);
@@ -227,15 +242,18 @@ const addGameplayAttachments = function addGameplayAttachments(
 
 const addPoseGameplayAttachments = function addPoseGameplayAttachments(
 	container: Container,
+	project: Project,
 	pose: EvaluatedPose,
-	showGameplay: boolean
+	showGameplay: boolean,
+	hiddenIds: ReadonlySet<EntityId>
 ): void {
 	if (!showGameplay) {
 		return;
 	}
 
 	pose.attachments
-		.filter((attachment) => attachment.kind !== 'image')
+		.filter(isEvaluatedGameplayAttachment)
+		.filter((attachment) => isEditorEntityVisible(project, attachment.id, hiddenIds))
 		.forEach((attachment) => {
 			const graphics = new Graphics();
 			const alpha = attachment.enabled ? 0.85 : 0.3;
@@ -258,12 +276,13 @@ const addSelectionGuides = function addSelectionGuides(
 	container: Container,
 	project: Project,
 	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
-	selectedIds: readonly EntityId[]
+	selectedIds: readonly EntityId[],
+	hiddenIds: ReadonlySet<EntityId>
 ): void {
 	const selected = new Set(selectedIds);
 	const slotsById = new Map(project.slots.map((slot) => [slot.id, slot] as const));
 
-	project.bones.filter((bone) => selected.has(bone.id)).forEach((bone) => {
+	project.bones.filter((bone) => selected.has(bone.id) && isEditorEntityVisible(project, bone.id, hiddenIds)).forEach((bone) => {
 		const matrix = matrixByBone.get(bone.id);
 
 		if (!matrix) {
@@ -279,7 +298,7 @@ const addSelectionGuides = function addSelectionGuides(
 		container.addChild(guide);
 	});
 
-	project.attachments.filter((attachment) => selected.has(attachment.id)).forEach((attachment) => {
+	project.attachments.filter((attachment) => selected.has(attachment.id) && isEditorEntityVisible(project, attachment.id, hiddenIds)).forEach((attachment) => {
 		const boneId = attachment.kind === 'image'
 			? slotsById.get(attachment.slotId)?.boneId
 			: attachment.boneId;
@@ -317,14 +336,17 @@ const addTransformHandles = function addTransformHandles(
 	project: Project,
 	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
 	selectedIds: readonly EntityId[],
-	tool: FixedCanvasRenderOptions['transformTool']
+	tool: FixedCanvasRenderOptions['transformTool'],
+	hiddenIds: ReadonlySet<EntityId>
 ): void {
-	if (selectedIds.length === 0 || !tool) {
+	const visibleSelectedIds = selectedIds.filter((id) => isEditorEntityVisible(project, id, hiddenIds));
+
+	if (visibleSelectedIds.length === 0 || !tool) {
 		return;
 	}
 
 	const slotsById = new Map(project.slots.map((slot) => [slot.id, slot] as const));
-	const centers = selectedIds.flatMap((selectedId) => {
+	const centers = visibleSelectedIds.flatMap((selectedId) => {
 		const bone = project.bones.find((candidate) => candidate.id === selectedId);
 
 		if (bone) {
@@ -355,8 +377,8 @@ const addTransformHandles = function addTransformHandles(
 	);
 	const center = { x: total.x / centers.length, y: total.y / centers.length };
 	const handles = new Graphics();
-	const selectedAttachment = selectedIds.length === 1
-		? project.attachments.find((attachment) => attachment.id === selectedIds[0])
+	const selectedAttachment = visibleSelectedIds.length === 1
+		? project.attachments.find((attachment) => attachment.id === visibleSelectedIds[0])
 		: undefined;
 	const selectedRectangle = selectedAttachment?.kind === 'rectangle' ? selectedAttachment : undefined;
 	const rectangleBoneMatrix = selectedRectangle ? matrixByBone.get(selectedRectangle.boneId) : undefined;
@@ -462,7 +484,9 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 			}
 
 			const evaluation = evaluateBoneWorldMatrices(project);
-			const prepared = await prepareImages(project, assets, setupImageRenderInstances(project, evaluation.matrices));
+			const hiddenIds = options.hiddenIds ?? new Set<EntityId>();
+			const prepared = await prepareImages(project, assets, setupImageRenderInstances(project, evaluation.matrices)
+				.filter((instance) => isEditorEntityVisible(project, instance.attachment.id, hiddenIds)));
 
 			if (!prepared.ok) {
 				return prepared;
@@ -480,18 +504,18 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 			const attachments = new Container();
 
 			addImageSprites(attachments, prepared.value);
-			addGameplayAttachments(attachments, project, evaluation.matrices, options.showGameplay ?? true);
+			addGameplayAttachments(attachments, project, evaluation.matrices, options.showGameplay ?? true, hiddenIds);
 			content.addChild(attachments);
 
 			if (options.showBones !== false) {
 				const bones = new Graphics();
-				drawBones(bones, project, evaluation.matrices);
+				drawBones(bones, project, evaluation.matrices, hiddenIds);
 				content.addChild(bones);
 			}
 
 			const selection = new Container();
-			addSelectionGuides(selection, project, evaluation.matrices, options.selectedIds ?? []);
-			addTransformHandles(selection, project, evaluation.matrices, options.selectedIds ?? [], options.transformTool);
+			addSelectionGuides(selection, project, evaluation.matrices, options.selectedIds ?? [], hiddenIds);
+			addTransformHandles(selection, project, evaluation.matrices, options.selectedIds ?? [], options.transformTool, hiddenIds);
 			content.addChild(selection);
 
 			state.resources = prepared.value;
@@ -516,7 +540,9 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 				return failure('invalid-project', diagnostics[0]?.message ?? 'Project validation failed.');
 			}
 
-			const prepared = await prepareImages(project, assets, poseImageRenderInstances(project, pose));
+			const hiddenIds = options.hiddenIds ?? new Set<EntityId>();
+			const prepared = await prepareImages(project, assets, poseImageRenderInstances(project, pose)
+				.filter((instance) => isEditorEntityVisible(project, instance.attachment.id, hiddenIds)));
 
 			if (!prepared.ok) {
 				return prepared;
@@ -534,12 +560,12 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 			const matrices = new Map(pose.bones.map((bone) => [bone.id, bone.worldMatrix] as const));
 
 			addImageSprites(attachments, prepared.value);
-			addPoseGameplayAttachments(attachments, pose, options.showGameplay === true);
+			addPoseGameplayAttachments(attachments, project, pose, options.showGameplay === true, hiddenIds);
 			content.addChild(attachments);
 
 			if (options.showBones === true) {
 				const bones = new Graphics();
-				drawBones(bones, project, matrices);
+				drawBones(bones, project, matrices, hiddenIds);
 				content.addChild(bones);
 			}
 			state.resources = prepared.value;

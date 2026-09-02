@@ -2,6 +2,7 @@ import { useEffect, useState, type DragEvent as ReactDragEvent, type ReactElemen
 import type { EntityId } from '../domain/ids.ts';
 import type { ImageAsset, Project } from '../domain/model.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
+import type { AssetImportSkip } from '../assets/import.ts';
 import { buildAssetLibraryEntries, type AssetLibraryEntry } from './asset-library.ts';
 import { isSelected, type Selection } from './selection.ts';
 import type { AssetDensity } from './ui-preferences.ts';
@@ -16,6 +17,31 @@ const fileFormat = function fileFormat(asset: ImageAsset): string {
 	return asset.mimeType.replace('image/', '').toUpperCase();
 };
 
+export type AssetImportSummary = Readonly<{
+	imported: number;
+	skipped: readonly AssetImportSkip[];
+	conflicts: readonly string[];
+}>;
+
+const pluralize = function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+	return `${count} ${count === 1 ? singular : plural}`;
+};
+
+const importSummaryLabel = function importSummaryLabel(summary: AssetImportSummary): string {
+	const parts = [pluralize(summary.imported, 'image')];
+
+	if (summary.skipped.length > 0) {
+		parts.push(pluralize(summary.skipped.length, 'skipped file'));
+	}
+	if (summary.conflicts.length > 0) {
+		parts.push(pluralize(summary.conflicts.length, 'conflict'));
+	}
+
+	return `Imported ${parts.join(' · ')}.`;
+};
+
+const IMPORT_DETAIL_LIMIT = 8;
+
 export const AssetBrowser = function AssetBrowser({
 	project,
 	assets,
@@ -25,6 +51,7 @@ export const AssetBrowser = function AssetBrowser({
 	isImporting,
 	importMessage,
 	dropHint,
+	importSummary,
 	onQueryChange,
 	onDensityChange,
 	onImport,
@@ -42,6 +69,7 @@ export const AssetBrowser = function AssetBrowser({
 	isImporting: boolean;
 	importMessage?: string;
 	dropHint?: string;
+	importSummary?: AssetImportSummary;
 	onQueryChange: (query: string) => void;
 	onDensityChange: (density: AssetDensity) => void;
 	onImport: () => void;
@@ -168,6 +196,21 @@ export const AssetBrowser = function AssetBrowser({
 						<span>{selectedAsset.relativePath}</span>
 						<span>{usage.length > 0 ? `Used by ${usage.join(', ')}` : 'Not used by a slot yet'}</span>
 					</div>
+				</section>
+			)}
+			{importSummary && (
+				<section className="asset-import-summary" aria-label="Asset import summary" aria-live="polite" role="status">
+					<strong>{importSummaryLabel(importSummary)}</strong>
+					{(importSummary.skipped.length > 0 || importSummary.conflicts.length > 0) && (
+						<details>
+							<summary>Show import details</summary>
+							<ul>
+								{importSummary.skipped.slice(0, IMPORT_DETAIL_LIMIT).map((item) => <li key={`skipped:${item.relativePath}`}><span>Skipped</span> {item.relativePath}: {item.reason}</li>)}
+								{importSummary.conflicts.slice(0, Math.max(0, IMPORT_DETAIL_LIMIT - importSummary.skipped.length)).map((path) => <li key={`conflict:${path}`}><span>Conflict</span> {path}: an image with this path is already imported.</li>)}
+							</ul>
+							{importSummary.skipped.length + importSummary.conflicts.length > IMPORT_DETAIL_LIMIT && <small>Showing the first {IMPORT_DETAIL_LIMIT} details.</small>}
+						</details>
+					)}
 				</section>
 			)}
 			{(importMessage || isImporting) && <p className="muted-copy asset-import-status" aria-live="polite">{isImporting ? 'Importing images…' : importMessage}</p>}

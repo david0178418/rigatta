@@ -33,6 +33,8 @@ export type TimelineModelOptions = Readonly<{
 	expandedIds?: ReadonlySet<string>;
 	pinnedEntityIds?: ReadonlySet<EntityId>;
 	selection?: Selection;
+	selectedTrackIds?: ReadonlySet<EntityId>;
+	selectedEntityIds?: ReadonlySet<EntityId>;
 	}>;
 
 export type TimelineKeyReference = Readonly<{
@@ -151,7 +153,9 @@ const trackIsVisible = function trackIsVisible(
 	track: Track,
 	mode: TimelineRowMode,
 	selection: Selection | undefined,
-	pinnedEntityIds: ReadonlySet<EntityId>
+	pinnedEntityIds: ReadonlySet<EntityId>,
+	selectedTrackIds: ReadonlySet<EntityId>,
+	selectedEntityIds: ReadonlySet<EntityId>
 ): boolean {
 	if (mode === 'all-keyed') {
 		return true;
@@ -159,7 +163,7 @@ const trackIsVisible = function trackIsVisible(
 
 	const targetId = trackEntityId(track);
 
-	return targetId === undefined || isSelectedId(selection, targetId) || pinnedEntityIds.has(targetId);
+	return targetId === undefined || isSelectedId(selection, targetId) || pinnedEntityIds.has(targetId) || selectedTrackIds.has(track.id) || targetId !== undefined && selectedEntityIds.has(targetId);
 };
 
 const groupTrackRows = function groupTrackRows(
@@ -170,9 +174,11 @@ const groupTrackRows = function groupTrackRows(
 	const mode = options.mode ?? 'selection';
 	const selection = options.selection ?? [];
 	const pinnedEntityIds = options.pinnedEntityIds ?? new Set<EntityId>();
+	const selectedTrackIds = options.selectedTrackIds ?? new Set<EntityId>();
+	const selectedEntityIds = options.selectedEntityIds ?? new Set<EntityId>();
 	const expandedIds = options.expandedIds ?? new Set<string>();
 	const query = options.filter ?? '';
-	const tracks = clip.tracks.filter((track) => trackIsVisible(track, mode, selection, pinnedEntityIds));
+	const tracks = clip.tracks.filter((track) => trackIsVisible(track, mode, selection, pinnedEntityIds, selectedTrackIds, selectedEntityIds));
 	const grouped = tracks.reduce<ReadonlyMap<EntityId, readonly Track[]>>((groups, track) => {
 		const targetId = trackEntityId(track);
 
@@ -288,7 +294,9 @@ export const buildGroupedTimelineRows = function buildGroupedTimelineRows(
 		track,
 		options.mode ?? 'selection',
 		options.selection,
-		options.pinnedEntityIds ?? new Set<EntityId>()
+		options.pinnedEntityIds ?? new Set<EntityId>(),
+		options.selectedTrackIds ?? new Set<EntityId>(),
+		options.selectedEntityIds ?? new Set<EntityId>()
 	));
 	const overview: TimelineRow = {
 		id: 'overview',

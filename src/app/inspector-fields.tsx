@@ -44,6 +44,7 @@ export const DirectNumericField = function DirectNumericField({
 	ariaLabel,
 	keyState,
 	frameIndex,
+	mixed = false,
 	onCommit,
 	onToggleKey
 }: Readonly<{
@@ -53,6 +54,7 @@ export const DirectNumericField = function DirectNumericField({
 	ariaLabel?: string;
 	keyState?: PropertyKeyState;
 	frameIndex?: number;
+	mixed?: boolean;
 	onCommit: (property: NumericProperty, value: number) => string | undefined;
 	onToggleKey?: () => void;
 }>): ReactElement {
@@ -61,7 +63,7 @@ export const DirectNumericField = function DirectNumericField({
 	const [draft, setDraft] = useState<PropertyDraft>(initialDraft);
 	const committedTextRef = useRef(initialDraft.draftText);
 	const commit = function commit(): void {
-		if (committedTextRef.current === draft.draftText && draft.error === undefined) {
+		if (committedTextRef.current === draft.draftText && draft.error === undefined && !mixed) {
 			return;
 		}
 
@@ -73,7 +75,7 @@ export const DirectNumericField = function DirectNumericField({
 		}
 
 		const unchanged = 'unchanged' in result && result.unchanged;
-		const error = unchanged ? undefined : onCommit(property, result.value);
+		const error = unchanged && !mixed ? undefined : onCommit(property, result.value);
 
 		if (error) {
 			setDraft(propertyDraftWithError(draft, error));
@@ -97,9 +99,10 @@ export const DirectNumericField = function DirectNumericField({
 
 	return (
 		<label className="direct-property-field">
-			<span className={keyState ? `field-label key-state key-state-${keyState}` : 'field-label'}>
+			<span className={keyState ? `field-label key-state key-state-${keyState}` : mixed ? 'field-label mixed-field-label' : 'field-label'}>
 				<span>{spec.label}{spec.unit === 'deg' ? ' (deg)' : ''}</span>
 				{keyState && <small>{keyState === 'pending' ? 'Pending' : keyState === 'keyed' ? 'Keyed' : 'Unkeyed'}</small>}
+				{mixed && <small>Mixed</small>}
 			</span>
 			<span className="direct-property-control">
 				<input

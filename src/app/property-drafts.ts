@@ -67,8 +67,8 @@ export const numericPropertySpecs: Readonly<Record<NumericProperty, NumericPrope
 	opacity: { property: 'opacity', label: 'Opacity', unit: '%', minimum: 0, maximum: 1, step: 0.01, display: identity, parse: identity },
 	pivotX: { property: 'pivotX', label: 'Pivot X', unit: '%', minimum: 0, maximum: 1, step: 0.01, display: identity, parse: identity },
 	pivotY: { property: 'pivotY', label: 'Pivot Y', unit: '%', minimum: 0, maximum: 1, step: 0.01, display: identity, parse: identity },
-	width: { property: 'width', label: 'Width', unit: 'px', minimum: 0, step: 'any', display: identity, parse: identity },
-	height: { property: 'height', label: 'Height', unit: 'px', minimum: 0, step: 'any', display: identity, parse: identity }
+	width: { property: 'width', label: 'Width', unit: 'px', minimum: 1, step: 'any', display: identity, parse: identity },
+	height: { property: 'height', label: 'Height', unit: 'px', minimum: 1, step: 'any', display: identity, parse: identity }
 };
 
 const formatDraftValue = function formatDraftValue(value: number): string {

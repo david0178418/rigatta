@@ -62,8 +62,9 @@ test('runs the P0 editor workflow at every supported viewport size', async ({ pa
 			await page.getByRole('button', { name: 'arm', exact: true }).click();
 			await page.getByRole('button', { name: 'Rotate', exact: true }).click();
 			await expect(page.getByRole('button', { name: 'Rotate', exact: true })).toHaveAttribute('aria-pressed', 'true');
-			await page.getByLabel('Rotation (deg)', { exact: true }).fill('15');
-			await page.getByRole('button', { name: 'Apply values', exact: true }).click();
+			const rotation = page.getByLabel('Rotation (deg)', { exact: true });
+			await rotation.fill('15');
+			await rotation.press('Enter');
 			await page.getByRole('button', { name: 'Animate' }).click();
 
 			const splitter = page.getByRole('separator', { name: 'Resize animation timeline' });

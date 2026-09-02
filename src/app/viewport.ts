@@ -139,3 +139,9 @@ export const screenRectangleToLogicalBounds = function screenRectangleToLogicalB
 export const formatViewportZoom = function formatViewportZoom(zoom: number): string {
 	return `${Math.round(zoom * 100)}%`;
 };
+
+export const formatViewportCoordinate = function formatViewportCoordinate(point: ViewportPoint | undefined): string {
+	return point
+		? `X ${Math.round(point.x)} · Y ${Math.round(point.y)}`
+		: 'X — · Y —';
+};

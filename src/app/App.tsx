@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
-import { DEFAULT_LOCAL_TRANSFORM, degreesToRadians, radiansToDegrees, type LocalTransform } from '../domain/coordinates.ts';
+import { DEFAULT_LOCAL_TRANSFORM, type LocalTransform } from '../domain/coordinates.ts';
 import { isEventPayload } from '../domain/events.ts';
 import { createEntityId, parseEntityId, type EntityId } from '../domain/ids.ts';
 import {
@@ -16,11 +16,11 @@ import {
 	type HistoryState
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
-import { createEmptyProject, type BoneTransformProperty, type Clip, type CubicBezier, type Interpolation, type Project, type Track } from '../domain/model.ts';
+import { createEmptyProject, type Attachment, type BoneTransformProperty, type Clip, type CubicBezier, type Interpolation, type Project, type Track } from '../domain/model.ts';
 import { evaluatePose } from '../domain/pose.ts';
 import { validateProject, type ValidationDiagnostic } from '../domain/validation.ts';
 import { canvasWarningsForSetup, type CanvasWarning } from '../domain/canvas-warnings.ts';
-import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, EventKeyInput, EventKeyUpdate, KeyTimeChange, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
+import type { AttachmentKeyInput, BooleanKeyInput, DrawOrderKeyInput, DuplicateClipIds, EventKeyInput, EventKeyUpdate, NumberKeyInput, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
 import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
@@ -34,7 +34,7 @@ import { loadEditorStartup } from './startup.ts';
 import { entitiesInBounds, hitTestProject } from './hit-testing.ts';
 import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hierarchy-dnd.ts';
 import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
-import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
+import { createSelection, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
 import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, frameIndexForTime, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
@@ -46,18 +46,21 @@ import { createExampleAssetBlobs, exampleProject } from '../examples/example-pro
 import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
 import { nextAvailableName } from './entity-names.ts';
 import { SETUP_TIMELINE_HEIGHT, clampTimelineHeight, timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
-import { AssetBrowser } from './asset-browser.tsx';
+import { AssetBrowser, type AssetImportSummary } from './asset-browser.tsx';
 import { DockSplitter } from './dock-splitter.tsx';
 import { DrawOrderPanel } from './draw-order-panel.tsx';
 import { DirectNameField, DirectNumericField } from './inspector-fields.tsx';
 import { ProjectMenu } from './project-menu.tsx';
 import { RigTreeView } from './rig-tree-view.tsx';
 import { buildRigTreeViewModel, revealAncestors, selectableEntityForRigNode, type RigTreeNode } from './rig-tree.ts';
-import { MenuButton, Tabs } from './ui-primitives.tsx';
+import { MenuButton, Popover, Tabs } from './ui-primitives.tsx';
 import { loadUiPreferences, projectUiPreferencesFor, saveUiPreferences, updateProjectUiPreferences, type AssetDensity, type ProjectUiPreferences, type UiPreferences } from './ui-preferences.ts';
 import { clampWorkspaceLayout } from './workspace-layout.ts';
 import type { NumericProperty } from './property-drafts.ts';
 import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty } from './keying.ts';
+import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, planPasteTimelineClipboard, selectableEntityForTimelineRow, type TimelineClipboard, type TimelineKeyReference, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
+import { SharedInspector, type NumberKeyChange } from './shared-inspector.tsx';
+import type { InspectorContext } from './inspector-context.ts';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -107,54 +110,6 @@ const formNumber = function formNumber(data: FormData, name: string): number | u
 	return Number.isFinite(number) ? number : undefined;
 };
 
-const transformFromForm = function transformFromForm(
-	data: FormData,
-	current: LocalTransform
-): LocalTransform | undefined {
-	const x = formNumber(data, 'x');
-	const y = formNumber(data, 'y');
-	const rotation = formNumber(data, 'rotation');
-	const scaleX = formNumber(data, 'scaleX');
-	const scaleY = formNumber(data, 'scaleY');
-	const shearX = formNumber(data, 'shearX');
-	const shearY = formNumber(data, 'shearY');
-
-	if ([x, y, rotation, scaleX, scaleY, shearX, shearY].some((value) => value === undefined)) {
-		return undefined;
-	}
-
-	return {
-		x: x ?? current.x,
-		y: y ?? current.y,
-		rotation: degreesToRadians(rotation ?? radiansToDegrees(current.rotation)),
-		scaleX: scaleX ?? current.scaleX,
-		scaleY: scaleY ?? current.scaleY,
-		shearX: degreesToRadians(shearX ?? radiansToDegrees(current.shearX)),
-		shearY: degreesToRadians(shearY ?? radiansToDegrees(current.shearY))
-	};
-};
-
-const imagePropertiesFromForm = function imagePropertiesFromForm(
-	data: FormData
-): Readonly<{ opacity: number; pivotX: number; pivotY: number }> | undefined {
-	const opacity = formNumber(data, 'opacity');
-	const pivotX = formNumber(data, 'pivotX');
-	const pivotY = formNumber(data, 'pivotY');
-
-	return opacity === undefined || pivotX === undefined || pivotY === undefined
-		? undefined
-		: { opacity, pivotX, pivotY };
-};
-
-const rectangleSizeFromForm = function rectangleSizeFromForm(
-	data: FormData
-): Readonly<{ width: number; height: number }> | undefined {
-	const width = formNumber(data, 'width');
-	const height = formNumber(data, 'height');
-
-	return width === undefined || height === undefined ? undefined : { width, height };
-};
-
 const blobsForProject = function blobsForProject(
 	project: Project,
 	blobs: ProjectAssetBlobs
@@ -164,6 +119,25 @@ const blobsForProject = function blobsForProject(
 
 		return blob ? [[asset.id, blob] as const] : [];
 	}));
+};
+
+const selectableEntityForId = function selectableEntityForId(
+	project: Project,
+	id: EntityId
+): SelectableEntity | undefined {
+	if (project.assets.some((asset) => asset.id === id)) {
+		return { kind: 'asset', id };
+	}
+	if (project.bones.some((bone) => bone.id === id)) {
+		return { kind: 'bone', id };
+	}
+	if (project.slots.some((slot) => slot.id === id)) {
+		return { kind: 'slot', id };
+	}
+
+	return project.attachments.some((attachment) => attachment.id === id)
+		? { kind: 'attachment', id }
+		: undefined;
 };
 
 const duplicateIdsForClip = function duplicateIdsForClip(clip: Clip): DuplicateClipIds {
@@ -206,6 +180,28 @@ type PendingAnimationEdit = Readonly<{
 	targetId: EntityId;
 	property: PendingAnimationProperty;
 }>;
+
+type SelectedTransformEntry = Readonly<{
+	entity: Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
+	transform: LocalTransform;
+}>;
+
+type DirectPropertyTarget = Readonly<{
+	entity: SelectableEntity;
+	currentValue: number;
+	command: ProjectCommand;
+}>;
+
+type NumericTrack = Extract<Track, {
+	kind: 'bone-transform' | 'attachment-transform' | 'attachment-opacity' | 'rectangle-size';
+}>;
+
+const isNumericTrack = function isNumericTrack(track: Track): track is NumericTrack {
+	return track.kind === 'bone-transform'
+		|| track.kind === 'attachment-transform'
+		|| track.kind === 'attachment-opacity'
+		|| track.kind === 'rectangle-size';
+};
 
 const trackMatchesDefinition = function trackMatchesDefinition(
 	track: Track,
@@ -520,6 +516,10 @@ type AnimateTimelineProps = Readonly<{
 	project: Project;
 	activeClip: Clip | undefined;
 	playback: PlaybackState;
+	selection: Selection;
+	rowMode: TimelineRowMode;
+	expandedRowIds: ReadonlySet<string>;
+	pinnedEntityIds: ReadonlySet<EntityId>;
 	autoKey: boolean;
 	pendingEditCount: number;
 	onSelectClip: (clipId: EntityId) => void;
@@ -545,16 +545,43 @@ type AnimateTimelineProps = Readonly<{
 	onUpdateDrawOrderKey: (trackId: EntityId, keyId: EntityId, value: readonly EntityId[]) => void;
 	onDeleteKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[]) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
+	onPasteKeys: (clipboard: TimelineClipboard) => void;
+	onSelectEntity: (entity: SelectableEntity, additive: boolean) => void;
+	onRowModeChange: (mode: TimelineRowMode) => void;
+	onExpandedRowIdsChange: (ids: ReadonlySet<string>) => void;
+	onTogglePinnedEntity: (entityId: EntityId) => void;
+	onClearPinnedEntities: () => void;
+	onContextChange: (context: InspectorContext) => void;
 	onAutoKeyChange: (enabled: boolean) => void;
 	onKeyPendingEdits: () => void;
 }>;
 
 type TimelineDetail = 'clip' | 'track' | 'key' | 'event';
 
+type TimelineKeyDragSession = Readonly<{
+	pointerId: number;
+	trackId: EntityId;
+	keyId: EntityId;
+	startX: number;
+	selectedKeys: readonly TimelineKeyReference[];
+	}>;
+
+type TimelineMarqueeSession = Readonly<{
+	pointerId: number;
+	trackId: EntityId;
+	startX: number;
+	startY: number;
+	additive: boolean;
+	}>;
+
 const AnimateTimeline = function AnimateTimeline({
 	project,
 	activeClip,
 	playback,
+	selection,
+	rowMode,
+	expandedRowIds,
+	pinnedEntityIds,
 	autoKey,
 	pendingEditCount,
 	onSelectClip,
@@ -580,6 +607,13 @@ const AnimateTimeline = function AnimateTimeline({
 	onUpdateDrawOrderKey,
 	onDeleteKeys,
 	onRetimeKeys,
+	onPasteKeys,
+	onSelectEntity,
+	onRowModeChange,
+	onExpandedRowIdsChange,
+	onTogglePinnedEntity,
+	onClearPinnedEntities,
+	onContextChange,
 	onAutoKeyChange,
 	onKeyPendingEdits
 }: AnimateTimelineProps): ReactElement {
@@ -591,7 +625,15 @@ const AnimateTimeline = function AnimateTimeline({
 	const [selectedEventId, setSelectedEventId] = useState<EntityId | undefined>(undefined);
 	const [eventError, setEventError] = useState<string | undefined>(undefined);
 	const [openDetails, setOpenDetails] = useState<TimelineDetail | undefined>(undefined);
+	const [timelineClipboard, setTimelineClipboard] = useState<TimelineClipboard | undefined>(undefined);
+	const [timelineNotice, setTimelineNotice] = useState<string | undefined>(undefined);
+	const [timelineMarquee, setTimelineMarquee] = useState<Readonly<{ left: number; top: number; width: number; height: number }> | undefined>(undefined);
+	const [timelineKeyDragDelta, setTimelineKeyDragDelta] = useState(0);
 	const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
+	const keyDragRef = useRef<TimelineKeyDragSession | undefined>(undefined);
+	const keyDragDeltaRef = useRef(0);
+	const keyDragClickSuppressedRef = useRef(false);
+	const marqueeRef = useRef<TimelineMarqueeSession | undefined>(undefined);
 	const openDetailSurface = function openDetailSurface(detail: TimelineDetail, trigger: HTMLButtonElement): void {
 		detailTriggerRef.current = trigger;
 		setOpenDetails(detail);
@@ -625,6 +667,7 @@ const AnimateTimeline = function AnimateTimeline({
 		if (id) {
 			setSelectedEventId(id);
 			setEventError(undefined);
+			onContextChange({ kind: 'event', clipId: activeClip.id, eventId: id });
 		}
 	};
 	const submitEventDetails = function submitEventDetails(event: FormEvent<HTMLFormElement>): void {
@@ -683,6 +726,7 @@ const AnimateTimeline = function AnimateTimeline({
 		onDeleteEvent(selectedEvent.id);
 		setSelectedEventId(undefined);
 		setEventError(undefined);
+		onContextChange({ kind: 'none' });
 	};
 	const submitPlayback = function submitPlayback(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
@@ -700,6 +744,20 @@ const AnimateTimeline = function AnimateTimeline({
 	const timelineRange = timelineFrameRange(timelineViewport, frameCount);
 	const timelineVisibleCount = visibleFrameCount(timelineViewport, frameCount);
 	const trackRows = activeClip ? buildTimelineTrackRows(project, activeClip, trackFilter) : [];
+	const selectedTrackEntityIds = selectedTrackId
+		? new Set(trackRows
+			.filter((row) => row.track.id === selectedTrackId)
+			.flatMap((row) => 'targetId' in row.track ? [row.track.targetId] : []))
+		: new Set<EntityId>();
+	const groupedRows = activeClip ? buildGroupedTimelineRows(project, activeClip, {
+		mode: rowMode,
+		filter: trackFilter,
+		expandedIds: expandedRowIds,
+		pinnedEntityIds,
+		selection,
+		selectedTrackIds: selectedTrackId ? new Set([selectedTrackId]) : new Set<EntityId>(),
+		selectedEntityIds: selectedTrackEntityIds
+	}) : [];
 	const trackOptions = activeClip ? availableTrackDefinitions(project, activeClip) : [];
 	const selectedTrackOption = trackOptions.find((candidate) => candidate.value === trackDefinitionValue) ?? trackOptions[0];
 	const selectedRow = trackRows.find((row) => row.track.id === selectedTrackId) ?? trackRows[0];
@@ -726,6 +784,23 @@ const AnimateTimeline = function AnimateTimeline({
 		? selectedRow.track.keys.find((key) => key.id === selectedKeyMarker.keyId)
 		: undefined;
 	const selectedEvent = activeClip?.events.find((event) => event.id === selectedEventId);
+	const contextForTimelineKeys = function contextForTimelineKeys(keys: readonly TimelineKeyReference[]): InspectorContext {
+		if (!activeClip || keys.length === 0) {
+			return { kind: 'none' };
+		}
+
+		const first = keys[0];
+		const track = first ? trackRows.find((row) => row.track.id === first.trackId)?.track : undefined;
+
+		if (keys.length === 1 && first && track?.kind === 'slot-draw-order') {
+			return { kind: 'draw-order', clipId: activeClip.id, trackId: track.id, keyId: first.keyId };
+		}
+		if (keys.length === 1 && first && track?.kind === 'slot-attachment') {
+			return { kind: 'attachment-swap', clipId: activeClip.id, trackId: track.id, keyId: first.keyId, slotId: track.targetId };
+		}
+
+		return { kind: 'key', clipId: activeClip.id, keys };
+	};
 	const submitCreateTrack = function submitCreateTrack(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 
@@ -738,6 +813,9 @@ const AnimateTimeline = function AnimateTimeline({
 		if (id) {
 			setSelectedTrackId(id);
 			setSelectedKeys([]);
+			if (activeClip) {
+				onContextChange({ kind: 'track', clipId: activeClip.id, trackId: id });
+			}
 		}
 	};
 	const submitAddKey = function submitAddKey(event: FormEvent<HTMLFormElement>): void {
@@ -775,8 +853,11 @@ const AnimateTimeline = function AnimateTimeline({
 					: onAddKey(track.id, { kind: 'boolean', input: { timeSeconds, value: data.get('enabled') === 'on' } });
 
 		if (added) {
-			setSelectedKeys([{ trackId: track.id, keyId: added }]);
+			const nextKeys = [{ trackId: track.id, keyId: added }];
+
+			setSelectedKeys(nextKeys);
 			setSelectedTrackId(track.id);
+			onContextChange(contextForTimelineKeys(nextKeys));
 		}
 	};
 	const submitMoveKey = function submitMoveKey(event: FormEvent<HTMLFormElement>): void {
@@ -840,19 +921,301 @@ const AnimateTimeline = function AnimateTimeline({
 		keyId: EntityId,
 		additive: boolean
 	): void {
+		if (!activeClip) {
+			return;
+		}
+
+		const row = trackRows.find((candidate) => candidate.track.id === trackId);
+		const key = row?.keys.find((candidate) => candidate.id === keyId);
+		const reference = { trackId, keyId };
+		const selected = selectedKeys.some((candidate) => candidate.trackId === trackId && candidate.keyId === keyId);
+		const nextKeys = !additive
+			? [reference]
+			: selected
+				? selectedKeys.filter((candidate) => candidate.trackId !== trackId || candidate.keyId !== keyId)
+				: [...selectedKeys, reference];
+
 		setSelectedTrackId(trackId);
-		setSelectedKeys((current) => {
-			const selected = current.some((key) => key.trackId === trackId && key.keyId === keyId);
+		if (key) {
+			onSeekPlayback(key.frameIndex);
+		}
+		setSelectedKeys(nextKeys);
+		onContextChange(contextForTimelineKeys(nextKeys));
+	};
+	const setSelectedTimelineKeys = function setSelectedTimelineKeys(
+		keys: readonly TimelineKeyReference[],
+		additive: boolean
+	): void {
+		const uniqueKeys = keys.filter((key, index) => keys.findIndex((candidate) => candidate.trackId === key.trackId && candidate.keyId === key.keyId) === index);
 
-			if (!additive) {
-				return [{ trackId, keyId }];
-			}
-			if (selected) {
-				return current.filter((key) => key.trackId !== trackId || key.keyId !== keyId);
-			}
+		const nextKeys = additive
+			? [...selectedKeys, ...uniqueKeys.filter((key) => !selectedKeys.some((candidate) => candidate.trackId === key.trackId && candidate.keyId === key.keyId))]
+			: uniqueKeys;
 
-			return [...current, { trackId, keyId }];
+		setSelectedKeys(nextKeys);
+		setSelectedTrackId(uniqueKeys[0]?.trackId);
+		onContextChange(contextForTimelineKeys(nextKeys));
+	};
+	const timelineFrameAtClientX = function timelineFrameAtClientX(clientX: number, bounds: DOMRect): number {
+		if (bounds.width <= 0) {
+			return timelineRange.startFrame;
+		}
+
+		const offset = (clientX - bounds.left) / bounds.width * timelineVisibleCount - 0.5;
+
+		return Math.max(timelineRange.startFrame, Math.min(timelineRange.endFrame, timelineRange.startFrame + Math.round(offset)));
+	};
+	const seekTimelinePointer = function seekTimelinePointer(event: Readonly<{ clientX: number; currentTarget: HTMLElement }>): void {
+		onSeekPlayback(timelineFrameAtClientX(event.clientX, event.currentTarget.getBoundingClientRect()));
+	};
+	const timelinePropertyRows = function timelinePropertyRows(): readonly Readonly<{ trackId: EntityId; frameIndex: number; keyId: EntityId }>[] {
+		return groupedRows.flatMap((row) => {
+			const trackId = row.trackId;
+
+			return row.kind === 'property' && trackId
+				? row.keys.map((key) => ({ trackId, frameIndex: key.frameIndex, keyId: key.id }))
+				: [];
 		});
+	};
+	const timelineGroupIds = groupedRows.flatMap((row) => row.kind === 'entity' ? [row.id] : []);
+	const toggleTimelineGroup = function toggleTimelineGroup(rowId: string): void {
+		const expanded = new Set(expandedRowIds.size === 0 ? timelineGroupIds : expandedRowIds);
+
+		if (expanded.has(rowId)) {
+			expanded.delete(rowId);
+		} else {
+			expanded.add(rowId);
+		}
+
+		onExpandedRowIdsChange(expanded);
+	};
+	const selectTimelineRow = function selectTimelineRow(row: TimelineRow, additive: boolean): void {
+		const entity = selectableEntityForTimelineRow(project, row);
+
+		if (entity) {
+			onSelectEntity(entity, additive);
+		}
+		if (row.trackId) {
+			setSelectedTrackId(row.trackId);
+			setSelectedKeys([]);
+			if (activeClip) {
+				onContextChange({ kind: 'track', clipId: activeClip.id, trackId: row.trackId });
+			}
+		}
+	};
+	const beginKeyPointerDrag = function beginKeyPointerDrag(
+		event: ReactPointerEvent<HTMLButtonElement>,
+		trackId: EntityId,
+		keyId: EntityId
+	): void {
+		if (event.button !== 0 || !activeClip) {
+			return;
+		}
+
+		event.stopPropagation();
+		const reference = { trackId, keyId };
+		const alreadySelected = selectedKeys.some((key) => key.trackId === trackId && key.keyId === keyId);
+		const keysForDrag = alreadySelected ? selectedKeys : [reference];
+
+		keyDragRef.current = {
+			pointerId: event.pointerId,
+			trackId,
+			keyId,
+			startX: event.clientX,
+			selectedKeys: keysForDrag
+		};
+		keyDragDeltaRef.current = 0;
+		keyDragClickSuppressedRef.current = false;
+		event.currentTarget.setPointerCapture(event.pointerId);
+	};
+	const updateKeyPointerDrag = function updateKeyPointerDrag(event: ReactPointerEvent<HTMLButtonElement>): void {
+		const session = keyDragRef.current;
+
+		if (!session || session.pointerId !== event.pointerId || !activeClip) {
+			return;
+		}
+
+		const deltaPixels = event.clientX - session.startX;
+
+		if (Math.abs(deltaPixels) < 3) {
+			return;
+		}
+
+		keyDragClickSuppressedRef.current = true;
+		keyDragDeltaRef.current = Math.round(deltaPixels / timelineViewport.pixelsPerFrame);
+		setTimelineKeyDragDelta(keyDragDeltaRef.current);
+		setSelectedTrackId(session.trackId);
+		setSelectedKeys(session.selectedKeys);
+	};
+	const endKeyPointerDrag = function endKeyPointerDrag(
+		event: ReactPointerEvent<HTMLButtonElement>,
+		cancelled: boolean
+	): void {
+		const session = keyDragRef.current;
+
+		if (!session || session.pointerId !== event.pointerId) {
+			return;
+		}
+
+		if (!cancelled && activeClip && keyDragClickSuppressedRef.current) {
+			const plan = planKeyDrag(activeClip, session.selectedKeys, event.clientX - session.startX, timelineViewport.pixelsPerFrame);
+
+			if (plan.ok && plan.value.deltaFrames !== 0) {
+				onRetimeKeys(session.selectedKeys, plan.value.deltaFrames);
+				setTimelineNotice(`Moved ${session.selectedKeys.length} key${session.selectedKeys.length === 1 ? '' : 's'} by ${plan.value.deltaFrames} frame${Math.abs(plan.value.deltaFrames) === 1 ? '' : 's'}.`);
+			} else if (!plan.ok) {
+				setTimelineNotice(plan.error);
+			}
+		}
+
+		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+			event.currentTarget.releasePointerCapture(event.pointerId);
+		}
+		keyDragRef.current = undefined;
+		keyDragDeltaRef.current = 0;
+		setTimelineKeyDragDelta(0);
+	};
+	const beginTimelineMarquee = function beginTimelineMarquee(event: ReactPointerEvent<HTMLDivElement>, trackId: EntityId): void {
+		if (event.button !== 0 || !activeClip) {
+			return;
+		}
+
+		event.stopPropagation();
+		marqueeRef.current = {
+			pointerId: event.pointerId,
+			trackId,
+			startX: event.clientX,
+			startY: event.clientY,
+			additive: event.metaKey || event.ctrlKey
+		};
+		event.currentTarget.setPointerCapture(event.pointerId);
+	};
+	const updateTimelineMarquee = function updateTimelineMarquee(event: ReactPointerEvent<HTMLDivElement>): void {
+		const session = marqueeRef.current;
+
+		if (!session || session.pointerId !== event.pointerId) {
+			return;
+		}
+
+		const bounds = event.currentTarget.getBoundingClientRect();
+		const left = Math.min(session.startX, event.clientX) - bounds.left;
+		const top = Math.min(session.startY, event.clientY) - bounds.top;
+
+		if (Math.hypot(event.clientX - session.startX, event.clientY - session.startY) >= 3) {
+			setTimelineMarquee({
+				left,
+				top,
+				width: Math.abs(event.clientX - session.startX),
+				height: Math.abs(event.clientY - session.startY)
+			});
+		}
+	};
+	const endTimelineMarquee = function endTimelineMarquee(
+		event: ReactPointerEvent<HTMLDivElement>,
+		cancelled: boolean
+	): void {
+		const session = marqueeRef.current;
+
+		if (!session || session.pointerId !== event.pointerId) {
+			return;
+		}
+
+		const didMove = Math.hypot(event.clientX - session.startX, event.clientY - session.startY) >= 3;
+
+		if (!cancelled && activeClip) {
+			const bounds = event.currentTarget.getBoundingClientRect();
+
+			if (!didMove) {
+				onSeekPlayback(timelineFrameAtClientX(event.clientX, bounds));
+			} else {
+				const startFrame = timelineFrameAtClientX(session.startX, bounds);
+				const endFrame = timelineFrameAtClientX(event.clientX, bounds);
+				const minimum = Math.min(startFrame, endFrame);
+				const maximum = Math.max(startFrame, endFrame);
+				const selected = timelinePropertyRows()
+					.filter((key) => key.frameIndex >= minimum && key.frameIndex <= maximum)
+					.map(({ trackId, keyId }) => ({ trackId, keyId }));
+
+				setSelectedTimelineKeys(selected, session.additive);
+			}
+		}
+
+		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+			event.currentTarget.releasePointerCapture(event.pointerId);
+		}
+		marqueeRef.current = undefined;
+		setTimelineMarquee(undefined);
+	};
+	const timelineKeyDown = function timelineKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+		const target = event.target;
+		const isFormTarget = target instanceof HTMLInputElement
+			|| target instanceof HTMLTextAreaElement
+			|| target instanceof HTMLSelectElement
+			|| target instanceof HTMLElement && target.isContentEditable;
+
+		if (isFormTarget) {
+			return;
+		}
+
+		const modifier = event.metaKey || event.ctrlKey;
+		const key = event.key.toLowerCase();
+
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			keyDragRef.current = undefined;
+			marqueeRef.current = undefined;
+			setTimelineKeyDragDelta(0);
+			setTimelineMarquee(undefined);
+			return;
+		}
+		if (modifier && key === 'c') {
+			event.preventDefault();
+			event.stopPropagation();
+			if (!activeClip) {
+				return;
+			}
+
+			const copied = createTimelineClipboard(activeClip, selectedKeys);
+
+			if (copied.ok) {
+				setTimelineClipboard(copied.value);
+				setTimelineNotice(`Copied ${copied.value.keys.length} key${copied.value.keys.length === 1 ? '' : 's'}.`);
+			} else {
+				setTimelineNotice(copied.error);
+			}
+			return;
+		}
+		if (modifier && key === 'v') {
+			event.preventDefault();
+			event.stopPropagation();
+			if (!timelineClipboard) {
+				setTimelineNotice('The key clipboard is empty.');
+				return;
+			}
+
+			onPasteKeys(timelineClipboard);
+			setTimelineNotice(`Pasted ${timelineClipboard.keys.length} key${timelineClipboard.keys.length === 1 ? '' : 's'}.`);
+			return;
+		}
+		if (!modifier && (key === 'delete' || key === 'backspace') && selectedKeys.length > 0) {
+			event.preventDefault();
+			event.stopPropagation();
+			deleteSelectedKeys();
+			return;
+		}
+		if (!modifier && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && selectedKeys.length > 0 && activeClip) {
+			event.preventDefault();
+			event.stopPropagation();
+			const delta = event.key === 'ArrowLeft' ? -1 : 1;
+			const plan = planNudgeKeys(activeClip, selectedKeys, delta);
+
+			if (plan.ok && plan.value.deltaFrames !== 0) {
+				onRetimeKeys(selectedKeys, plan.value.deltaFrames);
+			} else if (!plan.ok) {
+				setTimelineNotice(plan.error);
+			}
+		}
 	};
 	const deleteSelectedKeys = function deleteSelectedKeys(): void {
 		onDeleteKeys(selectedKeys);
@@ -864,6 +1227,52 @@ const AnimateTimeline = function AnimateTimeline({
 			setSelectedTrackId(undefined);
 			setSelectedKeys([]);
 		}
+	};
+	const renderSummaryKeys = function renderSummaryKeys(row: TimelineRow): readonly ReactElement[] {
+		return row.keys
+			.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame)
+			.map((key) => (
+				<span
+					aria-label={`Keys at frame ${key.frameIndex + 1}`}
+					className="timeline-summary-key"
+					key={key.id}
+					style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
+				/>
+			));
+	};
+	const renderTimelineKeys = function renderTimelineKeys(row: TimelineRow, trackId: EntityId): readonly ReactElement[] {
+		return row.keys
+			.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame)
+			.map((key) => {
+				const selected = selectedKeys.some((candidate) => candidate.keyId === key.id && candidate.trackId === trackId);
+				const frameIndex = key.frameIndex + (selected ? timelineKeyDragDelta : 0);
+
+				return (
+					<button
+						aria-label={`Key frame ${key.frameIndex + 1}`}
+						className={selected ? 'track-key is-selected' : 'track-key'}
+						data-key-id={key.id}
+						key={key.id}
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+
+							if (keyDragClickSuppressedRef.current) {
+								keyDragClickSuppressedRef.current = false;
+								return;
+							}
+
+							selectAnimationKey(trackId, key.id, event.metaKey || event.ctrlKey);
+						}}
+						onPointerCancel={(event) => endKeyPointerDrag(event, true)}
+						onPointerDown={(event) => beginKeyPointerDrag(event, trackId, key.id)}
+						onPointerMove={updateKeyPointerDrag}
+						onPointerUp={(event) => endKeyPointerDrag(event, false)}
+						style={{ left: `${((frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
+						title={`Frame ${key.frameIndex + 1} · drag to retime`}
+					/>
+				);
+			});
 	};
 
 	return (
@@ -881,7 +1290,7 @@ const AnimateTimeline = function AnimateTimeline({
 					<button className="secondary-button" type="button" onClick={onCreateClip}>Create animation clip</button>
 				</div>
 			) : (
-				<div className="animate-timeline" data-testid="animate-timeline">
+				<div className="animate-timeline" data-testid="animate-timeline" tabIndex={0} onKeyDown={timelineKeyDown}>
 					{activeClip && (
 						<div className="timeline-shell">
 							<div className="timeline-sticky">
@@ -900,10 +1309,10 @@ const AnimateTimeline = function AnimateTimeline({
 										))}
 									</div>
 									<div className="timeline-detail-actions" aria-label="Timeline details">
-										<button className="quiet-button" type="button" aria-expanded={openDetails === 'clip'} onClick={(event) => openDetailSurface('clip', event.currentTarget)}>Clip settings</button>
-										<button className="quiet-button" type="button" aria-expanded={openDetails === 'track'} onClick={(event) => openDetailSurface('track', event.currentTarget)}>Track details</button>
-										<button className="quiet-button" type="button" aria-expanded={openDetails === 'key'} disabled={selectedKeyMarkers.length === 0} onClick={(event) => openDetailSurface('key', event.currentTarget)}>Key details</button>
-										<button className="quiet-button" type="button" aria-expanded={openDetails === 'event'} disabled={!selectedEvent} onClick={(event) => openDetailSurface('event', event.currentTarget)}>Event details</button>
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'clip'} onClick={(event) => { openDetailSurface('clip', event.currentTarget); onContextChange({ kind: 'clip', clipId: activeClip.id }); }}>Clip settings</button>
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'track'} onClick={(event) => { openDetailSurface('track', event.currentTarget); onContextChange(selectedTrack ? { kind: 'track', clipId: activeClip.id, trackId: selectedTrack.id } : { kind: 'clip', clipId: activeClip.id }); }}>Track details</button>
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'key'} disabled={selectedKeyMarkers.length === 0} onClick={(event) => { openDetailSurface('key', event.currentTarget); onContextChange(contextForTimelineKeys(selectedKeys)); }}>Key details</button>
+										<button className="quiet-button" type="button" aria-expanded={openDetails === 'event'} disabled={!selectedEvent} onClick={(event) => { openDetailSurface('event', event.currentTarget); if (selectedEvent) { onContextChange({ kind: 'event', clipId: activeClip.id, eventId: selectedEvent.id }); } }}>Event details</button>
 									</div>
 								</div>
 								<div className="clip-playback-controls" aria-label="Playback controls">
@@ -928,6 +1337,20 @@ const AnimateTimeline = function AnimateTimeline({
 										<span className="sr-only">Filter tracks</span>
 										<input type="search" aria-label="Filter tracks" placeholder="Filter tracks" value={trackFilter} onChange={(event) => setTrackFilter(event.target.value)} />
 									</label>
+									<label className="timeline-row-mode-field">
+										<span className="sr-only">Timeline rows</span>
+										<select aria-label="Timeline rows" value={rowMode} onChange={(event) => {
+											const nextMode = event.target.value;
+
+											if (nextMode === 'selection' || nextMode === 'all-keyed') {
+												onRowModeChange(nextMode);
+											}
+										}}>
+											<option value="selection">Selection</option>
+											<option value="all-keyed">All keyed</option>
+										</select>
+									</label>
+									{pinnedEntityIds.size > 0 && <button className="quiet-button" type="button" onClick={onClearPinnedEntities}>Clear pins</button>}
 									<span className="timeline-zoom-readout">{Math.round(timelineViewport.pixelsPerFrame / 32 * 100)}%</span>
 								</div>
 							</div>
@@ -935,6 +1358,7 @@ const AnimateTimeline = function AnimateTimeline({
 								<div className="timeline-ruler-meta">
 									<span aria-label="Timeline frame range">Frames {timelineRange.startFrame + 1}–{timelineRange.endFrame + 1} of {frameCount}</span>
 									<span className="muted-copy">{trackRows.length} matching track{trackRows.length === 1 ? '' : 's'}</span>
+									{timelineNotice && <span className="timeline-notice" role="status">{timelineNotice}</span>}
 								</div>
 								<div className="dopesheet" aria-label="Animation tracks">
 									<div className="dopesheet-ruler">
@@ -947,24 +1371,58 @@ const AnimateTimeline = function AnimateTimeline({
 									</div>
 									{trackRows.length === 0 ? (
 										<div className="dopesheet-empty">No typed tracks match this filter.</div>
-									) : trackRows.map((row) => (
-										<div className={selectedRow?.track.id === row.track.id ? 'track-row is-selected' : 'track-row'} data-track-id={row.track.id} key={row.track.id} onClick={() => { setSelectedTrackId(row.track.id); setSelectedKeys([]); }}>
-											<div className="track-row-label"><span>{row.label}</span><small>{row.track.kind}</small></div>
-											<div className="track-key-lane">
-												{row.keys.filter((key) => key.frameIndex >= timelineRange.startFrame && key.frameIndex <= timelineRange.endFrame).map((key) => (
-													<button
-														aria-label={`Key frame ${key.frameIndex + 1}`}
-														className={selectedKeys.some((selected) => selected.keyId === key.id && selected.trackId === row.track.id) ? 'track-key is-selected' : 'track-key'}
-														key={key.id}
-														onClick={(event) => { event.stopPropagation(); selectAnimationKey(row.track.id, key.id, event.metaKey || event.ctrlKey); }}
-														type="button"
-														style={{ left: `${((key.frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
-														title={`Frame ${key.frameIndex + 1}`}
-													/>
-												))}
-											</div>
-										</div>
-									))}
+									) : groupedRows.map((row) => {
+										if (row.kind === 'overview') {
+											return (
+														<div className="track-row timeline-group-row timeline-overview-row" data-timeline-row-id={row.id} key={row.id}>
+													<div className="track-row-label"><span>Overview</span><small>{row.subLabel}</small></div>
+													<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderSummaryKeys(row)}</div>
+												</div>
+											);
+										}
+										if (row.kind === 'entity') {
+											return (
+																<div className={row.selected ? 'track-row timeline-group-row is-selected' : 'track-row timeline-group-row'} data-entity-id={row.entityId} data-timeline-row-id={row.id} key={row.id}>
+													<div className="timeline-group-label">
+														<button className="timeline-row-expander" type="button" aria-expanded={row.expanded} aria-label={`${row.expanded ? 'Collapse' : 'Expand'} ${row.label}`} onClick={() => toggleTimelineGroup(row.id)}>{row.expanded ? '▾' : '▸'}</button>
+														<button className="timeline-row-select" type="button" aria-pressed={row.selected} onClick={(event) => selectTimelineRow(row, event.metaKey || event.ctrlKey)}><span>{row.label}</span><small>{row.subLabel}</small></button>
+														<button className={pinnedEntityIds.has(row.entityId ?? '') ? 'timeline-pin is-pinned' : 'timeline-pin'} type="button" aria-pressed={pinnedEntityIds.has(row.entityId ?? '')} aria-label={`${pinnedEntityIds.has(row.entityId ?? '') ? 'Unpin' : 'Pin'} ${row.label} timeline rows`} onClick={(event) => { event.stopPropagation(); if (row.entityId) { onTogglePinnedEntity(row.entityId); } }}>{pinnedEntityIds.has(row.entityId ?? '') ? '●' : '○'}</button>
+													</div>
+													<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderSummaryKeys(row)}</div>
+												</div>
+											);
+										}
+						if (row.kind === 'property' && row.trackId) {
+							const trackId = row.trackId;
+							const track = trackRows.find((candidate) => candidate.track.id === trackId);
+
+											if (!track) {
+												return null;
+											}
+
+											return (
+							<div className={selectedRow?.track.id === trackId ? 'track-row timeline-property-row is-selected' : 'track-row timeline-property-row'} data-track-id={trackId} data-timeline-row-id={row.id} key={row.id} onClick={(event) => selectTimelineRow(row, event.metaKey || event.ctrlKey)}>
+													<div className="track-row-label" style={{ paddingLeft: `${row.depth * 16}px` }}><span>{row.label}</span><small>{row.subLabel ?? track.track.kind}</small></div>
+													<div className="track-key-lane" onClick={seekTimelinePointer} onPointerCancel={(event) => endTimelineMarquee(event, true)} onPointerDown={(event) => beginTimelineMarquee(event, trackId)} onPointerMove={updateTimelineMarquee} onPointerUp={(event) => endTimelineMarquee(event, false)}>
+														{renderTimelineKeys(row, trackId)}
+														{timelineMarquee && marqueeRef.current?.trackId === trackId && <div className="timeline-marquee" style={{ left: timelineMarquee.left, top: timelineMarquee.top, width: timelineMarquee.width, height: timelineMarquee.height }} />}
+													</div>
+												</div>
+											);
+										}
+										if (row.kind === 'draw-order') {
+											const track = trackRows.find((candidate) => candidate.track.kind === 'slot-draw-order');
+
+											return track ? (
+														<div className="track-row timeline-group-row timeline-special-row" data-track-id={track.track.id} data-timeline-row-id={row.id} key={row.id}>
+													<div className="track-row-label"><span>{row.label}</span><small>{row.subLabel}</small></div>
+													<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderTimelineKeys(row, track.track.id)}</div>
+												</div>
+											) : null;
+										}
+
+										return null;
+									})}
 									<div className="event-track" aria-label="Animation events">
 										<div className="track-row-label event-row-label">
 											<div><span>Events</span><small>{activeClip.events.length} event{activeClip.events.length === 1 ? '' : 's'}</small></div>
@@ -985,7 +1443,7 @@ const AnimateTimeline = function AnimateTimeline({
 															aria-label={`Event ${event.name} at frame ${frameIndex + 1}`}
 															className={selectedEventId === event.id ? 'event-key is-selected' : 'event-key'}
 															key={event.id}
-															onClick={() => { setSelectedEventId(event.id); setEventError(undefined); }}
+															onClick={() => { setSelectedEventId(event.id); setEventError(undefined); onSeekPlayback(frameIndex); onContextChange({ kind: 'event', clipId: activeClip.id, eventId: event.id }); }}
 															type="button"
 															style={{ left: `${((frameIndex - timelineRange.startFrame + 0.5) / timelineVisibleCount) * 100}%` }}
 															title={`${event.name} · frame ${frameIndex + 1}`}
@@ -1148,7 +1606,10 @@ const AnimateTimeline = function AnimateTimeline({
 													const copiedId = onCopyKey(selectedRow.track.id, selectedKeyMarker.keyId, Math.round(Number(frame.value)) - 1);
 
 													if (copiedId) {
-														setSelectedKeys([{ trackId: selectedRow.track.id, keyId: copiedId }]);
+														const nextKeys = [{ trackId: selectedRow.track.id, keyId: copiedId }];
+
+														setSelectedKeys(nextKeys);
+														onContextChange(contextForTimelineKeys(nextKeys));
 													}
 												}
 											}}>Copy key</button>
@@ -1388,8 +1849,14 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [commandError, setCommandError] = useState<string | undefined>(undefined);
 	const [assetError, setAssetError] = useState<string | undefined>(undefined);
 	const [selection, setSelectionState] = useState<Selection>(createSelection);
-	const [selectionHistory, setSelectionHistory] = useState<readonly Selection[]>([]);
-	const selectionHistoryCursorRef = useRef(-1);
+	const [inspectorContext, setInspectorContext] = useState<InspectorContext>({ kind: 'none' });
+	const initialSelectionHistory = presentation.selectionHistory.flatMap((id) => {
+		const entity = selectableEntityForId(startup.project, id);
+
+		return entity ? [[entity]] : [];
+	});
+	const [selectionHistory, setSelectionHistory] = useState<readonly Selection[]>(initialSelectionHistory);
+	const selectionHistoryCursorRef = useRef(initialSelectionHistory.length - 1);
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
 	const [gridSettings, setGridSettings] = useState<GridSettings>(() => ({ ...DEFAULT_GRID_SETTINGS }));
 	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
@@ -1411,6 +1878,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [storageReport, setStorageReport] = useState<StorageReport | undefined>(undefined);
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
+	const [assetImportSummary, setAssetImportSummary] = useState<AssetImportSummary | undefined>(undefined);
 	const [assetQuery, setAssetQuery] = useState('');
 	const [assetBlobs, setAssetBlobs] = useState<ProjectAssetBlobs>(startup.assets);
 	const autosave = useMemo(() => createAutosaveScheduler(startup.repository, {
@@ -1424,6 +1892,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		onError: (error) => setPersistenceError(error.message)
 	}), [startup.repository]);
 	const project = currentProject(history);
+	const hiddenEntityIds = useMemo(() => new Set(presentation.hiddenEntityIds), [presentation.hiddenEntityIds]);
 	const projectDiagnostics = validateProject(project);
 	const canvasWarnings = canvasWarningsForSetup(project);
 	const requiredStorageBytes = Array.from(assetBlobs.values()).reduce((total, blob) => total + blob.size, 0);
@@ -1446,12 +1915,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, mode, project]);
 	const playbackRef = useRef<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	playbackRef.current = playback;
-	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
 	const updatePresentation = function updatePresentation(update: (current: ProjectUiPreferences) => ProjectUiPreferences): void {
 		setPresentation(update);
 	};
 	const setSelection = function setSelection(nextSelection: Selection): void {
 		setSelectionState(nextSelection);
+		setInspectorContext(nextSelection.length > 0 ? { kind: 'entity', selection: nextSelection } : { kind: 'none' });
 		const target = nextSelection.at(-1);
 
 		if (!target || target.kind === 'asset') {
@@ -1493,6 +1962,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setAssetBlobs(nextAssets);
 		setPresentation(projectUiPreferencesFor(uiPreferences, nextProject));
 		setSelection(createSelection());
+		setInspectorContext({ kind: 'none' });
 		setSelectionHistory([]);
 		selectionHistoryCursorRef.current = -1;
 		setInlineRenameId(undefined);
@@ -1698,6 +2168,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			'step-forward': () => stepActivePlayback(1),
 			'open-reference': () => setShortcutPanelOpen(true),
 			'rename-selection': () => {
+				const selected = selection.at(-1);
+
+				if (selected && selected.kind !== 'asset') {
+					setInlineRenameId(selected.id);
+					window.requestAnimationFrame(() => {
+						const input = document.querySelector<HTMLInputElement>('.rig-inline-rename');
+
+						input?.focus();
+						input?.select();
+					});
+					return;
+				}
+
 				renameInputRef.current?.focus();
 				renameInputRef.current?.select();
 			},
@@ -1736,7 +2219,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		return function cleanup(): void {
 			window.removeEventListener('keydown', onKeyDown);
 		};
-	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, activePlayback.playing, history, mode]);
+	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, activePlayback.playing, history, mode, selection]);
 
 	const commitHistory = function commitHistory(
 		nextHistory: HistoryState,
@@ -1813,6 +2296,14 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 
+	const updateSharedClipPlayback = function updateSharedClipPlayback(clipId: EntityId, settings: ClipPlaybackSettings): void {
+		applyCommand({ kind: 'update-clip-playback', clipId, settings });
+	};
+
+	const renameSharedClip = function renameSharedClip(clipId: EntityId, name: string): void {
+		applyCommand({ kind: 'rename-clip', clipId, name });
+	};
+
 	const addAnimationEvent = function addAnimationEvent(input: EventKeyInput): EntityId | undefined {
 		if (!activeClip) {
 			return undefined;
@@ -1854,6 +2345,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const deleteAnimationTrack = function deleteAnimationTrack(trackId: EntityId): void {
 		if (activeClip) {
 			applyCommand({ kind: 'delete-track', clipId: activeClip.id, trackId });
+		}
+	};
+
+	const deleteSharedTrack = function deleteSharedTrack(clipId: EntityId, trackId: EntityId): void {
+		if (applyCommand({ kind: 'delete-track', clipId, trackId })) {
+			setInspectorContext({ kind: 'none' });
 		}
 	};
 
@@ -1923,6 +2420,114 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 
+	const updateSharedNumberKeys = function updateSharedNumberKeys(
+		clipId: EntityId,
+		changes: readonly NumberKeyChange[]
+	): void {
+		const clip = project.clips.find((candidate) => candidate.id === clipId);
+
+		if (!clip || changes.length === 0) {
+			return;
+		}
+
+		const entries = changes.flatMap((change) => {
+			const track = clip.tracks.find((candidate) => candidate.id === change.trackId);
+
+			if (!track || !isNumericTrack(track)) {
+				return [];
+			}
+
+			const key = track.keys.find((candidate) => candidate.id === change.keyId);
+
+			return key ? [{ change, key }] : [];
+		});
+		const retimeChanges = entries.flatMap(({ change, key }) => change.timeSeconds !== undefined && change.timeSeconds !== key.timeSeconds
+			? [{ trackId: change.trackId, keyId: change.keyId, timeSeconds: change.timeSeconds }]
+			: []);
+		const valueCommands = entries.flatMap(({ change, key }) => {
+			const timeSeconds = change.timeSeconds ?? key.timeSeconds;
+			const value = change.value ?? key.value;
+
+			return Object.is(timeSeconds, key.timeSeconds) && Object.is(value, key.value)
+				? []
+				: [{
+					kind: 'set-number-key' as const,
+					id: key.id,
+					clipId,
+					trackId: change.trackId,
+					input: { timeSeconds, value, interpolation: key.interpolation, curve: key.curve }
+				}];
+		});
+		const commands: readonly ProjectCommand[] = [
+			...(retimeChanges.length > 0 ? [{ kind: 'retime-keys' as const, clipId, changes: retimeChanges }] : []),
+			...valueCommands
+		];
+
+		applyCommandSequence(commands);
+	};
+
+	const updateSharedInterpolation = function updateSharedInterpolation(
+		clipId: EntityId,
+		changes: readonly NumberKeyChange[],
+		input: NumberKeyInterpolationInput
+	): void {
+		const clip = project.clips.find((candidate) => candidate.id === clipId);
+
+		if (!clip) {
+			return;
+		}
+
+		const commands = changes.flatMap((change) => {
+			const track = clip.tracks.find((candidate) => candidate.id === change.trackId);
+
+			if (!track || !isNumericTrack(track)) {
+				return [];
+			}
+
+			const key = track.keys.find((candidate) => candidate.id === change.keyId);
+
+			return key
+				? [{ kind: 'set-number-key-interpolation' as const, clipId, trackId: track.id, keyId: key.id, input }]
+				: [];
+		});
+
+		if (commands.length > 0) {
+			applyCommandSequence(commands);
+		}
+	};
+
+	const updateSharedEvent = function updateSharedEvent(clipId: EntityId, eventId: EntityId, input: EventKeyUpdate): void {
+		applyCommand({ kind: 'update-event', clipId, eventId, input });
+	};
+
+	const moveSharedEvent = function moveSharedEvent(clipId: EntityId, eventId: EntityId, timeSeconds: number): void {
+		applyCommand({ kind: 'move-event', clipId, eventId, timeSeconds });
+	};
+
+	const deleteSharedEvent = function deleteSharedEvent(clipId: EntityId, eventId: EntityId): void {
+		if (applyCommand({ kind: 'delete-event', clipId, eventId })) {
+			setInspectorContext({ kind: 'none' });
+		}
+	};
+
+	const updateSharedAttachmentKey = function updateSharedAttachmentKey(
+		clipId: EntityId,
+		trackId: EntityId,
+		keyId: EntityId,
+		value: EntityId | null
+	): void {
+		applyCommand({ kind: 'set-attachment-key', clipId, trackId, keyId, value });
+	};
+
+	const updateSharedDrawOrderKey = function updateSharedDrawOrderKey(
+		clipId: EntityId,
+		trackId: EntityId,
+		keyId: EntityId,
+		value: readonly EntityId[]
+	): void {
+		applyCommand({ kind: 'set-draw-order-key', clipId, trackId, keyId, value });
+	};
+
 	const deleteAnimationKeys = function deleteAnimationKeys(
 		keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[]
 	): void {
@@ -1946,20 +2551,30 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			return;
 		}
 
-		const changes = keys.flatMap((selected): readonly KeyTimeChange[] => {
-			const track = activeClip.tracks.find((candidate) => candidate.id === selected.trackId);
-			const key = track?.keys.find((candidate) => candidate.id === selected.keyId);
+		const plan = planKeyDrag(activeClip, keys, deltaFrames, 1);
 
-			return key ? [{
-				trackId: selected.trackId,
-				keyId: selected.keyId,
-				timeSeconds: key.timeSeconds + deltaFrames / activeClip.fps
-			}] : [];
-		});
-
-		if (changes.length === keys.length) {
-			applyCommand({ kind: 'retime-keys', clipId: activeClip.id, changes });
+		if (!plan.ok) {
+			setCommandError(plan.error);
+			return;
 		}
+		if (plan.value.deltaFrames !== 0) {
+			applyCommand({ kind: 'retime-keys', clipId: activeClip.id, changes: plan.value.changes });
+		}
+	};
+	const pasteAnimationKeys = function pasteAnimationKeys(clipboard: TimelineClipboard): void {
+		if (!activeClip) {
+			setCommandError('Create or select an animation clip before pasting keys.');
+			return;
+		}
+
+		const plan = planPasteTimelineClipboard(activeClip, clipboard, activePlayback.frameIndex, createEntityId, project);
+
+		if (!plan.ok) {
+			setCommandError(plan.error);
+			return;
+		}
+
+		applyCommandSequence(plan.value);
 	};
 
 	const toggleActivePlayback = function toggleActivePlayback(): void {
@@ -1988,11 +2603,15 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 	const addImportedImages = function addImportedImages(result: AssetImportResult): void {
 		if (!result.ok) {
+			setAssetImportSummary(undefined);
 			setAssetError(result.error);
+			setPresentation((current) => ({ ...current, rightDockTab: 'assets' }));
 			return;
 		}
 
-		const candidates = result.value.map((image) => {
+		const existingPaths = new Set(project.assets.map((asset) => asset.relativePath));
+		const conflicts = result.value.flatMap((image) => existingPaths.has(image.relativePath) ? [image.relativePath] : []);
+		const candidates = result.value.filter((image) => !existingPaths.has(image.relativePath)).map((image) => {
 			const id = createEntityId();
 
 			return {
@@ -2007,6 +2626,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				blob: blobForImage(image)
 			};
 		});
+		const summary: AssetImportSummary = {
+			imported: candidates.length,
+			skipped: result.skipped ?? [],
+			conflicts
+		};
+
+		setAssetImportSummary(summary);
+		setPresentation((current) => ({ ...current, rightDockTab: 'assets' }));
+
+		if (candidates.length === 0) {
+			setAssetError(undefined);
+			return;
+		}
 		const nextProject = dispatchCommand(history, {
 			kind: 'add-image-assets',
 			assets: candidates.map(({ id, asset }) => ({ id, asset }))
@@ -2025,12 +2657,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setAssetBlobs(nextAssets);
 		setAssetError(undefined);
 		commitHistory(nextProject.value, nextAssets);
-		setPresentation((current) => ({ ...current, rightDockTab: 'assets' }));
 	};
 
 	const importDirectory = async function importDirectory(): Promise<void> {
 		setIsImporting(true);
 		setAssetError(undefined);
+		setAssetImportSummary(undefined);
 
 		try {
 			addImportedImages(await pickImageDirectory());
@@ -2064,6 +2696,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		setIsImporting(true);
 		setAssetError(undefined);
+		setAssetImportSummary(undefined);
 		void importDroppedItems(items)
 			.then(addImportedImages)
 			.catch((error: unknown) => setAssetError(errorMessage(error)))
@@ -2117,14 +2750,21 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const dropAssetOnCanvas = function dropAssetOnCanvas(assetId: string, point: ViewportPoint): void {
 		const asset = project.assets.find((candidate) => candidate.id === assetId);
 		const root = project.bones.find((bone) => bone.parentId === null);
+		const selectedForDrop = selection.at(-1);
+		const selectedBoneId = selectedForDrop?.kind === 'bone' ? selectedForDrop.id : undefined;
+		const targetBone = selectedBoneId ? project.bones.find((bone) => bone.id === selectedBoneId) : undefined;
 
 		if (!asset) {
 			setAssetError('The dragged image is no longer in this project.');
 			return;
 		}
+		if (root && !targetBone) {
+			setAssetError('Select a bone before dropping an image on the canvas.');
+			return;
+		}
 
-		const localPoint = root
-			? localPointForBone(evaluateBoneWorldMatrices(project), root.id, point)
+		const localPoint = targetBone
+			? localPointForBone(evaluateBoneWorldMatrices(project), targetBone.id, point)
 			: point;
 
 		if (!localPoint) {
@@ -2132,15 +2772,15 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			return;
 		}
 
-		const rootId: EntityId = root?.id ?? createEntityId();
+		const targetBoneId: EntityId = targetBone?.id ?? createEntityId();
 		const slotId = createEntityId();
 		const attachmentId = createEntityId();
 		const commands: readonly ProjectCommand[] = [
-			...(root ? [] : [{ kind: 'create-bone' as const, id: rootId, input: { name: 'root', parentId: null } }]),
+			...(targetBone ? [] : [{ kind: 'create-bone' as const, id: targetBoneId, input: { name: 'root', parentId: null } }]),
 			{
 				kind: 'create-slot' as const,
 				id: slotId,
-				input: { name: asset.name, boneId: rootId }
+				input: { name: asset.name, boneId: targetBoneId }
 			},
 			{
 				kind: 'create-image-attachment' as const,
@@ -2286,7 +2926,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 
 	const selectCanvasPoint = function selectCanvasPoint(point: ViewportPoint, additive: boolean): void {
-		const hit = hitTestProject(project, point);
+		const hit = hitTestProject(project, point, hiddenEntityIds);
 
 		if (hit) {
 			updateSelection(hit, additive);
@@ -2299,7 +2939,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 
 	const selectCanvasMarquee = function selectCanvasMarquee(bounds: Readonly<{ x: number; y: number; w: number; h: number }>, additive: boolean): void {
-		setSelectionFromSurface(selectEntities(selection, entitiesInBounds(project, bounds), additive));
+		setSelectionFromSurface(selectEntities(selection, entitiesInBounds(project, bounds, hiddenEntityIds), additive));
 	};
 
 	const dragBone = function dragBone(event: DragEvent<HTMLElement>, boneId: EntityId): void {
@@ -2360,6 +3000,72 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		? project.attachments.find((attachment) => attachment.id === selectedEntity.id)
 		: undefined;
 	const selectedTransform = selectedBone?.transform ?? selectedAttachment?.transform;
+	const selectedTransformEntities = selection.flatMap((entity): readonly SelectedTransformEntry[] => {
+		if (entity.kind === 'bone') {
+			const bone = project.bones.find((candidate) => candidate.id === entity.id);
+
+			return bone ? [{ entity, transform: bone.transform }] : [];
+		}
+		if (entity.kind === 'attachment') {
+			const attachment = project.attachments.find((candidate) => candidate.id === entity.id);
+
+			return attachment ? [{ entity, transform: attachment.transform }] : [];
+		}
+
+		return [];
+	});
+	const selectedAttachments = selection.flatMap((entity): readonly Attachment[] => {
+		if (entity.kind !== 'attachment') {
+			return [];
+		}
+
+		const attachment = project.attachments.find((candidate) => candidate.id === entity.id);
+
+		return attachment ? [attachment] : [];
+	});
+	const allSelectedTransformable = selection.length > 0 && selectedTransformEntities.length === selection.length;
+	const allSelectedImages = selection.length > 0
+		&& selectedAttachments.length === selection.length
+		&& selectedAttachments.every((attachment) => attachment.kind === 'image');
+	const allSelectedRectangles = selection.length > 0
+		&& selectedAttachments.length === selection.length
+		&& selectedAttachments.every((attachment) => attachment.kind === 'rectangle');
+	const selectedTransformValue = function selectedTransformValue(property: BoneTransformProperty): number | undefined {
+		return selectedTransformEntities.at(-1)?.transform[property] ?? selectedTransform?.[property];
+	};
+	const selectedTransformIsMixed = function selectedTransformIsMixed(property: BoneTransformProperty): boolean {
+		const values = allSelectedTransformable ? selectedTransformEntities.map((entry) => entry.transform[property]) : [];
+
+		return values.length > 1 && values.some((value) => !Object.is(value, values[0]));
+	};
+	const selectedAttachmentValue = function selectedAttachmentValue(property: 'opacity' | 'pivotX' | 'pivotY' | 'width' | 'height'): number | undefined {
+		const attachment = selectedAttachments.at(-1);
+
+		if (attachment?.kind === 'image' && (property === 'opacity' || property === 'pivotX' || property === 'pivotY')) {
+			return attachment[property];
+		}
+		if (attachment?.kind === 'rectangle' && (property === 'width' || property === 'height')) {
+			return attachment[property];
+		}
+
+		return undefined;
+	};
+	const selectedAttachmentIsMixed = function selectedAttachmentIsMixed(property: 'opacity' | 'pivotX' | 'pivotY' | 'width' | 'height'): boolean {
+		const values = allSelectedImages && (property === 'opacity' || property === 'pivotX' || property === 'pivotY')
+			? selectedAttachments.flatMap((attachment) => attachment.kind === 'image' ? [attachment[property]] : [])
+			: allSelectedRectangles && (property === 'width' || property === 'height')
+				? selectedAttachments.flatMap((attachment) => attachment.kind === 'rectangle' ? [attachment[property]] : [])
+				: [];
+
+		return values.length > 1 && values.some((value) => !Object.is(value, values[0]));
+	};
+	const assetDropHint = selectedSlot
+		? `Drop on ${selectedSlot.name} to add an attachment. Drop on the canvas after selecting a bone to create a new slot.`
+		: selectedBone
+			? `Drop on the canvas to create a slot and attachment under ${selectedBone.name}. Drop on a slot to add an attachment.`
+			: project.bones.length > 0
+				? 'Select a bone before dropping on the canvas. Drop on a slot to add an attachment.'
+				: 'Drop on the canvas to create a root bone, slot, and attachment.';
 	const renameInputRef = useRef<HTMLInputElement>(null);
 	const keyablePropertiesFor = function keyablePropertiesFor(entity: SelectableEntity | undefined): readonly KeyableProperty[] {
 		if (!entity || entity.kind === 'asset' || entity.kind === 'slot') {
@@ -2437,51 +3143,71 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 	const commitDirectProperty = function commitDirectProperty(property: NumericProperty, value: number): string | undefined {
-		if (!selectedEntity || selectedEntity.kind === 'asset' || selectedEntity.kind === 'slot') {
+		if (selection.length === 0) {
 			return 'Select a bone or attachment before editing properties.';
 		}
 
-		const currentTransform = selectedTransform;
 		const transformProperty = animationProperties.find((candidate) => candidate === property);
 		const keyableProperty: KeyableProperty | undefined = transformProperty
 			?? (property === 'opacity' || property === 'width' || property === 'height' ? property : undefined);
-		let command: ProjectCommand | undefined;
-		let currentValue: number | undefined;
+		const targets = selection.flatMap((entity): readonly DirectPropertyTarget[] => {
+			const transform = entity.kind === 'bone'
+				? project.bones.find((bone) => bone.id === entity.id)?.transform
+				: entity.kind === 'attachment'
+					? project.attachments.find((attachment) => attachment.id === entity.id)?.transform
+					: undefined;
 
-		if (transformProperty && currentTransform) {
-			currentValue = currentTransform[transformProperty];
-			const nextTransform = { ...currentTransform, [transformProperty]: value };
-			command = selectedEntity.kind === 'bone'
-				? { kind: 'update-bone-transform', boneId: selectedEntity.id, transform: nextTransform }
-				: { kind: 'update-attachment-transform', attachmentId: selectedEntity.id, transform: nextTransform };
-		}
-		if (selectedAttachment?.kind === 'image' && (property === 'opacity' || property === 'pivotX' || property === 'pivotY')) {
-			currentValue = selectedAttachment[property];
-			command = {
-				kind: 'update-image-properties',
-				attachmentId: selectedAttachment.id,
-				properties: { [property]: value }
-			};
-		}
-		if (selectedAttachment?.kind === 'rectangle' && (property === 'width' || property === 'height')) {
-			currentValue = selectedAttachment[property];
-			command = {
-				kind: 'update-rectangle-size',
-				attachmentId: selectedAttachment.id,
-				width: property === 'width' ? value : selectedAttachment.width,
-				height: property === 'height' ? value : selectedAttachment.height
-			};
+			if (transformProperty && transform) {
+				const nextTransform = { ...transform, [transformProperty]: value };
+				const command: ProjectCommand = entity.kind === 'bone'
+					? { kind: 'update-bone-transform', boneId: entity.id, transform: nextTransform }
+					: { kind: 'update-attachment-transform', attachmentId: entity.id, transform: nextTransform };
+
+				return [{ entity, currentValue: transform[transformProperty], command }];
+			}
+
+			const attachment = entity.kind === 'attachment'
+				? project.attachments.find((candidate) => candidate.id === entity.id)
+				: undefined;
+
+			if (attachment?.kind === 'image') {
+				if (property === 'opacity') {
+					return [{ entity, currentValue: attachment.opacity, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { opacity: value } } }];
+				}
+				if (property === 'pivotX') {
+					return [{ entity, currentValue: attachment.pivotX, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotX: value } } }];
+				}
+				if (property === 'pivotY') {
+					return [{ entity, currentValue: attachment.pivotY, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotY: value } } }];
+				}
+			}
+			if (attachment?.kind === 'rectangle') {
+				if (property === 'width') {
+					return [{ entity, currentValue: attachment.width, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: value, height: attachment.height } }];
+				}
+				if (property === 'height') {
+					return [{ entity, currentValue: attachment.height, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: attachment.width, height: value } }];
+				}
+			}
+
+			return [];
+		});
+
+		if (targets.length !== selection.length) {
+			return 'This property is not supported by every selected entity.';
 		}
 
-		if (!command || currentValue === undefined || Object.is(currentValue, value)) {
+		const changedTargets = targets.filter((target) => !Object.is(target.currentValue, value));
+
+		if (changedTargets.length === 0) {
 			return undefined;
 		}
 
 		const animationClip = mode === 'animate' ? activeClip : undefined;
 		const autoKeys = animationClip && autoKey && keyableProperty
-			? autoKeyCommandsForProperty(project, animationClip, selectedEntity.id, keyableProperty, activePlayback.frameIndex, createEntityId, value)
+			? changedTargets.flatMap((target) => autoKeyCommandsForProperty(project, animationClip, target.entity.id, keyableProperty, activePlayback.frameIndex, createEntityId, value))
 			: [];
-		const committed = applyCommandSequence([command, ...autoKeys]);
+		const committed = applyCommandSequence([...changedTargets.map((target) => target.command), ...autoKeys]);
 
 		if (!committed) {
 			return 'The property could not be committed.';
@@ -2489,9 +3215,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		if (animationClip && keyableProperty) {
 			setPendingAnimationEdits((current) => {
-				const retained = current.filter((pending) => pending.targetId !== selectedEntity.id || pending.property !== keyableProperty);
+				const changedIds = new Set(changedTargets.map((target) => target.entity.id));
+				const retained = current.filter((pending) => !changedIds.has(pending.targetId) || pending.property !== keyableProperty);
 
-				return autoKey ? retained : [...retained, { targetId: selectedEntity.id, property: keyableProperty }];
+				return autoKey ? retained : [...retained, ...changedTargets.map((target) => ({ targetId: target.entity.id, property: keyableProperty }))];
 			});
 		}
 
@@ -2554,6 +3281,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			const expanded = revealAncestors(model, target.id, new Set(presentation.rigExpandedIds));
 
 			updatePresentation((current) => ({ ...current, rigExpandedIds: [...expanded] }));
+			window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-row-id="${target.id}"]`)?.scrollIntoView({ block: 'nearest' }));
 		}
 	};
 	const currentDrawOrder = function currentDrawOrder(): readonly EntityId[] {
@@ -2620,7 +3348,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 	const beginCanvasTransform = function beginCanvasTransform(point: ViewportPoint, tool: TransformTool, modifiers: TransformModifiers = {}): boolean {
 		const transformableSelection = selection.filter((entity) => entity.kind === 'bone' || entity.kind === 'attachment');
-		const hit = hitTestProject(project, point);
+		const hit = hitTestProject(project, point, hiddenEntityIds);
 		const selectedEntityHit = !!hit && transformableSelection.some((entity) => entity.kind === hit.kind && entity.id === hit.id);
 		const handleHit = transformableSelection.length > 0 && isTransformHandleHit(project, transformableSelection, point, tool);
 
@@ -2759,9 +3487,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 
-	const renameSelected = function renameSelected(name: string): void {
+	const renameSelected = function renameSelected(name: string): string | undefined {
 		if (!selectedEntity || selectedEntity.kind === 'asset') {
-			return;
+			return 'Select a bone, slot, or attachment before renaming.';
+		}
+		if (name.trim().length === 0) {
+			return 'Name cannot be empty.';
 		}
 
 		const command = selectedEntity.kind === 'bone'
@@ -2770,7 +3501,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				? { kind: 'rename-slot' as const, slotId: selectedEntity.id, name }
 			: { kind: 'rename-attachment' as const, attachmentId: selectedEntity.id, name };
 
-		applyCommand(command);
+		return applyCommand(command) ? undefined : 'The name could not be committed.';
 	};
 
 	const deleteSelected = function deleteSelected(): void {
@@ -2805,115 +3536,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 
-	const submitRename = function submitRename(event: FormEvent<HTMLFormElement>): void {
-		event.preventDefault();
-		const input = renameInputRef.current;
-
-		if (input) {
-			renameSelected(input.value);
-		}
-	};
-
-	const submitTransform = function submitTransform(event: FormEvent<HTMLFormElement>): void {
-		event.preventDefault();
-		const entity = selectedEntity;
-		const currentTransform = selectedBone?.transform ?? selectedAttachment?.transform;
-
-		if (!entity || entity.kind === 'asset' || entity.kind === 'slot' || !currentTransform) {
-			return;
-		}
-
-		const data = new FormData(event.currentTarget);
-		const transform = transformFromForm(data, currentTransform);
-
-		if (!transform) {
-			setCommandError('Transform fields must contain finite numbers.');
-			return;
-		}
-
-		const transformCommand: ProjectCommand = entity.kind === 'bone'
-			? { kind: 'update-bone-transform', boneId: entity.id, transform }
-			: { kind: 'update-attachment-transform', attachmentId: entity.id, transform };
-		const imageProperties = selectedAttachment?.kind === 'image'
-			? imagePropertiesFromForm(data)
-			: undefined;
-		const rectangleSize = selectedAttachment?.kind === 'rectangle'
-			? rectangleSizeFromForm(data)
-			: undefined;
-
-		if (selectedAttachment?.kind === 'image' && !imageProperties) {
-			setCommandError('Opacity and pivot fields must contain finite numbers.');
-			return;
-		}
-		if (selectedAttachment?.kind === 'rectangle' && !rectangleSize) {
-			setCommandError('Rectangle dimensions must contain finite numbers.');
-			return;
-		}
-
-		const imageCommand: ProjectCommand | undefined = imageProperties
-			? { kind: 'update-image-properties', attachmentId: entity.id, properties: imageProperties }
-			: undefined;
-		const rectangleCommand: ProjectCommand | undefined = rectangleSize
-			? { kind: 'update-rectangle-size', attachmentId: entity.id, ...rectangleSize }
-			: undefined;
-		const animationClip = mode === 'animate' ? activeClip : undefined;
-		const changedTransformProperties = animationProperties.filter((property) => transform[property] !== currentTransform[property]);
-		const changedImageOpacity = selectedAttachment?.kind === 'image' && imageProperties && selectedAttachment.opacity !== imageProperties.opacity;
-		const changedRectangleProperties = selectedAttachment?.kind === 'rectangle' && rectangleSize
-			? (['width', 'height'] as const).filter((property) => rectangleSize[property] !== selectedAttachment[property])
-			: [];
-		const editedProperties: readonly PendingAnimationEdit[] = [
-			...changedTransformProperties.map((property) => ({ targetId: entity.id, property })),
-			...(changedImageOpacity ? [{ targetId: entity.id, property: 'opacity' as const }] : []),
-			...changedRectangleProperties.map((property) => ({ targetId: entity.id, property }))
-		];
-		const transformAutoKeys = animationClip && autoKey
-			? changedTransformProperties
-				.flatMap((property) => autoKeyCommandsForNumber(
-					animationClip,
-					entity.kind === 'bone'
-						? { kind: 'bone-transform', targetId: entity.id, property }
-						: { kind: 'attachment-transform', targetId: entity.id, property },
-					transform[property],
-					activePlayback.frameIndex / animationClip.fps
-				))
-			: [];
-		const imageAutoKeys = animationClip && autoKey && changedImageOpacity && selectedAttachment?.kind === 'image' && imageProperties
-			? autoKeyCommandsForNumber(
-				animationClip,
-				{ kind: 'attachment-opacity', targetId: selectedAttachment.id },
-				imageProperties.opacity,
-				activePlayback.frameIndex / animationClip.fps
-			)
-			: [];
-		const rectangleAutoKeys = animationClip && autoKey && selectedAttachment?.kind === 'rectangle' && rectangleSize
-			? changedRectangleProperties
-				.flatMap((property) => autoKeyCommandsForNumber(
-					animationClip,
-					{ kind: 'rectangle-size', targetId: selectedAttachment.id, property },
-					rectangleSize[property],
-					activePlayback.frameIndex / animationClip.fps
-				))
-			: [];
-		const commands: readonly ProjectCommand[] = [
-			transformCommand,
-			...(imageCommand ? [imageCommand] : []),
-			...(rectangleCommand ? [rectangleCommand] : []),
-			...transformAutoKeys,
-			...imageAutoKeys,
-			...rectangleAutoKeys
-		];
-
-		const committed = applyCommandSequence(commands);
-
-		if (animationClip && committed && editedProperties.length > 0) {
-			setPendingAnimationEdits((current) => {
-				const retained = current.filter((pending) => !editedProperties.some((edited) => edited.targetId === pending.targetId && edited.property === pending.property));
-
-				return autoKey ? retained : [...retained, ...editedProperties];
-			});
-		}
-	};
 	const keyPendingAnimationEdits = function keyPendingAnimationEdits(): void {
 		if (!activeClip || pendingAnimationEdits.length === 0) {
 			return;
@@ -3068,10 +3690,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 											onDropBone={dropBone}
 											onDropSlot={(event, slotId) => event.dataTransfer.types.includes(SLOT_DRAG_MIME) ? dropSlotOrder(event, slotId) : dropAssetOnSlot(event, slotId)}
 											onExpandedChange={(expandedIds) => updatePresentation((current) => ({ ...current, rigExpandedIds: [...expandedIds] }))}
-											onRenameRequest={(node) => {
-												setSelection([selectableEntityForRigNode(node)]);
-												setInlineRenameId(node.id);
-											}}
+							 onRenameRequest={(node) => {
+								setSelectionFromSurface([selectableEntityForRigNode(node)]);
+								setInlineRenameId(node.id);
+								window.requestAnimationFrame(() => {
+									const input = document.querySelector<HTMLInputElement>('.rig-inline-rename');
+
+									input?.focus();
+									input?.select();
+								});
+							}}
 											onRenameCancel={() => setInlineRenameId(undefined)}
 											onRenameCommit={renameRigNode}
 											onSelectionChange={setSelectionFromSurface}
@@ -3099,104 +3727,118 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						<span className="context-label">{modeLabels[mode]} mode</span>
 						{constraintStatus && <span className="constraint-status" role="status">{constraintStatus}</span>}
 						<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
-						<div className="grid-controls" aria-label="Grid controls">
-							<label className="grid-toggle">
-								<input
-									type="checkbox"
-									aria-label="Show grid"
-									checked={gridSettings.visible}
-									onChange={(event) => setGridSettings((current) => ({ ...current, visible: event.target.checked }))}
-								/>
-								<span>Grid</span>
-							</label>
-							<label className="grid-spacing-field">
-								<span>Spacing</span>
-								<input
-									aria-label="Grid spacing"
-									type="number"
-									min="1"
-									step="1"
-									value={gridSpacingInput}
-									onChange={(event) => updateGridSpacing(event.target.value)}
-									onBlur={commitGridSpacingInput}
-								/>
-							</label>
-							<label className="grid-toggle">
-								<input
-									type="checkbox"
-									aria-label="Snap to grid"
-									checked={gridSettings.snap}
-									onChange={(event) => setGridSettings((current) => ({ ...current, snap: event.target.checked }))}
-								/>
-								<span>Snap</span>
-							</label>
-							</div>
-						</div>
-						<div className="viewport-body">
-							<CanvasWarnings warnings={canvasWarnings} />
-							<div className="viewport-stage">
-								<div className="canvas-stage-content">
-									<div className="canvas-tool-toolbar" aria-label="Transform tools">
-										{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
-											<button
-												className={transformTool === tool ? 'tool-button is-active' : 'tool-button'}
-												key={tool}
-												type="button"
-												onClick={() => setTransformTool(tool)}
-												aria-pressed={transformTool === tool}
-												title={transformToolLabels[tool]}
-											>
-												{transformToolLabels[tool]}
-											</button>
-										))}
-									</div>
-									<ViewportCanvas
-										project={project}
-										assets={assetBlobs}
-										pose={activePose}
-										onAssetDrop={dropAssetOnCanvas}
-										onCanvasSelect={selectCanvasPoint}
-										onCanvasMarquee={selectCanvasMarquee}
-										selection={selection}
-										transformTool={transformTool}
-										gridVisible={gridSettings.visible}
-										gridSpacing={gridSettings.spacing}
-										snapToGrid={gridSettings.snap}
-										onCanvasTransformStart={beginCanvasTransform}
-										onCanvasTransform={updateCanvasTransform}
-									/>
-									{project.bones.length === 0 && project.assets.length === 0 && (
-										<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
-											<span>Drop image parts here</span>
-											<small>Fixed logical canvas · {project.logicalCanvas.width} × {project.logicalCanvas.height}</small>
+					</div>
+					<div className="viewport-body">
+						<CanvasWarnings warnings={canvasWarnings} />
+						<div className="viewport-stage">
+							<div className="canvas-stage-content">
+								<div className="canvas-tool-toolbar" aria-label="Transform tools">
+									{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
+										<button
+											className={transformTool === tool ? 'tool-button is-active' : 'tool-button'}
+											key={tool}
+											type="button"
+											onClick={() => setTransformTool(tool)}
+											aria-pressed={transformTool === tool}
+											title={transformToolLabels[tool]}
+										>
+											{transformToolLabels[tool]}
+										</button>
+									))}
+									<Popover label="Grid settings" className="grid-popover">
+										<div className="grid-controls" aria-label="Grid controls">
+											<label className="grid-toggle">
+												<input
+													aria-label="Show grid"
+													checked={gridSettings.visible}
+													type="checkbox"
+													onChange={(event) => setGridSettings((current) => ({ ...current, visible: event.target.checked }))}
+												/>
+												<span>Grid</span>
+											</label>
+											<label className="grid-spacing-field">
+												<span>Spacing</span>
+												<input
+													aria-label="Grid spacing"
+													inputMode="numeric"
+													min={1}
+													step={1}
+													value={gridSpacingInput}
+													onChange={(event) => updateGridSpacing(event.target.value)}
+													onBlur={commitGridSpacingInput}
+													onKeyDown={(event) => {
+														if (event.key === 'Enter') {
+															event.currentTarget.blur();
+														}
+												}}
+												/>
+											</label>
+											<label className="grid-toggle">
+												<input
+													aria-label="Snap to grid"
+													checked={gridSettings.snap}
+													type="checkbox"
+													onChange={(event) => setGridSettings((current) => ({ ...current, snap: event.target.checked }))}
+												/>
+												<span>Snap</span>
+											</label>
 										</div>
-									)}
+									</Popover>
 								</div>
+								<ViewportCanvas
+									project={project}
+									assets={assetBlobs}
+									pose={activePose}
+									onAssetDrop={dropAssetOnCanvas}
+									onCanvasSelect={selectCanvasPoint}
+									onCanvasMarquee={selectCanvasMarquee}
+									selection={selection}
+									transformTool={transformTool}
+									gridVisible={gridSettings.visible}
+									gridSpacing={gridSettings.spacing}
+									hiddenIds={hiddenEntityIds}
+									snapToGrid={gridSettings.snap}
+									onCanvasTransformStart={beginCanvasTransform}
+									onCanvasTransform={updateCanvasTransform}
+								/>
+								{project.bones.length === 0 && project.assets.length === 0 && (
+									<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
+										<span>Drop image parts here</span>
+										<small>Fixed logical canvas · {project.logicalCanvas.width} × {project.logicalCanvas.height}</small>
+									</div>
+								)}
 							</div>
 						</div>
+					</div>
 				</section>
 
 				<DockSplitter dock="right" layout={presentation.layout} viewport={{ width: viewportWidth, height: viewportHeight }} onChange={(layout) => updatePresentation((current) => ({ ...current, layout }))} />
-				<aside className="panel right-dock inspector-panel" data-right-tab={presentation.rightDockTab} aria-label="Properties and assets">
-					<Tabs
-						label="Right dock"
-						options={[{ value: 'properties', label: 'Properties' }, { value: 'assets', label: 'Assets' }]}
-						value={presentation.rightDockTab}
-						onChange={(value) => updatePresentation((current) => ({ ...current, rightDockTab: value }))}
-					/>
+				<aside className={presentation.layout.rightDockCollapsed ? 'panel right-dock library-panel inspector-panel is-collapsed' : 'panel right-dock library-panel inspector-panel'} data-right-tab={presentation.rightDockTab} aria-label="Properties and assets">
+					<div className="right-dock-heading">
+						{!presentation.layout.rightDockCollapsed && <Tabs
+							label="Right dock"
+							options={[{ value: 'properties', label: 'Properties' }, { value: 'assets', label: 'Assets' }]}
+							value={presentation.rightDockTab}
+							onChange={(value) => updatePresentation((current) => ({ ...current, rightDockTab: value }))}
+						/>}
+						<button className="icon-button" type="button" aria-label={presentation.layout.rightDockCollapsed ? 'Expand right dock' : 'Collapse right dock'} onClick={() => updatePresentation((current) => ({ ...current, layout: { ...current.layout, rightDockCollapsed: !current.layout.rightDockCollapsed } }))}>{presentation.layout.rightDockCollapsed ? '«' : '»'}</button>
+					</div>
+					{!presentation.layout.rightDockCollapsed && <>
 					{presentation.rightDockTab === 'properties' && (
 						<button className="secondary-button asset-import-shortcut" type="button" disabled={isImporting} onClick={() => void importDirectory()}>
 							Import image directory
 						</button>
 					)}
 					{presentation.rightDockTab === 'assets' && <AssetBrowser
-						assets={assetBlobs}
-						density={presentation.assetDensity}
-						importMessage={assetError}
-						isImporting={isImporting}
-						project={project}
-						query={assetQuery}
-						selection={selection}
+										assets={assetBlobs}
+										density={presentation.assetDensity}
+										importMessage={assetError}
+										importSummary={assetImportSummary}
+										isImporting={isImporting}
+										project={project}
+										query={assetQuery}
+										selection={selection}
+										dropHint={assetDropHint}
 						onDensityChange={(density: AssetDensity) => updatePresentation((current) => ({ ...current, assetDensity: density }))}
 						onDragEnd={() => setAssetSlotDropPreview(undefined)}
 						onDragOver={dragOverLibrary}
@@ -3206,98 +3848,20 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onQueryChange={setAssetQuery}
 						onSelectionChange={(assetId, additive) => updateSelection({ kind: 'asset', id: assetId }, additive)}
 					/>}
-					{false && <section className="panel-section legacy-hierarchy-panel">
-						<div className="panel-heading">
-							<div>
-								<p className="eyebrow">Rig</p>
-								<h2>Hierarchy</h2>
-							</div>
-							<button className="icon-button" type="button" aria-label="Add rig item" onClick={createRootBone} disabled={project.bones.length > 0}>+</button>
-						</div>
-						{project.bones.length === 0 ? (
-							<div className="tree-empty">
-								<p>Create a root bone to see the rig.</p>
-								<button className="secondary-button" type="button" onClick={createRootBone}>Create root bone</button>
-							</div>
-						) : (
-							<div className="bone-tree" aria-label="Bone hierarchy">
-								{orderedBones.flatMap((bone) => [
-									<button
-										className={[
-																	isSelected(selection, { kind: 'bone', id: bone.id }) ? 'legacy-bone-row is-selected' : 'legacy-bone-row',
-											boneDropPreview?.boneId === bone.id ? `drop-${boneDropPreview.zone}` : ''
-										].filter(Boolean).join(' ')}
-										draggable
-										key={bone.id}
-										type="button"
-										data-bone-id={bone.id}
-										data-parent-id={bone.parentId ?? 'root'}
-										onClick={(event) => updateSelection({ kind: 'bone', id: bone.id }, event.metaKey || event.ctrlKey)}
-										onDragStart={(event) => dragBone(event, bone.id)}
-										onDragEnd={() => setBoneDropPreview(undefined)}
-										onDragOver={(event) => dragOverBone(event, bone.id)}
-										onDrop={(event) => dropBone(event, bone.id)}
-										aria-pressed={isSelected(selection, { kind: 'bone', id: bone.id })}
-									>
-										<span className="bone-dot" aria-hidden="true" />{bone.name}
-									</button>,
-									...project.slots.filter((slot) => slot.boneId === bone.id).flatMap((slot) => [
-										<button
-											className={[
-																	isSelected(selection, { kind: 'slot', id: slot.id }) ? 'legacy-slot-row is-selected' : 'legacy-slot-row',
-												assetSlotDropPreview === slot.id
-													? 'drop-target'
-													: slotOrderDropPreview?.slotId === slot.id ? `drop-order-${slotOrderDropPreview.zone}` : ''
-											].filter(Boolean).join(' ')}
-											draggable
-											key={slot.id}
-											type="button"
-											data-slot-id={slot.id}
-											data-draw-order-index={project.setupDrawOrder.indexOf(slot.id)}
-											onClick={(event) => updateSelection({ kind: 'slot', id: slot.id }, event.metaKey || event.ctrlKey)}
-											onDragStart={(event) => dragSlot(event, slot.id)}
-											onDragEnd={() => {
-												setAssetSlotDropPreview(undefined);
-												setSlotOrderDropPreview(undefined);
-											}}
-											onDragOver={(event) => {
-												dragOverSlot(event, slot.id);
-												dragOverSlotOrder(event, slot.id);
-											}}
-											onDrop={(event) => event.dataTransfer.types.includes(SLOT_DRAG_MIME)
-												? dropSlotOrder(event, slot.id)
-												: dropAssetOnSlot(event, slot.id)}
-											aria-pressed={isSelected(selection, { kind: 'slot', id: slot.id })}
-										>
-											<span aria-hidden="true">↳</span>{slot.name}
-										</button>,
-										...project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === slot.id).map((attachment) => (
-											<button
-																className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'legacy-attachment-row is-selected' : 'legacy-attachment-row'}
-												key={attachment.id}
-												type="button"
-												onClick={(event) => updateSelection({ kind: 'attachment', id: attachment.id }, event.metaKey || event.ctrlKey)}
-												aria-pressed={isSelected(selection, { kind: 'attachment', id: attachment.id })}
-											>
-												<span aria-hidden="true">•</span>{attachment.name}
-										</button>
-										))
-										]),
-										...project.attachments.filter((attachment) => attachment.kind !== 'image' && attachment.boneId === bone.id).map((attachment) => (
-											<button
-																className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'legacy-attachment-row is-selected' : 'legacy-attachment-row'}
-												key={attachment.id}
-												type="button"
-												onClick={(event) => updateSelection({ kind: 'attachment', id: attachment.id }, event.metaKey || event.ctrlKey)}
-												aria-pressed={isSelected(selection, { kind: 'attachment', id: attachment.id })}
-											>
-												<span aria-hidden="true">◇</span>{attachment.name}
-											</button>
-										))
-									])}
-							</div>
-							)}
-					</section>}
+					{presentation.rightDockTab === 'properties' && <SharedInspector
+						context={inspectorContext}
+						project={project}
+						onRenameClip={renameSharedClip}
+						onUpdateClipPlayback={updateSharedClipPlayback}
+						onDeleteTrack={deleteSharedTrack}
+						onUpdateNumberKeys={updateSharedNumberKeys}
+						onUpdateInterpolation={updateSharedInterpolation}
+						onUpdateEvent={updateSharedEvent}
+						onMoveEvent={moveSharedEvent}
+						onDeleteEvent={deleteSharedEvent}
+						onUpdateAttachmentKey={updateSharedAttachmentKey}
+						onUpdateDrawOrderKey={updateSharedDrawOrderKey}
+					/>}
 					<section className="panel-section inspector-section">
 						<p className="eyebrow">Inspector</p>
 						<h2>{selectedName ?? 'Nothing selected'}</h2>
@@ -3310,56 +3874,51 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									<p className="muted-copy">Drag this source image into the canvas to create a part.</p>
 								) : (
 									<>
-										<form className="inspector-form" key={`${selectedEntity.kind}:${selectedEntity.id}:${selectedName ?? ''}`} onSubmit={submitRename}>
-											<DirectNameField
-												inputRef={renameInputRef}
-												value={selectedName ?? ''}
-												name="Selected name"
-												onCommit={(name) => {
-													renameSelected(name);
-													return undefined;
-												}}
-											/>
-											<div className="inspector-actions">
-												<button className="secondary-button" type="submit">Rename</button>
-												<button className="danger-button" type="button" onClick={deleteSelected}>Delete</button>
+											<div className="inspector-form" key={`${selectedEntity.kind}:${selectedEntity.id}:${selectedName ?? ''}`}>
+												<DirectNameField
+													inputRef={renameInputRef}
+													value={selectedName ?? ''}
+													name="Selected name"
+													onCommit={renameSelected}
+												/>
+												<div className="inspector-actions">
+													<button className="danger-button" type="button" onClick={deleteSelected}>Delete</button>
+												</div>
 											</div>
-										</form>
-										{selectedTransform && (
-											<form
-												className="inspector-form transform-form"
+											{selectedTransform && (
+												<div
+													className="inspector-form transform-form"
 														key={`${selectedEntity.kind}:${selectedEntity.id}:${selectedTransform.x}:${selectedTransform.y}:${selectedTransform.rotation}:${selectedTransform.scaleX}:${selectedTransform.scaleY}:${selectedTransform.shearX}:${selectedTransform.shearY}`}
-														onSubmit={submitTransform}
-												>
-													<div className="transform-grid">
-														{(['x', 'y', 'rotation', 'scaleX', 'scaleY', 'shearX', 'shearY'] as const).map((property) => (
-															<DirectNumericField
-																ariaLabel={property === 'rotation' ? 'Rotation (deg)' : property === 'shearX' ? 'Shear X (deg)' : property === 'shearY' ? 'Shear Y (deg)' : undefined}
-																frameIndex={activePlayback.frameIndex}
-																key={`${property}:${selectedTransform[property]}`}
-																keyState={keyStateForProperty(selectedEntity.id, property)}
-																onCommit={commitDirectProperty}
-																onToggleKey={() => togglePropertyKey(property)}
-																property={property}
-																value={selectedTransform[property]}
-															/>
-														))}
+													>
+								<div className="transform-grid">
+									{(['x', 'y', 'rotation', 'scaleX', 'scaleY', 'shearX', 'shearY'] as const).map((property) => (
+										<DirectNumericField
+											ariaLabel={property === 'rotation' ? 'Rotation (deg)' : property === 'shearX' ? 'Shear X (deg)' : property === 'shearY' ? 'Shear Y (deg)' : undefined}
+											frameIndex={activePlayback.frameIndex}
+											key={`${property}:${selectedTransformValue(property) ?? selectedTransform[property]}`}
+											keyState={keyStateForProperty(selectedEntity.id, property)}
+											mixed={selectedTransformIsMixed(property)}
+											onCommit={commitDirectProperty}
+											onToggleKey={() => togglePropertyKey(property)}
+											property={property}
+											value={selectedTransformValue(property) ?? selectedTransform[property]}
+										/>
+									))}
+								</div>
+											{allSelectedImages && selectedAttachmentValue('opacity') !== undefined && (
+												<div className="transform-grid compact-grid">
+													<DirectNumericField frameIndex={activePlayback.frameIndex} key={`opacity:${selectedAttachmentValue('opacity')}`} keyState={keyStateForProperty(selectedEntity.id, 'opacity')} mixed={selectedAttachmentIsMixed('opacity')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('opacity')} property="opacity" value={selectedAttachmentValue('opacity') ?? 0} />
+													<DirectNumericField key={`pivotX:${selectedAttachmentValue('pivotX')}`} mixed={selectedAttachmentIsMixed('pivotX')} onCommit={commitDirectProperty} property="pivotX" value={selectedAttachmentValue('pivotX') ?? 0} />
+													<DirectNumericField key={`pivotY:${selectedAttachmentValue('pivotY')}`} mixed={selectedAttachmentIsMixed('pivotY')} onCommit={commitDirectProperty} property="pivotY" value={selectedAttachmentValue('pivotY') ?? 0} />
+												</div>
+											)}
+											{allSelectedRectangles && selectedAttachmentValue('width') !== undefined && selectedAttachmentValue('height') !== undefined && (
+												<div className="transform-grid compact-grid">
+													<DirectNumericField frameIndex={activePlayback.frameIndex} key={`width:${selectedAttachmentValue('width')}`} keyState={keyStateForProperty(selectedEntity.id, 'width')} mixed={selectedAttachmentIsMixed('width')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('width')} property="width" value={selectedAttachmentValue('width') ?? 0} />
+													<DirectNumericField frameIndex={activePlayback.frameIndex} key={`height:${selectedAttachmentValue('height')}`} keyState={keyStateForProperty(selectedEntity.id, 'height')} mixed={selectedAttachmentIsMixed('height')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('height')} property="height" value={selectedAttachmentValue('height') ?? 0} />
+												</div>
+											)}
 													</div>
-															{selectedAttachment?.kind === 'image' && (
-																<div className="transform-grid compact-grid">
-																	<DirectNumericField frameIndex={activePlayback.frameIndex} key={`opacity:${selectedAttachment.opacity}`} keyState={keyStateForProperty(selectedAttachment.id, 'opacity')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('opacity')} property="opacity" value={selectedAttachment.opacity} />
-																	<DirectNumericField key={`pivotX:${selectedAttachment.pivotX}`} onCommit={commitDirectProperty} property="pivotX" value={selectedAttachment.pivotX} />
-																	<DirectNumericField key={`pivotY:${selectedAttachment.pivotY}`} onCommit={commitDirectProperty} property="pivotY" value={selectedAttachment.pivotY} />
-																</div>
-															)}
-															{selectedAttachment?.kind === 'rectangle' && (
-																<div className="transform-grid compact-grid">
-																	<DirectNumericField frameIndex={activePlayback.frameIndex} key={`width:${selectedAttachment.width}`} keyState={keyStateForProperty(selectedAttachment.id, 'width')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('width')} property="width" value={selectedAttachment.width} />
-																	<DirectNumericField frameIndex={activePlayback.frameIndex} key={`height:${selectedAttachment.height}`} keyState={keyStateForProperty(selectedAttachment.id, 'height')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('height')} property="height" value={selectedAttachment.height} />
-																</div>
-													)}
-													<button className="secondary-button" type="submit">Apply values</button>
-												</form>
 											)}
 										{selectedSlot && (
 											<div className="inspector-form slot-assignment-form">
@@ -3393,6 +3952,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							</>
 						)}
 					</section>
+					</>}
 				</aside>
 			</main>
 
@@ -3414,6 +3974,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								project={project}
 								activeClip={activeClip}
 								playback={activePlayback}
+								selection={selection}
+								rowMode={presentation.timelineRowMode}
+								expandedRowIds={new Set(presentation.timelineExpandedIds)}
+								pinnedEntityIds={new Set(presentation.pinnedTimelineEntityIds)}
 								autoKey={autoKey}
 								pendingEditCount={pendingAnimationEdits.length}
 								onSelectClip={setActiveClipId}
@@ -3439,6 +4003,18 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								onUpdateDrawOrderKey={updateAnimationDrawOrderKey}
 								onDeleteKeys={deleteAnimationKeys}
 								onRetimeKeys={retimeAnimationKeys}
+								onPasteKeys={pasteAnimationKeys}
+								onSelectEntity={(entity, additive) => updateSelection(entity, additive)}
+								onRowModeChange={(nextMode) => updatePresentation((current) => ({ ...current, timelineRowMode: nextMode }))}
+								onExpandedRowIdsChange={(ids) => updatePresentation((current) => ({ ...current, timelineExpandedIds: [...ids] }))}
+								onTogglePinnedEntity={(entityId) => updatePresentation((current) => ({
+									...current,
+									pinnedTimelineEntityIds: current.pinnedTimelineEntityIds.includes(entityId)
+										? current.pinnedTimelineEntityIds.filter((id) => id !== entityId)
+										: [...current.pinnedTimelineEntityIds, entityId]
+								}))}
+								onClearPinnedEntities={() => updatePresentation((current) => ({ ...current, pinnedTimelineEntityIds: [] }))}
+								onContextChange={setInspectorContext}
 								onAutoKeyChange={setAutoKey}
 								onKeyPendingEdits={keyPendingAnimationEdits}
 							/>

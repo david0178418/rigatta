@@ -197,12 +197,16 @@ export const Popover = function Popover({
 	label: string;
 	children: ReactNode;
 	className?: string;
-}>): ReactElement {
+	}>): ReactElement {
 	const [open, setOpen] = useState(false);
+	const popoverRef = useRef<HTMLSpanElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
-	const close = function close(): void {
+	const close = function close(restoreFocus = true): void {
 		setOpen(false);
-		triggerRef.current?.focus();
+
+		if (restoreFocus) {
+			triggerRef.current?.focus();
+		}
 	};
 
 	useEffect(() => {
@@ -216,16 +220,25 @@ export const Popover = function Popover({
 				close();
 			}
 		};
+		const onPointerDown = function onPointerDown(event: PointerEvent): void {
+			const target = event.target;
+
+			if (target instanceof Node && !popoverRef.current?.contains(target)) {
+				close(false);
+			}
+		};
 
 		document.addEventListener('keydown', onKeyDown, true);
+		document.addEventListener('pointerdown', onPointerDown, true);
 
 		return function cleanup(): void {
 			document.removeEventListener('keydown', onKeyDown, true);
+			document.removeEventListener('pointerdown', onPointerDown, true);
 		};
 	}, [open]);
 
 	return (
-		<span className={`popover-wrap ${className}`.trim()}>
+		<span className={`popover-wrap ${className}`.trim()} ref={popoverRef}>
 			<button
 				aria-expanded={open}
 				aria-haspopup="dialog"
