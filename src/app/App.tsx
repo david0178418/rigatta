@@ -56,8 +56,8 @@ import { buildRigTreeViewModel, revealAncestors, selectableEntityForRigNode, typ
 import { MenuButton, Popover, Tabs } from './ui-primitives.tsx';
 import { loadUiPreferences, projectUiPreferencesFor, saveUiPreferences, updateProjectUiPreferences, type AssetDensity, type ProjectUiPreferences, type UiPreferences } from './ui-preferences.ts';
 import { clampWorkspaceLayout } from './workspace-layout.ts';
-import type { NumericProperty } from './property-drafts.ts';
-import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty } from './keying.ts';
+import { numericPropertySpecs, type NumericProperty } from './property-drafts.ts';
+import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty, type PropertyKeyState } from './keying.ts';
 import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, planPasteTimelineClipboard, selectableEntityForTimelineRow, type TimelineClipboard, type TimelineKeyReference, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
 import { CollapsibleInspectorSection, SharedInspector, type NumberKeyChange } from './shared-inspector.tsx';
 import type { InspectorContext } from './inspector-context.ts';
@@ -82,6 +82,20 @@ const modeLabels: Record<EditorMode, string> = {
 
 const errorMessage = function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'The editor could not start.';
+};
+
+const keyingAnnouncementFor = function keyingAnnouncementFor(
+	property: KeyableProperty,
+	state: PropertyKeyState,
+	frameIndex: number
+): string {
+	const stateLabel: Readonly<Record<PropertyKeyState, string>> = {
+		unkeyed: 'unkeyed',
+		pending: 'pending',
+		keyed: 'keyed'
+	};
+
+	return `${numericPropertySpecs[property].label} ${stateLabel[state]} at frame ${frameIndex + 1}.`;
 };
 
 const blobForImage = function blobForImage(image: ImportedImage): Blob {
@@ -1873,6 +1887,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [activeClipId, setActiveClipId] = useState<EntityId | undefined>(undefined);
 	const [autoKey, setAutoKey] = useState(true);
 	const [pendingAnimationEdits, setPendingAnimationEdits] = useState<readonly PendingAnimationEdit[]>([]);
+	const [keyingAnnouncement, setKeyingAnnouncement] = useState<string | undefined>(undefined);
 	const [playback, setPlayback] = useState<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
@@ -3157,6 +3172,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		if (plan.commands.length > 0 && applyCommandSequence(plan.commands)) {
 			setPendingAnimationEdits((current) => current.filter((pending) => pending.targetId !== selectedEntity.id || pending.property !== property));
+			setKeyingAnnouncement(keyingAnnouncementFor(property, plan.state === 'keyed' ? 'unkeyed' : 'keyed', activePlayback.frameIndex));
 			return;
 		}
 		if (plan.reason) {
@@ -3181,6 +3197,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		if (commands.length > 0 && applyCommandSequence(commands)) {
 			setPendingAnimationEdits((current) => current.filter((pending) => pending.targetId !== selectedEntity.id));
+			const count = pendingAnimationEdits.length;
+			setKeyingAnnouncement(`Keyed ${count} pending propert${count === 1 ? 'y' : 'ies'} at frame ${activePlayback.frameIndex + 1}.`);
 		}
 	};
 	const commitDirectProperty = function commitDirectProperty(property: NumericProperty, value: number): string | undefined {
@@ -3261,6 +3279,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 				return autoKey ? retained : [...retained, ...changedTargets.map((target) => ({ targetId: target.entity.id, property: keyableProperty }))];
 			});
+			setKeyingAnnouncement(keyingAnnouncementFor(keyableProperty, autoKey ? 'keyed' : 'pending', activePlayback.frameIndex));
 		}
 
 		return undefined;
@@ -3611,6 +3630,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		if (commands.length > 0 && applyCommandSequence(commands)) {
 			setPendingAnimationEdits([]);
+			const count = pendingAnimationEdits.length;
+			setKeyingAnnouncement(`Keyed ${count} pending propert${count === 1 ? 'y' : 'ies'} at frame ${activePlayback.frameIndex + 1}.`);
 		}
 	};
 	const statusMessage = commandError ?? persistenceError ?? assetError;
@@ -3919,9 +3940,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							>
 							{!selectedEntity ? (
 							<p className="muted-copy">Select a bone, slot, attachment, or image to edit its properties.</p>
-						) : (
+							) : (
 							<>
 								<p className="muted-copy">{`${selection.length} item${selection.length === 1 ? '' : 's'} selected.`}</p>
+								{keyingAnnouncement && <p className="sr-only" data-testid="keying-status" role="status" aria-live="polite">{keyingAnnouncement}</p>}
 								{selectedEntity.kind === 'asset' ? (
 									<p className="muted-copy">Drag this source image into the canvas to create a part.</p>
 								) : (

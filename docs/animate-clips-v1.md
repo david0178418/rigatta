@@ -72,14 +72,18 @@ upserts the corresponding numeric key at the current frame in the same
 history transaction. Opacity and rectangle-size changes use the same path.
 
 With Auto Key disabled, changed numeric properties are retained as pending
-edited-but-unkeyed state. The Animate panel exposes an explicit Key edited
-properties action that commits all pending values at the current frame in one
-transaction; the pending state is cleared only after a successful commit.
+edited-but-unkeyed state. The Animate panel keeps the compact Key edited
+properties action beside Auto Key; it commits all pending values at the current
+frame in one transaction, and the pending state is cleared only after a
+successful commit.
 
-Inspector property labels expose the state at the active frame: Unkeyed when no
-track or key exists, Pending for an edited-but-unkeyed property, and Keyed when
-a track contains a key at that frame. The same state is computed from the
-active clip and pending edit set so it stays aligned with the timeline.
+Each animatable inspector property exposes one current-frame key diamond. A
+hollow diamond adds a key, a filled diamond removes the key at that frame, and
+an amber patterned diamond identifies a pending edit while Auto Key is off.
+Every diamond has an accessible property/frame/action label and remains a
+keyboard-operable button. Keying and removing use one recoverable history
+transaction, and a polite inspector announcement reports pending and keyed
+state changes without moving focus.
 
 Event creation remains available from the Events row. Selecting an event opens
 Event details for name, validated JSON payload, frame, and delete operations.

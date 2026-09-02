@@ -49,8 +49,8 @@ Playwright tests exercise the supported Chrome editor workflow.
 | Key active attachments and slot draw order | `tests/unit/animation.test.ts` covers both discrete track kinds; the attachment and slot-order browser flows in `tests/e2e/smoke.spec.ts` cover UI editing. |
 | Stepped, linear, and editable cubic Bezier interpolation | `tests/unit/interpolation.test.ts` covers evaluation; the interpolation and Bezier editor flow in `tests/e2e/smoke.spec.ts` covers selection and editing. |
 | Discrete attachment, draw-order, enabled, and event values | `tests/unit/animation.test.ts`, `tests/unit/event-operations.test.ts`, and `tests/unit/pose.test.ts` cover typed values and evaluation. |
-| Auto Key enabled by default and explicit keying when disabled | The Auto Key enabled, disabled, and property-state flows in `tests/e2e/smoke.spec.ts` cover both paths. |
-| Distinguish unkeyed, pending, and keyed properties | The property-state flow in `tests/e2e/smoke.spec.ts` asserts all three visible states. |
+| Auto Key enabled by default and explicit keying when disabled | The Auto Key enabled, disabled, pending, and current-frame diamond flows in `tests/e2e/smoke.spec.ts` and `tests/e2e/p1-key-diamond.spec.ts` cover both paths. |
+| Distinguish unkeyed, pending, and keyed properties | `tests/unit/ux-p1-key-diamond.test.ts` covers the distinct glyph/label contract; `tests/e2e/p1-key-diamond.spec.ts` verifies state attributes, live announcements, and focus retention. |
 
 ## Gameplay metadata
 

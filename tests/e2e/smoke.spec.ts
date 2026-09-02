@@ -467,14 +467,20 @@ test('shows unkeyed, pending, and keyed property states', async ({ page }) => {
 	await page.getByRole('button', { name: 'root', exact: true }).click();
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
-	await expect(page.getByText('Unkeyed', { exact: true }).first()).toBeVisible();
+	const unkeyedX = page.getByRole('button', { name: 'Add X key at frame 1', exact: true });
+	await expect(unkeyedX).toHaveAttribute('data-key-state', 'unkeyed');
+	await expect(unkeyedX).toContainText('◇');
 	await page.getByLabel('Auto Key').uncheck();
 	const pendingStateX = page.locator('input[name="x"]');
 	await pendingStateX.fill('48');
 	await pendingStateX.press('Enter');
-	await expect(page.getByText('Pending', { exact: true }).first()).toBeVisible();
+	const pendingX = page.getByRole('button', { name: 'Add X key at frame 1', exact: true });
+	await expect(pendingX).toHaveAttribute('data-key-state', 'pending');
+	await expect(pendingX).toContainText('◈');
 	await page.getByRole('button', { name: 'Key edited properties (1)', exact: true }).click();
-	await expect(page.getByText('Keyed', { exact: true }).first()).toBeVisible();
+	const keyedX = page.getByRole('button', { name: 'Remove X key at frame 1', exact: true });
+	await expect(keyedX).toHaveAttribute('data-key-state', 'keyed');
+	await expect(keyedX).toContainText('◆');
 });
 
 test('imports an image directory and creates a dropped image part', async ({ page }) => {

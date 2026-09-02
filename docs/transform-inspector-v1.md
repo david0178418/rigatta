@@ -15,3 +15,9 @@ the canvas. This keeps tool access independent of inspector scroll position and
 selection type while preserving the existing pressed state and pointer gesture
 transactions. Inspector fields remain the place to edit numeric values
 directly; the toolbar does not add shortcuts or history entries.
+
+In Animate mode, animatable numeric fields also expose a current-frame key
+diamond. Hollow, amber patterned, and filled diamonds distinguish unkeyed,
+pending, and keyed states without relying on text or color alone. The button
+label names the property, one-based frame, and add/remove action; changes are
+announced through a polite live region while focus remains on the control.

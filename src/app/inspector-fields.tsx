@@ -10,6 +10,32 @@ import {
 } from './property-drafts.ts';
 import type { PropertyKeyState } from './keying.ts';
 
+export type KeyDiamondPresentation = Readonly<{
+	action: 'Add' | 'Remove';
+	glyph: '◇' | '◆' | '◈';
+	stateLabel: 'Unkeyed' | 'Pending' | 'Keyed';
+}>;
+
+const keyDiamondPresentations: Readonly<Record<PropertyKeyState, KeyDiamondPresentation>> = {
+	unkeyed: { action: 'Add', glyph: '◇', stateLabel: 'Unkeyed' },
+	pending: { action: 'Add', glyph: '◈', stateLabel: 'Pending' },
+	keyed: { action: 'Remove', glyph: '◆', stateLabel: 'Keyed' }
+};
+
+export const keyDiamondPresentationFor = function keyDiamondPresentationFor(
+	state: PropertyKeyState
+): KeyDiamondPresentation {
+	return keyDiamondPresentations[state];
+};
+
+export const keyDiamondLabelFor = function keyDiamondLabelFor(
+	property: string,
+	frameIndex: number,
+	state: PropertyKeyState
+): string {
+	return `${keyDiamondPresentationFor(state).action} ${property} key at frame ${frameIndex + 1}`;
+};
+
 export const KeyDiamond = function KeyDiamond({
 	property,
 	frameIndex,
@@ -21,18 +47,20 @@ export const KeyDiamond = function KeyDiamond({
 	state: PropertyKeyState;
 	onToggle: () => void;
 }>): ReactElement {
-	const action = state === 'keyed' ? 'Remove' : 'Add';
-	const glyph = state === 'keyed' ? '◆' : '◇';
+	const presentation = keyDiamondPresentationFor(state);
+	const label = keyDiamondLabelFor(property, frameIndex, state);
 
 	return (
 		<button
-			aria-label={`${action} ${property} key at frame ${frameIndex + 1}`}
+			aria-label={label}
+			aria-pressed={state === 'keyed'}
+			data-key-state={state}
 			className={`key-diamond key-diamond-${state}`}
-			title={`${action} ${property} key at frame ${frameIndex + 1}`}
+			title={`${label} · ${presentation.stateLabel}`}
 			type="button"
 			onClick={onToggle}
 		>
-			{glyph}
+			<span aria-hidden="true">{presentation.glyph}</span>
 		</button>
 	);
 };
@@ -99,9 +127,8 @@ export const DirectNumericField = function DirectNumericField({
 
 	return (
 		<label className="direct-property-field">
-			<span className={keyState ? `field-label key-state key-state-${keyState}` : mixed ? 'field-label mixed-field-label' : 'field-label'}>
+			<span className={mixed ? 'field-label mixed-field-label' : 'field-label'}>
 				<span>{spec.label}{spec.unit === 'deg' ? ' (deg)' : ''}</span>
-				{keyState && <small>{keyState === 'pending' ? 'Pending' : keyState === 'keyed' ? 'Keyed' : 'Unkeyed'}</small>}
 				{mixed && <small>Mixed</small>}
 			</span>
 			<span className="direct-property-control">
