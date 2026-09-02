@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement, type ReactNode } from 'react';
 import { isEventPayload } from '../domain/events.ts';
 import type { EntityId } from '../domain/ids.ts';
 import type { EventKeyUpdate, NumberKeyInterpolationInput } from '../domain/animation.ts';
@@ -23,6 +23,8 @@ export type NumberKeyChange = Readonly<{
 export type SharedInspectorProps = Readonly<{
 	project: Project;
 	context: InspectorContext;
+	collapsedSections: ReadonlySet<string>;
+	onToggleSection: (sectionId: string) => void;
 	onRenameClip: (clipId: EntityId, name: string) => void;
 	onUpdateClipPlayback: (clipId: EntityId, settings: ClipPlaybackSettings) => void;
 	onDeleteTrack: (clipId: EntityId, trackId: EntityId) => void;
@@ -90,24 +92,68 @@ const parsedPayload = function parsedPayload(
 	}
 };
 
-const contextHeading = function contextHeading(label: string, detail: string): ReactElement {
+export type CollapsibleInspectorSectionProps = Readonly<{
+	id: string;
+	eyebrow: string;
+	label: string;
+	detail: string;
+	ariaLabel: string;
+	collapsed: boolean;
+	onToggle: () => void;
+	children: ReactNode;
+}>;
+
+export const CollapsibleInspectorSection = function CollapsibleInspectorSection({
+	id,
+	eyebrow,
+	label,
+	detail,
+	ariaLabel,
+	collapsed,
+	onToggle,
+	children
+}: CollapsibleInspectorSectionProps): ReactElement {
+	const contentId = `inspector-section-content-${id}`;
+	const toggleLabel = collapsed ? `Expand ${label}` : `Collapse ${label}`;
+
 	return (
-		<div className="shared-inspector-heading">
-			<div>
-				<p className="eyebrow">Context</p>
-				<h3>{label}</h3>
+		<section className={collapsed ? 'shared-inspector-context is-collapsed' : 'shared-inspector-context'} aria-label={ariaLabel}>
+			<div className="shared-inspector-heading">
+				<div>
+					<p className="eyebrow">{eyebrow}</p>
+					<h3>{label}</h3>
+				</div>
+				<div className="shared-inspector-heading-actions">
+					<span className="context-badge">{detail}</span>
+					<button
+						aria-controls={contentId}
+						aria-expanded={!collapsed}
+						aria-label={toggleLabel}
+						className="quiet-button"
+						type="button"
+						onClick={onToggle}
+					>
+						{collapsed ? 'Show' : 'Hide'}
+					</button>
+				</div>
 			</div>
-			<span className="context-badge">{detail}</span>
-		</div>
+			<div className="shared-inspector-body" id={contentId} hidden={collapsed}>
+				{children}
+			</div>
+		</section>
 	);
 };
 
 const ClipInspector = function ClipInspector({
 	clip,
+	collapsedSections,
+	onToggleSection,
 	onRenameClip,
 	onUpdateClipPlayback
 }: Readonly<{
 	clip: Clip;
+	collapsedSections: ReadonlySet<string>;
+	onToggleSection: (sectionId: string) => void;
 	onRenameClip: (name: string) => void;
 	onUpdateClipPlayback: (settings: ClipPlaybackSettings) => void;
 }>): ReactElement {
@@ -136,8 +182,15 @@ const ClipInspector = function ClipInspector({
 	};
 
 	return (
-		<section className="shared-inspector-context" aria-label="Clip properties">
-			{contextHeading('Clip', clip.name)}
+		<CollapsibleInspectorSection
+			ariaLabel="Clip properties"
+			collapsed={collapsedSections.has('clip')}
+			detail={clip.name}
+			eyebrow="Context"
+			id="clip"
+			label="Clip"
+			onToggle={() => onToggleSection('clip')}
+		>
 			<form className="shared-inspector-form" key={`${clip.id}:${clip.name}:${clip.durationSeconds}:${clip.fps}:${clip.loop}`} onSubmit={submit}>
 				<label><span className="field-label">Clip name</span><input name="clipName" defaultValue={clip.name} aria-label="Inspector clip field" /></label>
 				<div className="shared-inspector-grid">
@@ -148,31 +201,42 @@ const ClipInspector = function ClipInspector({
 				{error && <small className="field-error" role="alert">{error}</small>}
 				<button className="secondary-button" type="submit">Save clip</button>
 			</form>
-		</section>
+		</CollapsibleInspectorSection>
 	);
 };
 
 const TrackInspector = function TrackInspector({
 	clip,
 	track,
+	collapsedSections,
+	onToggleSection,
 	onDelete
 }: Readonly<{
 	clip: Clip;
 	track: Track;
+	collapsedSections: ReadonlySet<string>;
+	onToggleSection: (sectionId: string) => void;
 	onDelete: () => void;
 }>): ReactElement {
 	const target = 'targetId' in track ? track.targetId : undefined;
 
 	return (
-		<section className="shared-inspector-context" aria-label="Track properties">
-			{contextHeading('Track', track.kind)}
+		<CollapsibleInspectorSection
+			ariaLabel="Track properties"
+			collapsed={collapsedSections.has('track')}
+			detail={track.kind}
+			eyebrow="Context"
+			id="track"
+			label="Track"
+			onToggle={() => onToggleSection('track')}
+		>
 			<dl className="context-details">
 				<div><dt>Keys</dt><dd>{track.keys.length}</dd></div>
 				<div><dt>Target</dt><dd>{target ?? 'All slots'}</dd></div>
 				<div><dt>Clip</dt><dd>{clip.name}</dd></div>
 			</dl>
 			<button className="danger-button" type="button" onClick={onDelete}>Delete selected track</button>
-		</section>
+		</CollapsibleInspectorSection>
 	);
 };
 
@@ -261,11 +325,15 @@ const SharedBezierEditor = function SharedBezierEditor({
 const KeyInspector = function KeyInspector({
 	clip,
 	entries,
+	collapsedSections,
+	onToggleSection,
 	onUpdateNumberKeys,
 	onUpdateInterpolation
 }: Readonly<{
 	clip: Clip;
 	entries: readonly KeyEntry[];
+	collapsedSections: ReadonlySet<string>;
+	onToggleSection: (sectionId: string) => void;
 	onUpdateNumberKeys: (changes: readonly NumberKeyChange[]) => void;
 	onUpdateInterpolation: (changes: readonly NumberKeyChange[], input: NumberKeyInterpolationInput) => void;
 }>): ReactElement {
@@ -311,8 +379,15 @@ const KeyInspector = function KeyInspector({
 	};
 
 	return (
-		<section className="shared-inspector-context" aria-label="Key properties">
-			{contextHeading('Key', `${entries.length} selected`)}
+		<CollapsibleInspectorSection
+			ariaLabel="Key properties"
+			collapsed={collapsedSections.has('key')}
+			detail={`${entries.length} selected`}
+			eyebrow="Context"
+			id="key"
+			label="Key"
+			onToggle={() => onToggleSection('key')}
+		>
 			<p className="muted-copy">Frame {firstFrame}{entries.length > 1 ? ' · mixed selection' : ''}</p>
 			{numericEntries.length > 0 && (
 				<form className="shared-inspector-form" key={`${entries.map((entry) => entry.reference.keyId).join('|')}:${firstNumber?.value}:${firstNumber?.timeSeconds}`} onSubmit={submitNumberChanges}>
@@ -328,19 +403,23 @@ const KeyInspector = function KeyInspector({
 				</form>
 			)}
 			{numericEntries.length === 0 && <p className="muted-copy">This is a discrete key. Edit its value from the control below.</p>}
-		</section>
+		</CollapsibleInspectorSection>
 	);
 };
 
 const EventInspector = function EventInspector({
 	clip,
 	event,
+	collapsedSections,
+	onToggleSection,
 	onUpdate,
 	onMove,
 	onDelete
 }: Readonly<{
 	clip: Clip;
 	event: EventKey;
+	collapsedSections: ReadonlySet<string>;
+	onToggleSection: (sectionId: string) => void;
 	onUpdate: (input: EventKeyUpdate) => void;
 	onMove: (timeSeconds: number) => void;
 	onDelete: () => void;
@@ -373,8 +452,15 @@ const EventInspector = function EventInspector({
 	};
 
 	return (
-		<section className="shared-inspector-context" aria-label="Event properties">
-			{contextHeading('Event', event.name)}
+		<CollapsibleInspectorSection
+			ariaLabel="Event properties"
+			collapsed={collapsedSections.has('event')}
+			detail={event.name}
+			eyebrow="Context"
+			id="event"
+			label="Event"
+			onToggle={() => onToggleSection('event')}
+		>
 			<form className="shared-inspector-form" key={`${event.id}:${event.name}:${event.timeSeconds}:${eventPayloadText(event)}`} onSubmit={submit}>
 				<label><span className="field-label">Name</span><input aria-label="Inspector event field" value={name} onChange={(inputEvent) => setName(inputEvent.currentTarget.value)} /></label>
 				<label><span className="field-label">Frame</span><input aria-label="Inspector event position" type="number" min="1" step="1" value={frame} onChange={(inputEvent) => setFrame(inputEvent.currentTarget.value)} /></label>
@@ -382,7 +468,7 @@ const EventInspector = function EventInspector({
 				{error && <small className="field-error" role="alert">{error}</small>}
 				<div className="inspector-actions"><button className="secondary-button" type="submit">Save event</button><button className="danger-button" type="button" onClick={onDelete}>Delete selected event</button></div>
 			</form>
-		</section>
+		</CollapsibleInspectorSection>
 	);
 };
 
@@ -406,24 +492,35 @@ const DrawOrderInspector = function DrawOrderInspector({
 	track,
 	drawKey,
 	clip,
+	collapsedSections,
+	onToggleSection,
 	onUpdate
 }: Readonly<{
 	project: Project;
 	track: Extract<Track, { kind: 'slot-draw-order' }>;
 	drawKey: DiscreteKey<readonly EntityId[]>;
 	clip: Clip;
+	collapsedSections: ReadonlySet<string>;
+	onToggleSection: (sectionId: string) => void;
 	onUpdate: (value: readonly EntityId[]) => void;
 }>): ReactElement {
 	const slots = new Map(project.slots.map((slot) => [slot.id, slot] as const));
 
 	return (
-		<section className="shared-inspector-context" aria-label="Draw order key properties">
-			{contextHeading('Draw Order', 'Current keyed order')}
+		<CollapsibleInspectorSection
+			ariaLabel="Draw order key properties"
+			collapsed={collapsedSections.has('draw-order')}
+			detail="Current keyed order"
+			eyebrow="Context"
+			id="draw-order"
+			label="Draw Order"
+			onToggle={() => onToggleSection('draw-order')}
+		>
 			<ol className="context-order-list">
 				{drawKey.value.map((slotId, index) => <li key={slotId}><span>{index + 1}. {slots.get(slotId)?.name ?? slotId}</span><span className="inspector-actions"><button className="quiet-button" type="button" aria-label={`Move ${slots.get(slotId)?.name ?? slotId} up`} disabled={index === 0} onClick={() => onUpdate(moveOrderSlot(drawKey.value, slotId, -1))}>↑</button><button className="quiet-button" type="button" aria-label={`Move ${slots.get(slotId)?.name ?? slotId} down`} disabled={index === drawKey.value.length - 1} onClick={() => onUpdate(moveOrderSlot(drawKey.value, slotId, 1))}>↓</button></span></li>)}
 			</ol>
 			<p className="muted-copy">Track {track.id} · frame {frameIndexForTime(clip, drawKey.timeSeconds) + 1}</p>
-		</section>
+		</CollapsibleInspectorSection>
 	);
 };
 
@@ -431,28 +528,41 @@ const AttachmentSwapInspector = function AttachmentSwapInspector({
 	project,
 	track,
 	attachmentKey,
+	collapsedSections,
+	onToggleSection,
 	onUpdate
 }: Readonly<{
 	project: Project;
 	track: Extract<Track, { kind: 'slot-attachment' }>;
 	attachmentKey: DiscreteKey<EntityId | null>;
+	collapsedSections: ReadonlySet<string>;
+	onToggleSection: (sectionId: string) => void;
 	onUpdate: (value: EntityId | null) => void;
 }>): ReactElement {
 	const slot = project.slots.find((candidate) => candidate.id === track.targetId);
 	const attachments = project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === track.targetId);
 
 	return (
-		<section className="shared-inspector-context" aria-label="Attachment swap properties">
-			{contextHeading('Attachment swap', slot?.name ?? track.targetId)}
+		<CollapsibleInspectorSection
+			ariaLabel="Attachment swap properties"
+			collapsed={collapsedSections.has('attachment-swap')}
+			detail={slot?.name ?? track.targetId}
+			eyebrow="Context"
+			id="attachment-swap"
+			label="Attachment swap"
+			onToggle={() => onToggleSection('attachment-swap')}
+		>
 			<label className="shared-inspector-form"><span className="field-label">Keyed attachment</span><select aria-label="Keyed attachment" value={attachmentKey.value ?? ''} onChange={(event) => onUpdate(event.currentTarget.value || null)}><option value="">None</option>{attachments.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}</select></label>
 			<p className="muted-copy">The slot keeps its setup attachment when no keyed value is selected.</p>
-		</section>
+		</CollapsibleInspectorSection>
 	);
 };
 
 export const SharedInspector = function SharedInspector({
 	project,
 	context,
+	collapsedSections,
+	onToggleSection,
 	onRenameClip,
 	onUpdateClipPlayback,
 	onDeleteTrack,
@@ -474,24 +584,24 @@ export const SharedInspector = function SharedInspector({
 		return <section className="shared-inspector-context" aria-label="Animation context"><p className="muted-copy">The selected animation context is no longer available.</p></section>;
 	}
 	if (context.kind === 'clip') {
-		return <ClipInspector clip={clip} onRenameClip={(name) => onRenameClip(clip.id, name)} onUpdateClipPlayback={(settings) => onUpdateClipPlayback(clip.id, settings)} />;
+		return <ClipInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} onRenameClip={(name) => onRenameClip(clip.id, name)} onUpdateClipPlayback={(settings) => onUpdateClipPlayback(clip.id, settings)} />;
 	}
 	if (context.kind === 'track') {
 		const track = trackFor(clip, context.trackId);
 
-		return track ? <TrackInspector clip={clip} track={track} onDelete={() => onDeleteTrack(clip.id, track.id)} /> : null;
+		return track ? <TrackInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} track={track} onDelete={() => onDeleteTrack(clip.id, track.id)} /> : null;
 	}
 	if (context.kind === 'event') {
 		const event = clip.events.find((candidate) => candidate.id === context.eventId);
 
-		return event ? <EventInspector clip={clip} event={event} onUpdate={(input) => onUpdateEvent(clip.id, event.id, input)} onMove={(timeSeconds) => onMoveEvent(clip.id, event.id, timeSeconds)} onDelete={() => onDeleteEvent(clip.id, event.id)} /> : null;
+		return event ? <EventInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} event={event} onUpdate={(input) => onUpdateEvent(clip.id, event.id, input)} onMove={(timeSeconds) => onMoveEvent(clip.id, event.id, timeSeconds)} onDelete={() => onDeleteEvent(clip.id, event.id)} /> : null;
 	}
 	if (context.kind === 'draw-order') {
 		const track = trackFor(clip, context.trackId);
 		const key = track?.kind === 'slot-draw-order' ? track.keys.find((candidate) => candidate.id === context.keyId) : undefined;
 
 		return track?.kind === 'slot-draw-order' && key
-			? <DrawOrderInspector clip={clip} project={project} track={track} drawKey={key} onUpdate={(value) => onUpdateDrawOrderKey(clip.id, track.id, key.id, value)} />
+			? <DrawOrderInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} project={project} track={track} drawKey={key} onUpdate={(value) => onUpdateDrawOrderKey(clip.id, track.id, key.id, value)} />
 			: null;
 	}
 	if (context.kind === 'attachment-swap') {
@@ -499,13 +609,13 @@ export const SharedInspector = function SharedInspector({
 		const key = track?.kind === 'slot-attachment' ? track.keys.find((candidate) => candidate.id === context.keyId) : undefined;
 
 		return track?.kind === 'slot-attachment' && key
-			? <AttachmentSwapInspector project={project} track={track} attachmentKey={key} onUpdate={(value) => onUpdateAttachmentKey(clip.id, track.id, key.id, value)} />
+			? <AttachmentSwapInspector collapsedSections={collapsedSections} onToggleSection={onToggleSection} project={project} track={track} attachmentKey={key} onUpdate={(value) => onUpdateAttachmentKey(clip.id, track.id, key.id, value)} />
 			: null;
 	}
 
 	const entries = keyEntriesFor(clip, context.keys);
 
 	return entries.length > 0
-		? <KeyInspector clip={clip} entries={entries} onUpdateNumberKeys={(changes) => onUpdateNumberKeys(clip.id, changes)} onUpdateInterpolation={(changes, input) => onUpdateInterpolation(clip.id, changes, input)} />
+		? <KeyInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} entries={entries} onUpdateNumberKeys={(changes) => onUpdateNumberKeys(clip.id, changes)} onUpdateInterpolation={(changes, input) => onUpdateInterpolation(clip.id, changes, input)} />
 		: null;
 };

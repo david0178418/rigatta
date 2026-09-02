@@ -59,7 +59,7 @@ import { clampWorkspaceLayout } from './workspace-layout.ts';
 import type { NumericProperty } from './property-drafts.ts';
 import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty } from './keying.ts';
 import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, planPasteTimelineClipboard, selectableEntityForTimelineRow, type TimelineClipboard, type TimelineKeyReference, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
-import { SharedInspector, type NumberKeyChange } from './shared-inspector.tsx';
+import { CollapsibleInspectorSection, SharedInspector, type NumberKeyChange } from './shared-inspector.tsx';
 import type { InspectorContext } from './inspector-context.ts';
 
 type EditorMode = 'setup' | 'animate';
@@ -1903,6 +1903,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	}), [startup.repository]);
 	const project = currentProject(history);
 	const hiddenEntityIds = useMemo(() => new Set(presentation.hiddenEntityIds), [presentation.hiddenEntityIds]);
+	const collapsedInspectorSections = useMemo(() => new Set(presentation.collapsedInspectorSections), [presentation.collapsedInspectorSections]);
 	const projectDiagnostics = validateProject(project);
 	const canvasWarnings = canvasWarningsForSetup(project);
 	const requiredStorageBytes = Array.from(assetBlobs.values()).reduce((total, blob) => total + blob.size, 0);
@@ -1932,6 +1933,14 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		presentationRef.current = nextPresentation;
 		uiPreferencesRef.current = nextPreferences;
 		setPresentation(nextPresentation);
+	};
+	const toggleInspectorSection = function toggleInspectorSection(sectionId: string): void {
+		updatePresentation((current) => ({
+			...current,
+			collapsedInspectorSections: current.collapsedInspectorSections.includes(sectionId)
+				? current.collapsedInspectorSections.filter((id) => id !== sectionId)
+				: [...current.collapsedInspectorSections, sectionId]
+		}));
 	};
 	const setSelection = function setSelection(nextSelection: Selection): void {
 		setSelectionState(nextSelection);
@@ -3863,10 +3872,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onQueryChange={setAssetQuery}
 						onSelectionChange={(assetId, additive) => updateSelection({ kind: 'asset', id: assetId }, additive)}
 					/>}
-					{presentation.rightDockTab === 'properties' && <SharedInspector
-						context={inspectorContext}
-						project={project}
-						onRenameClip={renameSharedClip}
+						{presentation.rightDockTab === 'properties' && <SharedInspector
+							context={inspectorContext}
+							collapsedSections={collapsedInspectorSections}
+							project={project}
+							onToggleSection={toggleInspectorSection}
+							onRenameClip={renameSharedClip}
 						onUpdateClipPlayback={updateSharedClipPlayback}
 						onDeleteTrack={deleteSharedTrack}
 						onUpdateNumberKeys={updateSharedNumberKeys}
@@ -3877,10 +3888,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						onUpdateAttachmentKey={updateSharedAttachmentKey}
 						onUpdateDrawOrderKey={updateSharedDrawOrderKey}
 					/>}
-					<section className="panel-section inspector-section">
-						<p className="eyebrow">Inspector</p>
-						<h2>{selectedName ?? 'Nothing selected'}</h2>
-						{!selectedEntity ? (
+						<section className="panel-section inspector-section">
+							<p className="eyebrow">Inspector</p>
+							<h2>{selectedName ?? 'Nothing selected'}</h2>
+							<CollapsibleInspectorSection
+								ariaLabel="Entity properties"
+								collapsed={collapsedInspectorSections.has('entity-properties')}
+								detail={selectedName ?? 'Nothing selected'}
+								eyebrow="Selection"
+								id="entity-properties"
+								label="Entity properties"
+								onToggle={() => toggleInspectorSection('entity-properties')}
+							>
+							{!selectedEntity ? (
 							<p className="muted-copy">Select a bone, slot, attachment, or image to edit its properties.</p>
 						) : (
 							<>
@@ -3966,7 +3986,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								)}
 							</>
 						)}
-					</section>
+							</CollapsibleInspectorSection>
+						</section>
 					</>}
 				</aside>
 			</main>

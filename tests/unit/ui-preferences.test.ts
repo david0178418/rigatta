@@ -46,6 +46,7 @@ describe('versioned UI preferences', () => {
 			...current,
 			assetDensity: 'thumbnail',
 			leftDockTab: 'draw-order',
+			collapsedInspectorSections: ['entity-properties'],
 			layout: { ...current.layout, leftDockWidth: 312, timelineHeight: 300 }
 		}));
 
@@ -137,11 +138,13 @@ describe('versioned UI preferences', () => {
 		const preferences = updateProjectUiPreferences(defaultUiPreferences(), project.id, (current) => ({
 			...current,
 			hiddenEntityIds: [fixtureIds.root],
+			collapsedInspectorSections: ['entity-properties'],
 			assetDensity: 'thumbnail'
 		}));
 		const exported = await exportProjectArchive(project, new Map([[fixtureIds.asset, sourceBytes]]));
 
 		expect(projectUiPreferencesFor(preferences, project).hiddenEntityIds).toEqual([fixtureIds.root]);
+		expect(projectUiPreferencesFor(preferences, project).collapsedInspectorSections).toEqual(['entity-properties']);
 		expect(currentProject(history)).toBe(project);
 		expect(history.past).toHaveLength(0);
 		expect(exported.ok).toBe(true);

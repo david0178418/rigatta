@@ -942,6 +942,27 @@ h2 {
 	font-weight: 620;
 }
 
+.shared-inspector-heading-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.shared-inspector-heading-actions .quiet-button {
+	padding: 4px 6px;
+	font-size: 9px;
+}
+
+.shared-inspector-body {
+	display: grid;
+	gap: 11px;
+}
+
+.shared-inspector-body[hidden] {
+	display: none;
+}
+
 .context-badge {
 	max-width: 58%;
 	overflow: hidden;

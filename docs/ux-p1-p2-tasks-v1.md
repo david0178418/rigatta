@@ -28,16 +28,17 @@ P1 and P2 must preserve those guarantees.
 
 ## Implementation checkpoint — 2026-09-02
 
-This document records the 2026-09-02 implementation checkpoint. The focused
-implementation and its tests are committed, but this is not yet a completed
-P1/P2 release; the task checkboxes below intentionally remain the source of
-truth for final acceptance.
+This document records the 2026-09-02 implementation checkpoint and the
+subsequent P2-01 through P2-04 layout increment. The focused implementation and
+its tests are committed, but this is not yet a completed P1/P2 release; the
+task checkboxes below remain the source of truth for final acceptance.
 
 ### Repository state
 
 - Branch: `master`.
-- Implementation checkpoint commit: `cb1d408 Complete UX direct editing and
-  canvas feedback`.
+- Implementation checkpoint commits: `5514d62 Add P1 structure
+  characterization`, `8beefbe Complete P1 keying contracts`, and `e91c175
+  Complete P2 layout and presentation persistence integration`.
 - Remaining unchecked tasks are still in progress. Preserve unrelated working
   tree changes when resuming; do not reset or discard them.
 - Browser checks use `http://localhost:3000/`; reuse an occupied local Bun
@@ -74,15 +75,17 @@ truth for final acceptance.
 
 ### Validation already recorded
 
-- `bun test src tests/unit`: 182 tests passed, including import skip metadata and
-  coordinate formatting coverage.
+- `bun test src tests/unit`: 219 tests passed, including preference migration,
+  storage failure, layout matrix, and stale-ID coverage.
 - `bun run lint`: passed with three pre-existing missing-return-type warnings in
   `src/app/project-menu.tsx` and `tests/unit/ux-models.test.ts`.
 - `bun run typecheck`, `bun run build`, and `git diff --check` pass.
 - Focused Chromium workflows cover direct field commits and validation, mixed
   multi-selection display, import conflicts/drop hints, coordinate/origin
-  overlays, grid popover dismissal, and the supported layouts.
-- `bun run test:e2e`: 33 Chromium tests passed.
+  overlays, grid popover dismissal, supported layouts, dock resizing and
+  collapse, project-scoped presentation restoration, and inspector disclosure
+  persistence/isolation.
+- `bun run test:e2e`: 46 Chromium tests passed.
 
 ### Resume from here
 
@@ -429,6 +432,8 @@ or `Move key`, and without document scrolling.
   sections, Rig expansion, timeline row mode/expansion, and density settings.
   Debounce writes, handle storage failure silently but testably, and apply
   project-specific state only to the matching `Project.id`.
+  Shared and direct inspector disclosures are wired to this project-scoped
+  state and covered by `tests/e2e/p2-inspector.spec.ts`.
 
 ### Asset and import efficiency
 
