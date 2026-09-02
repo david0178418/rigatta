@@ -27,6 +27,7 @@ export type RigTreeViewModel = Readonly<{
 export type RigTreeInteraction = Readonly<{
 	ctrlOrMeta?: boolean;
 	shift?: boolean;
+	anchorId?: EntityId;
 }>;
 
 const selectableEntityFor = function selectableEntityFor(node: RigTreeNode): SelectableEntity {
@@ -210,8 +211,8 @@ export const treeSelectionForClick = function treeSelectionForClick(
 
 	if (interaction.shift) {
 		const selectedIndex = visibleNodes.findIndex((candidate) => candidate.id === node.id);
-		const anchor = selection.at(-1);
-		const anchorIndex = anchor ? visibleNodes.findIndex((candidate) => candidate.id === anchor.id) : -1;
+		const anchorId = interaction.anchorId ?? selection.at(-1)?.id;
+		const anchorIndex = anchorId ? visibleNodes.findIndex((candidate) => candidate.id === anchorId) : -1;
 
 		if (selectedIndex >= 0 && anchorIndex >= 0) {
 			const start = Math.min(selectedIndex, anchorIndex);

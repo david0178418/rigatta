@@ -16,6 +16,7 @@ import type { SelectableEntity } from './selection.ts';
 
 export type TransformTool = 'translate' | 'rotate' | 'scale' | 'shear';
 export type TransformPhase = 'update' | 'end' | 'cancel';
+export type TransformModifiers = Readonly<{ shiftKey?: boolean }>;
 
 type TransformEntity = Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
 type RectangleResizeAxis = 'width' | 'height';
@@ -40,6 +41,7 @@ export type TransformGesture = Readonly<{
 	startPoint: Point;
 	center: Point;
 	rectangleResizeAxis: RectangleResizeAxis | undefined;
+	constrained: boolean;
 }>;
 
 const attachmentBoneId = function attachmentBoneId(
@@ -187,25 +189,37 @@ const transformForTarget = function transformForTarget(
 	target: TransformTarget,
 	point: Point
 ): LocalTransform | undefined {
-	const delta = localDeltaFor(gesture, target, point);
+	const rawDelta = localDeltaFor(gesture, target, point);
 
-	if (!delta) {
+	if (!rawDelta) {
 		return undefined;
 	}
 
-	const angleDelta = angleDeltaForGesture(gesture, point);
+	const delta = gesture.constrained
+		? Math.abs(rawDelta.x) >= Math.abs(rawDelta.y)
+			? { x: rawDelta.x, y: 0 }
+			: { x: 0, y: rawDelta.y }
+		: rawDelta;
+
+	const rawAngleDelta = angleDeltaForGesture(gesture, point);
+	const angleDelta = gesture.constrained
+		? Math.round(rawAngleDelta / (Math.PI / 12)) * (Math.PI / 12)
+		: rawAngleDelta;
+	const scaleFactor = gesture.constrained
+		? 1 + (Math.abs(rawDelta.x) >= Math.abs(rawDelta.y) ? rawDelta.x : rawDelta.y) / 100
+		: undefined;
 	const updates: Record<TransformTool, (transform: LocalTransform) => LocalTransform> = {
 		translate: (transform) => ({ ...transform, x: transform.x + delta.x, y: transform.y + delta.y }),
 		rotate: (transform) => ({ ...transform, rotation: transform.rotation + angleDelta }),
 		scale: (transform) => ({
 			...transform,
-			scaleX: transform.scaleX * Math.max(0.01, 1 + delta.x / 100),
-			scaleY: transform.scaleY * Math.max(0.01, 1 + delta.y / 100)
+			scaleX: transform.scaleX * Math.max(0.01, scaleFactor ?? 1 + delta.x / 100),
+			scaleY: transform.scaleY * Math.max(0.01, scaleFactor ?? 1 + delta.y / 100)
 		}),
 		shear: (transform) => ({
 			...transform,
-			shearX: transform.shearX + delta.x / 100,
-			shearY: transform.shearY + delta.y / 100
+			shearX: transform.shearX + (gesture.constrained ? delta.x / 100 : rawDelta.x / 100),
+			shearY: transform.shearY + (gesture.constrained ? delta.y / 100 : rawDelta.y / 100)
 		})
 	};
 
@@ -231,9 +245,20 @@ const rectangleSizeForTarget = function rectangleSizeForTarget(
 		return undefined;
 	}
 
+	const width = Math.max(1, initialSize.width + (currentLocal.x - startLocal.x) * 2);
+	const height = Math.max(1, initialSize.height + (currentLocal.y - startLocal.y) * 2);
+
+	if (!gesture.constrained) {
+		return axis === 'width'
+			? { width, height: initialSize.height }
+			: { width: initialSize.width, height };
+	}
+
+	const aspectRatio = initialSize.width / Math.max(1, initialSize.height);
+
 	return axis === 'width'
-		? { width: Math.max(1, initialSize.width + (currentLocal.x - startLocal.x) * 2), height: initialSize.height }
-		: { width: initialSize.width, height: Math.max(1, initialSize.height + (currentLocal.y - startLocal.y) * 2) };
+		? { width, height: Math.max(1, width / aspectRatio) }
+		: { width: Math.max(1, height * aspectRatio), height };
 };
 
 const transformEntities = function transformEntities(
@@ -246,7 +271,8 @@ export const createTransformGesture = function createTransformGesture(
 	project: Project,
 	entityOrEntities: SelectableEntity | readonly SelectableEntity[],
 	startPoint: Point,
-	tool: TransformTool
+	tool: TransformTool,
+	modifiers: TransformModifiers = {}
 ): TransformGesture | undefined {
 	const entities = transformEntities(Array.isArray(entityOrEntities) ? entityOrEntities : [entityOrEntities]);
 	const evaluation = evaluateBoneWorldMatrices(project);
@@ -268,7 +294,8 @@ export const createTransformGesture = function createTransformGesture(
 		tool,
 		startPoint,
 		center: centerForTargets(targets),
-		rectangleResizeAxis
+		rectangleResizeAxis,
+		constrained: modifiers.shiftKey ?? false
 	};
 };
 

@@ -4,7 +4,17 @@ export type ShortcutAction =
 	| 'toggle-playback'
 	| 'step-backward'
 	| 'step-forward'
-	| 'open-reference';
+	| 'open-reference'
+	| 'rename-selection'
+	| 'delete-selection'
+	| 'key-selection'
+	| 'cancel'
+	| 'select-previous'
+	| 'select-next'
+	| 'tool-translate'
+	| 'tool-rotate'
+	| 'tool-scale'
+	| 'tool-shear';
 
 export type ShortcutKeyState = Readonly<{
 	key: string;
@@ -41,6 +51,36 @@ export const shortcutActionFor = function shortcutActionFor(
 	}
 	if (!modifier && key === '?') {
 		return 'open-reference';
+	}
+	if (!modifier && !event.shiftKey && key === 'f2') {
+		return 'rename-selection';
+	}
+	if (!modifier && !event.shiftKey && (key === 'delete' || key === 'backspace')) {
+		return 'delete-selection';
+	}
+	if (!modifier && !event.shiftKey && key === 'k') {
+		return 'key-selection';
+	}
+	if (!modifier && key === 'escape') {
+		return 'cancel';
+	}
+	if (!modifier && !event.shiftKey && key === 'pageup') {
+		return 'select-previous';
+	}
+	if (!modifier && !event.shiftKey && key === 'pagedown') {
+		return 'select-next';
+	}
+	if (!modifier && !event.shiftKey && key === 'w') {
+		return 'tool-translate';
+	}
+	if (!modifier && !event.shiftKey && key === 'e') {
+		return 'tool-rotate';
+	}
+	if (!modifier && !event.shiftKey && key === 'r') {
+		return 'tool-scale';
+	}
+	if (!modifier && !event.shiftKey && key === 't') {
+		return 'tool-shear';
 	}
 
 	return undefined;

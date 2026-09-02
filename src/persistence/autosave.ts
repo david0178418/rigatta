@@ -8,8 +8,14 @@ import type {
 
 export type AutosaveOptions = Readonly<{
 	delayMs?: number;
+	onStatus?: (status: AutosaveStatus) => void;
+	onScheduled?: () => void;
+	onSaving?: () => void;
+	onSaved?: () => void;
 	onError?: (error: PersistenceError) => void;
 }>;
+
+export type AutosaveStatus = 'scheduled' | 'saving' | 'saved' | 'error';
 
 export type AutosaveScheduler = Readonly<{
 	schedule: (project: Project, assets: ProjectAssetBlobs) => void;
@@ -54,10 +60,25 @@ export const createAutosaveScheduler = function createAutosaveScheduler(
 		timer: undefined
 	};
 	const delayMs = normalizeDelay(options.delayMs);
+	const reportStatus = function reportStatus(status: AutosaveStatus): void {
+		options.onStatus?.(status);
+		const callbacks: Readonly<Record<AutosaveStatus, (() => void) | undefined>> = {
+			scheduled: options.onScheduled,
+			saving: options.onSaving,
+			saved: options.onSaved,
+			error: undefined
+		};
+
+		callbacks[status]?.();
+	};
 	const reportError = function reportError(result: PersistenceResult<void>): void {
-		if (!result.ok) {
-			options.onError?.(result.error);
+		if (result.ok) {
+			reportStatus('saved');
+			return;
 		}
+
+		reportStatus('error');
+		options.onError?.(result.error);
 	};
 
 	const flush = async function flush(): Promise<PersistenceResult<void>> {
@@ -73,15 +94,26 @@ export const createAutosaveScheduler = function createAutosaveScheduler(
 			return { ok: true, value: undefined };
 		}
 
+		reportStatus('saving');
+
 		try {
-			return await repository.saveRecovery(pending.project, pending.assets);
+			const result = await repository.saveRecovery(pending.project, pending.assets);
+
+			reportError(result);
+
+			return result;
 		} catch (error: unknown) {
-			return failureFromThrownError(error);
+			const result = failureFromThrownError(error);
+
+			reportError(result);
+
+			return result;
 		}
 	};
 
 	const schedule = function schedule(project: Project, assets: ProjectAssetBlobs): void {
 		state.pending = { project, assets };
+		reportStatus('scheduled');
 
 		if (state.timer !== undefined) {
 			clearTimeout(state.timer);
@@ -89,7 +121,7 @@ export const createAutosaveScheduler = function createAutosaveScheduler(
 
 		state.timer = setTimeout(() => {
 			state.timer = undefined;
-			void flush().then(reportError);
+			void flush();
 		}, delayMs);
 	};
 

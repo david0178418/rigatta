@@ -206,13 +206,17 @@ export const projectUiPreferencesFor = function projectUiPreferencesFor(
 	preferences: UiPreferences,
 	project: Project
 ): ProjectUiPreferences {
-	const stored = preferences.projects[project.id] ?? defaultProjectUiPreferences();
+	const storedPreferences = preferences.projects[project.id];
+	const stored = storedPreferences ?? defaultProjectUiPreferences();
 	const validIds = projectEntityIds(project);
 	const validSelectionHistory = validIdsOnly(stored.selectionHistory, validIds);
+	const expandedIds = storedPreferences
+		? validIdsOnly(stored.rigExpandedIds, new Set(project.bones.map((bone) => bone.id)))
+		: project.bones.map((bone) => bone.id);
 
 	return {
 		...stored,
-		rigExpandedIds: validIdsOnly(stored.rigExpandedIds, new Set(project.bones.map((bone) => bone.id))),
+		rigExpandedIds: expandedIds,
 		hiddenEntityIds: validIdsOnly(stored.hiddenEntityIds, validIds),
 		selectionHistory: validSelectionHistory,
 		pinnedTimelineEntityIds: validIdsOnly(stored.pinnedTimelineEntityIds, validIds)
