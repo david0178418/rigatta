@@ -15,13 +15,18 @@ contenteditable elements.
 ## Recovery workflow
 
 1. Continue editing. Each committed project command schedules a debounced
-   recovery snapshot in IndexedDB.
+   recovery snapshot in IndexedDB; the project header reports `Saving...` while
+   the snapshot is queued or being written, then `Saved locally` after the
+   recovery write succeeds.
 2. If the tab or browser exits before a stable save, reload the editor. Startup
    lists recent stable projects and recovery snapshots and opens the newest
    recovery snapshot for the most recent project.
 3. Verify the project name, assets, and last edits. A successful stable save
    clears the matching recovery snapshot.
-4. If startup cannot open IndexedDB, reports malformed records, or cannot
+4. If `Save failed` appears, keep the project open and make another committed
+   edit; the next successful recovery write returns the header to `Saved locally`
+   and clears the failure message.
+5. If startup cannot open IndexedDB, reports malformed records, or cannot
    restore asset blobs, keep the current browser storage intact and use the
    fatal/unsupported message to diagnose the browser capability or storage
    quota before retrying.

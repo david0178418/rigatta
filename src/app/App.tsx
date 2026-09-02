@@ -1892,14 +1892,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [assetQuery, setAssetQuery] = useState('');
 	const [assetBlobs, setAssetBlobs] = useState<ProjectAssetBlobs>(startup.assets);
 	const autosave = useMemo(() => createAutosaveScheduler(startup.repository, {
-		onStatus: (status) => {
-			setAutosaveStatus(status);
-
-			if (status === 'saved') {
-				setPersistenceError(undefined);
-			}
+		onScheduled: () => {
+			setAutosaveStatus('scheduled');
+			setPersistenceError(undefined);
 		},
-		onError: (error) => setPersistenceError(error.message)
+		onSaving: () => setAutosaveStatus('saving'),
+		onSaved: () => {
+			setAutosaveStatus('saved');
+			setPersistenceError(undefined);
+		},
+		onError: (error) => {
+			setAutosaveStatus('error');
+			setPersistenceError(error.message);
+		}
 	}), [startup.repository]);
 	const project = currentProject(history);
 	const hiddenEntityIds = useMemo(() => new Set(presentation.hiddenEntityIds), [presentation.hiddenEntityIds]);
@@ -2098,6 +2103,18 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	useEffect(() => {
 		return function cleanup(): void {
 			autosave.cancel();
+		};
+	}, [autosave]);
+
+	useEffect(() => {
+		const flushAutosave = function flushAutosave(): void {
+			void autosave.flush();
+		};
+
+		window.addEventListener('pagehide', flushAutosave);
+
+		return function cleanup(): void {
+			window.removeEventListener('pagehide', flushAutosave);
 		};
 	}, [autosave]);
 
@@ -3605,7 +3622,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<span className="brand-mark" aria-hidden="true">BA</span>
 					<div>
 						<p className="eyebrow">Bone Animation Utility</p>
-						<div className="project-title-row"><h1>{project.name}</h1><span className="autosave-status" aria-live="polite">{autosaveStatus === 'saving' || autosaveStatus === 'scheduled' ? 'Saving…' : autosaveStatus === 'saved' ? 'Saved locally' : autosaveStatus === 'error' ? 'Save failed' : ''}</span></div>
+						<div className="project-title-row"><h1>{project.name}</h1><span className="autosave-status" aria-live="polite">{autosaveStatus === 'saving' || autosaveStatus === 'scheduled' ? 'Saving...' : autosaveStatus === 'saved' ? 'Saved locally' : autosaveStatus === 'error' ? 'Save failed' : ''}</span></div>
 					</div>
 				</div>
 				<ProjectMenu

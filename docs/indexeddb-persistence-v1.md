@@ -31,9 +31,13 @@ removes its recovery metadata and image blobs.
 
 The autosave scheduler coalesces committed snapshots during a configurable
 debounce window and exposes an explicit `flush` operation for page lifecycle
-handling. Storage persistence requests and quota estimates are separate
-capability calls so unsupported APIs and quota failures can be shown to the
-user instead of being hidden.
+handling. A scheduled snapshot reports `scheduled`, `saving`, then either
+`saved` or `error` through typed callbacks; the editor presents those states as
+`Saving...`, `Saved locally`, or `Save failed`. A page-hide flush drains the
+pending recovery snapshot, while a later successful snapshot replaces a failed
+state. Storage persistence requests and quota estimates are separate capability
+calls so unsupported APIs and quota failures can be shown to the user instead
+of being hidden.
 
 ## Recovery workflow
 

@@ -8,6 +8,8 @@ commit once on pointer release, and cancel back to the original snapshot.
 
 Grid visibility, spacing, and snapping are editor-session preferences rather
 than project data, so changing them does not add an undo entry. Project edits
-remain autosave triggers only after a transaction is committed.
+remain autosave triggers only after a transaction is committed. Autosave status
+callbacks update the header without adding history entries or moving layout;
+the next successful recovery write clears a prior failure state.
 
 Unit coverage verifies that multiple setup commands commit as one undo entry.

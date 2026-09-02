@@ -31,6 +31,8 @@ type PendingSave = Readonly<{
 type AutosaveState = {
 	pending: PendingSave | undefined;
 	timer: ReturnType<typeof setTimeout> | undefined;
+	saving: Promise<PersistenceResult<void>> | undefined;
+	generation: number;
 };
 
 const DEFAULT_DELAY_MS = 500;
@@ -57,18 +59,19 @@ export const createAutosaveScheduler = function createAutosaveScheduler(
 ): AutosaveScheduler {
 	const state: AutosaveState = {
 		pending: undefined,
-		timer: undefined
+		timer: undefined,
+		saving: undefined,
+		generation: 0
 	};
 	const delayMs = normalizeDelay(options.delayMs);
+	const callbacks: Readonly<Record<AutosaveStatus, (() => void) | undefined>> = {
+		scheduled: options.onScheduled,
+		saving: options.onSaving,
+		saved: options.onSaved,
+		error: undefined
+	};
 	const reportStatus = function reportStatus(status: AutosaveStatus): void {
 		options.onStatus?.(status);
-		const callbacks: Readonly<Record<AutosaveStatus, (() => void) | undefined>> = {
-			scheduled: options.onScheduled,
-			saving: options.onSaving,
-			saved: options.onSaved,
-			error: undefined
-		};
-
 		callbacks[status]?.();
 	};
 	const reportError = function reportError(result: PersistenceResult<void>): void {
@@ -81,10 +84,47 @@ export const createAutosaveScheduler = function createAutosaveScheduler(
 		options.onError?.(result.error);
 	};
 
+	const savePending = async function savePending(
+		pending: PendingSave,
+		generation: number
+	): Promise<PersistenceResult<void>> {
+		if (state.generation === generation) {
+			reportStatus('saving');
+		}
+
+		try {
+			const result = await repository.saveRecovery(pending.project, pending.assets);
+
+			if (state.generation === generation) {
+				reportError(result);
+			}
+
+			return result;
+		} catch (error: unknown) {
+			const result = failureFromThrownError(error);
+
+			if (state.generation === generation) {
+				reportError(result);
+			}
+
+			return result;
+		}
+	};
+
 	const flush = async function flush(): Promise<PersistenceResult<void>> {
 		if (state.timer !== undefined) {
 			clearTimeout(state.timer);
 			state.timer = undefined;
+		}
+		if (state.saving) {
+			const saving = state.saving;
+			const result = await saving;
+
+			if (state.saving === saving) {
+				state.saving = undefined;
+			}
+
+			return state.pending ? flush() : result;
 		}
 
 		const pending = state.pending;
@@ -94,21 +134,15 @@ export const createAutosaveScheduler = function createAutosaveScheduler(
 			return { ok: true, value: undefined };
 		}
 
-		reportStatus('saving');
+		const saving = savePending(pending, state.generation);
+		state.saving = saving;
+		const result = await saving;
 
-		try {
-			const result = await repository.saveRecovery(pending.project, pending.assets);
-
-			reportError(result);
-
-			return result;
-		} catch (error: unknown) {
-			const result = failureFromThrownError(error);
-
-			reportError(result);
-
-			return result;
+		if (state.saving === saving) {
+			state.saving = undefined;
 		}
+
+		return state.pending ? flush() : result;
 	};
 
 	const schedule = function schedule(project: Project, assets: ProjectAssetBlobs): void {
@@ -132,6 +166,7 @@ export const createAutosaveScheduler = function createAutosaveScheduler(
 		}
 
 		state.pending = undefined;
+		state.generation += 1;
 	};
 
 	return { schedule, flush, cancel };

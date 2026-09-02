@@ -67,7 +67,7 @@ Playwright tests exercise the supported Chrome editor workflow.
 | Requirement | Evidence |
 | --- | --- |
 | Undo/redo all project mutations and group continuous gestures | `tests/unit/history.test.ts`, `tests/unit/setup-history.test.ts`, and `tests/unit/animation-history.test.ts` cover bounded history and grouping; shortcut and multi-key undo flows are in `tests/e2e/smoke.spec.ts`. |
-| Autosave committed changes to IndexedDB | `tests/unit/autosave.test.ts` and `tests/unit/repository.test.ts` cover debouncing, flushing, and stored snapshots. |
+| Autosave committed changes to IndexedDB | `tests/unit/autosave.test.ts`, `tests/unit/ux-p1-autosave.test.ts`, and `tests/unit/repository.test.ts` cover debouncing, typed scheduled/saving/saved/error callbacks, failure recovery, flushing, and stored snapshots; `tests/e2e/p1-autosave.spec.ts` verifies visible status and no history/layout movement. |
 | Recover recent projects after reload or interruption | `tests/unit/startup.test.ts` and the reload recovery flow in `tests/e2e/smoke.spec.ts` cover startup selection and browser recovery. |
 | Self-contained versioned `.boneanim` archives | `tests/unit/archive.test.ts` covers project JSON, manifest, and image-byte round trips. |
 | Validate archives before replacing the open project | `tests/unit/archive.test.ts` rejects malformed, undeclared, tampered, and missing asset data before import succeeds. |
