@@ -29,16 +29,18 @@ P1 and P2 must preserve those guarantees.
 ## Implementation checkpoint — 2026-09-02
 
 This document records the 2026-09-02 implementation checkpoint and the
-subsequent P2-01 through P2-04 layout increment. The focused implementation and
-its tests are committed, but this is not yet a completed P1/P2 release; the
-task checkboxes below remain the source of truth for final acceptance.
+subsequent verified P1/P2 increments. The focused implementation and its tests
+are committed, but this is not yet a completed P1/P2 release; the task
+checkboxes below remain the source of truth for final acceptance.
 
 ### Repository state
 
 - Branch: `master`.
 - Implementation checkpoint commits: `5514d62 Add P1 structure
-  characterization`, `8beefbe Complete P1 keying contracts`, and `e91c175
-  Complete P2 layout and presentation persistence integration`.
+  characterization`, `8beefbe Complete P1 keying contracts`, `e91c175
+  Complete P2 layout and presentation persistence integration`, `cb5cf67
+  Complete persistent inspector disclosures`, and `ed71f08 Complete P1
+  semantic Rig tree interactions`.
 - Remaining unchecked tasks are still in progress. Preserve unrelated working
   tree changes when resuming; do not reset or discard them.
 - Browser checks use `http://localhost:3000/`; reuse an occupied local Bun
@@ -52,11 +54,12 @@ task checkboxes below remain the source of truth for final acceptance.
 - Rig tree modeling and rendering include ancestry, disclosure, keyboard
   navigation, type labels, filtering, inline rename, visibility, drag/drop, and
   selection-history/reveal behavior.
-- Draw-order presentation, grouped timeline rows, overview/entity/property
-  grouping, Selection/All keyed modes, row expansion, pins, direct seeking,
-  key selection, event selection, key dragging, marquee selection, typed key
-  clipboard operations, delete, and frame nudging have been added or wired into
-  the editor shell.
+- The pure timeline model derives stable overview/entity/property, Draw Order,
+  and Events rows with Selection/All keyed filtering, expansion, aggregate key
+  summaries, target references, and immutable whole-frame key-drag plans.
+- The editor shell has the remaining direct timeline interactions wired in
+  incrementally; their dependent P1 tasks remain unchecked until their complete
+  browser workflows are verified.
 - Property draft parsing, direct numeric/name editing, current-frame key
   planning, automatic continuous-track creation, pending Auto Key state, and
   interactive key controls are present. Entity name and transform editing now
@@ -75,8 +78,9 @@ task checkboxes below remain the source of truth for final acceptance.
 
 ### Validation already recorded
 
-- `bun test src tests/unit`: 219 tests passed, including preference migration,
-  storage failure, layout matrix, and stale-ID coverage.
+- `bun test src tests/unit`: 219 tests passed, including semantic Rig-tree,
+  grouped timeline/key-drag, preference migration, storage failure, layout
+  matrix, and stale-ID coverage.
 - `bun run lint`: passed with three pre-existing missing-return-type warnings in
   `src/app/project-menu.tsx` and `tests/unit/ux-models.test.ts`.
 - `bun run typecheck`, `bun run build`, and `git diff --check` pass.
@@ -203,7 +207,7 @@ type assertions to bypass validation.
 
 ### Foundations and workspace composition
 
-- [ ] **UX-P1-01** Add post-P0 characterization coverage. Capture current
+- [x] **UX-P1-01** Add post-P0 characterization coverage. Capture current
   Setup/Animate behavior for selection, hierarchy drag/drop, transform commits,
   Auto Key, explicit keying, key/event detail surfaces, timeline resizing, and
   export overlay containment. Add P1 tests separately rather than weakening P0
@@ -231,13 +235,13 @@ type assertions to bypass validation.
 
 ### Rig and draw order
 
-- [ ] **UX-P1-05** Build a pure Rig tree view model. Depends on UX-P1-02. Derive
+- [x] **UX-P1-05** Build a pure Rig tree view model. Depends on UX-P1-02. Derive
   immutable nodes with entity type, parent, depth, ordered children, display
   name, selected state, active-attachment state, and expandability. Add unit
   tests for nested bones, slots, image attachments, point/rectangle attachments,
   empty branches, and malformed references already reported by validation.
 
-- [ ] **UX-P1-06** Render the expandable semantic Rig tree. Depends on UX-P1-05.
+- [x] **UX-P1-06** Render the expandable semantic Rig tree. Depends on UX-P1-05.
   Implement disclosure controls, roving focus, the resolved keyboard/mouse
   selection model, and type-ahead. Collapsing a branch hides descendants without
   clearing their project selection. Expanding/revealing must not mutate history.
@@ -297,7 +301,7 @@ type assertions to bypass validation.
 
 ### Grouped dopesheet and direct key manipulation
 
-- [ ] **UX-P1-16** Replace the flat timeline row model with a pure grouped model.
+- [x] **UX-P1-16** Replace the flat timeline row model with a pure grouped model.
   Depends on UX-P1-02. Derive overview, entity group, property, Draw Order, and
   Events rows with stable IDs, depth, expansion state, key summaries, and target
   entity references. Support `Selection` and `All keyed` modes and existing text
@@ -314,7 +318,7 @@ type assertions to bypass validation.
   the related entity and appropriate transform tool where applicable. Preserve
   keyboard accessibility and existing frame bounds.
 
-- [ ] **UX-P1-19** Add pure key-drag planning. Depends on UX-P1-16. Convert
+- [x] **UX-P1-19** Add pure key-drag planning. Depends on UX-P1-16. Convert
   pointer deltas to frame deltas, clamp the entire selection to clip bounds,
   detect same-track collisions before mutation, and generate immutable retime
   inputs. Add tests for single/multi-track selections, negative movement, bounds,
