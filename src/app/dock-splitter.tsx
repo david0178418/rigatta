@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
-import { workspaceLayoutBounds, workspaceLayoutFromKeyboard, workspaceLayoutFromLeftPointer, workspaceLayoutFromRightPointer, type WorkspaceLayout, type WorkspaceViewport } from './workspace-layout.ts';
+import { COLLAPSED_DOCK_WIDTH, workspaceLayoutBounds, workspaceLayoutFromKeyboard, workspaceLayoutFromLeftPointer, workspaceLayoutFromRightPointer, type WorkspaceLayout, type WorkspaceViewport } from './workspace-layout.ts';
 
 export const DockSplitter = function DockSplitter({
 	dock,
@@ -15,11 +15,12 @@ export const DockSplitter = function DockSplitter({
 	const [dragging, setDragging] = useState(false);
 	const sessionRef = useRef<Readonly<{ pointerId: number; startX: number; layout: WorkspaceLayout }> | undefined>(undefined);
 	const bounds = workspaceLayoutBounds(viewport);
-	const current = dock === 'left' ? layout.leftDockWidth : layout.rightDockWidth;
-	const minimum = dock === 'left' ? bounds.leftMin : bounds.rightMin;
-	const maximum = dock === 'left' ? bounds.leftMax : bounds.rightMax;
+	const collapsed = dock === 'left' ? layout.leftDockCollapsed : layout.rightDockCollapsed;
+	const current = collapsed ? COLLAPSED_DOCK_WIDTH : dock === 'left' ? layout.leftDockWidth : layout.rightDockWidth;
+	const minimum = collapsed ? COLLAPSED_DOCK_WIDTH : dock === 'left' ? bounds.leftMin : bounds.rightMin;
+	const maximum = collapsed ? COLLAPSED_DOCK_WIDTH : dock === 'left' ? bounds.leftMax : bounds.rightMax;
 	const onPointerDown = function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
-		if (event.button !== 0) {
+		if (event.button !== 0 || collapsed) {
 			return;
 		}
 
@@ -52,6 +53,10 @@ export const DockSplitter = function DockSplitter({
 		}
 	};
 	const onKeyDown = function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+		if (collapsed) {
+			return;
+		}
+
 		const next = workspaceLayoutFromKeyboard(layout, dock, event.key, viewport);
 
 		if (!next) {
@@ -70,6 +75,7 @@ export const DockSplitter = function DockSplitter({
 			aria-valuemin={minimum}
 			aria-valuenow={current}
 			aria-valuetext={`${current} pixels`}
+			aria-controls={`${dock}-dock`}
 			className={dragging ? 'dock-splitter is-dragging' : 'dock-splitter'}
 			role="separator"
 			tabIndex={0}

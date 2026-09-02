@@ -407,24 +407,24 @@ or `Move key`, and without document scrolling.
 
 ### Layout preferences and dock customization
 
-- [ ] **UX-P2-01** Define a versioned UI-preference schema and storage adapter.
+- [x] **UX-P2-01** Define a versioned UI-preference schema and storage adapter.
   Runtime-validate global and per-project preferences from local storage, apply
   safe defaults on malformed/unsupported data, ignore stale entity IDs, and add
   round-trip/migration/failure tests. Preferences must never enter project
   history, repository snapshots, archives, or exports.
 
-- [ ] **UX-P2-02** Generalize P0 timeline sizing into an immutable workspace
+- [x] **UX-P2-02** Generalize P0 timeline sizing into an immutable workspace
   layout model. Depends on UX-P2-01. Add left/right dock widths, timeline height,
   collapsed dock state, and clamping for all supported viewports. Keep pure
   calculations separate from pointer/DOM handling and cover edge cases by unit
   test.
 
-- [ ] **UX-P2-03** Add accessible side-dock splitters and collapse controls.
+- [x] **UX-P2-03** Add accessible side-dock splitters and collapse controls.
   Depends on UX-P2-02. Pointer and keyboard resizing must preserve the minimum
   usable canvas, remain within the viewport, and not create project history.
   Restore sensible defaults when a saved layout cannot fit the current viewport.
 
-- [ ] **UX-P2-04** Persist and restore workspace presentation state. Depends on
+- [x] **UX-P2-04** Persist and restore workspace presentation state. Depends on
   UX-P2-03. Save dock widths, timeline height, active dock tabs, collapsed
   sections, Rig expansion, timeline row mode/expansion, and density settings.
   Debounce writes, handle storage failure silently but testably, and apply

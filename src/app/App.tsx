@@ -1840,8 +1840,18 @@ const CanvasWarnings = function CanvasWarnings({ warnings }: Readonly<{ warnings
 
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
-	const [uiPreferences, setUiPreferences] = useState<UiPreferences>(loadUiPreferences);
-	const [presentation, setPresentation] = useState<ProjectUiPreferences>(() => projectUiPreferencesFor(loadUiPreferences(), startup.project));
+	const [loadedUiPreferences] = useState<UiPreferences>(loadUiPreferences);
+	const [presentation, setPresentation] = useState<ProjectUiPreferences>(() => {
+		const projectPreferences = projectUiPreferencesFor(loadedUiPreferences, startup.project);
+
+		return {
+			...projectPreferences,
+			layout: clampWorkspaceLayout(projectPreferences.layout, { width: window.innerWidth, height: window.innerHeight })
+		};
+	});
+	const uiPreferencesRef = useRef(loadedUiPreferences);
+	const presentationRef = useRef(presentation);
+	presentationRef.current = presentation;
 	const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
 	const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
@@ -1916,7 +1926,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const playbackRef = useRef<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	playbackRef.current = playback;
 	const updatePresentation = function updatePresentation(update: (current: ProjectUiPreferences) => ProjectUiPreferences): void {
-		setPresentation(update);
+		const nextPresentation = update(presentationRef.current);
+		const nextPreferences = updateProjectUiPreferences(uiPreferencesRef.current, project.id, () => nextPresentation);
+
+		presentationRef.current = nextPresentation;
+		uiPreferencesRef.current = nextPreferences;
+		setPresentation(nextPresentation);
 	};
 	const setSelection = function setSelection(nextSelection: Selection): void {
 		setSelectionState(nextSelection);
@@ -1944,13 +1959,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
-			setUiPreferences((current) => {
-				const next = updateProjectUiPreferences(current, project.id, () => presentation);
+			const next = updateProjectUiPreferences(uiPreferencesRef.current, project.id, () => presentation);
 
-				saveUiPreferences(next);
-
-				return next;
-			});
+			uiPreferencesRef.current = next;
+			saveUiPreferences(next);
 		}, 180);
 
 		return function cleanup(): void {
@@ -1958,9 +1970,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		};
 	}, [presentation, project.id]);
 	const replaceProject = function replaceProject(nextProject: Project, nextAssets: ProjectAssetBlobs): void {
+		const nextPresentation = projectUiPreferencesFor(uiPreferencesRef.current, nextProject);
+
 		setHistory(createHistory(nextProject));
 		setAssetBlobs(nextAssets);
-		setPresentation(projectUiPreferencesFor(uiPreferences, nextProject));
+		presentationRef.current = nextPresentation;
+		setPresentation(nextPresentation);
 		setSelection(createSelection());
 		setInspectorContext({ kind: 'none' });
 		setSelectionHistory([]);
@@ -2091,7 +2106,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	}, []);
 
 	useEffect(() => {
-		setPresentation((current) => ({
+		updatePresentation((current) => ({
 			...current,
 			layout: clampWorkspaceLayout(current.layout, { width: viewportWidth, height: viewportHeight })
 		}));
@@ -2605,7 +2620,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		if (!result.ok) {
 			setAssetImportSummary(undefined);
 			setAssetError(result.error);
-			setPresentation((current) => ({ ...current, rightDockTab: 'assets' }));
+			updatePresentation((current) => ({ ...current, rightDockTab: 'assets' }));
 			return;
 		}
 
@@ -2633,7 +2648,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		};
 
 		setAssetImportSummary(summary);
-		setPresentation((current) => ({ ...current, rightDockTab: 'assets' }));
+		updatePresentation((current) => ({ ...current, rightDockTab: 'assets' }));
 
 		if (candidates.length === 0) {
 			setAssetError(undefined);
@@ -3630,7 +3645,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			{shortcutPanelOpen && <ShortcutReference onClose={() => setShortcutPanelOpen(false)} />}
 
 				<main className="workspace" data-mode={mode}>
-					<aside className={presentation.layout.leftDockCollapsed ? 'panel left-dock is-collapsed' : 'panel left-dock'} aria-label="Rig and draw order">
+					<aside id="left-dock" className={presentation.layout.leftDockCollapsed ? 'panel left-dock is-collapsed' : 'panel left-dock'} aria-label="Rig and draw order">
 						<div className="panel-heading dock-heading">
 							<div>
 								<p className="eyebrow">Structure</p>
@@ -3644,7 +3659,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									{ id: 'point', label: 'Point attachment', description: selectedBone ? 'Gameplay point under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: addPointAttachment },
 									{ id: 'rectangle', label: 'Rectangle attachment', description: selectedBone ? 'Gameplay rectangle under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: addRectangleAttachment }
 								]} />}
-							<button className="icon-button" type="button" aria-label={presentation.layout.leftDockCollapsed ? 'Expand left dock' : 'Collapse left dock'} onClick={() => updatePresentation((current) => ({ ...current, layout: { ...current.layout, leftDockCollapsed: !current.layout.leftDockCollapsed } }))}>{presentation.layout.leftDockCollapsed ? '»' : '«'}</button>
+							<button className="icon-button" type="button" aria-controls="left-dock" aria-expanded={!presentation.layout.leftDockCollapsed} aria-label={presentation.layout.leftDockCollapsed ? 'Expand left dock' : 'Collapse left dock'} onClick={() => updatePresentation((current) => ({ ...current, layout: { ...current.layout, leftDockCollapsed: !current.layout.leftDockCollapsed } }))}>{presentation.layout.leftDockCollapsed ? '»' : '«'}</button>
 							</div>
 						</div>
 						{!presentation.layout.leftDockCollapsed && <>
@@ -3813,7 +3828,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				</section>
 
 				<DockSplitter dock="right" layout={presentation.layout} viewport={{ width: viewportWidth, height: viewportHeight }} onChange={(layout) => updatePresentation((current) => ({ ...current, layout }))} />
-				<aside className={presentation.layout.rightDockCollapsed ? 'panel right-dock library-panel inspector-panel is-collapsed' : 'panel right-dock library-panel inspector-panel'} data-right-tab={presentation.rightDockTab} aria-label="Properties and assets">
+				<aside id="right-dock" className={presentation.layout.rightDockCollapsed ? 'panel right-dock library-panel inspector-panel is-collapsed' : 'panel right-dock library-panel inspector-panel'} data-right-tab={presentation.rightDockTab} aria-label="Properties and assets">
 					<div className="right-dock-heading">
 						{!presentation.layout.rightDockCollapsed && <Tabs
 							label="Right dock"
@@ -3821,7 +3836,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							value={presentation.rightDockTab}
 							onChange={(value) => updatePresentation((current) => ({ ...current, rightDockTab: value }))}
 						/>}
-						<button className="icon-button" type="button" aria-label={presentation.layout.rightDockCollapsed ? 'Expand right dock' : 'Collapse right dock'} onClick={() => updatePresentation((current) => ({ ...current, layout: { ...current.layout, rightDockCollapsed: !current.layout.rightDockCollapsed } }))}>{presentation.layout.rightDockCollapsed ? '«' : '»'}</button>
+						<button className="icon-button" type="button" aria-controls="right-dock" aria-expanded={!presentation.layout.rightDockCollapsed} aria-label={presentation.layout.rightDockCollapsed ? 'Expand right dock' : 'Collapse right dock'} onClick={() => updatePresentation((current) => ({ ...current, layout: { ...current.layout, rightDockCollapsed: !current.layout.rightDockCollapsed } }))}>{presentation.layout.rightDockCollapsed ? '«' : '»'}</button>
 					</div>
 					{!presentation.layout.rightDockCollapsed && <>
 					{presentation.rightDockTab === 'properties' && (
