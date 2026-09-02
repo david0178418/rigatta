@@ -7,7 +7,7 @@ import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createViewportState, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
 import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from './grid.ts';
 import type { Selection } from './selection.ts';
-import type { TransformPhase, TransformTool } from './transform-gesture.ts';
+import type { TransformModifiers, TransformPhase, TransformTool } from './transform-gesture.ts';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -16,6 +16,8 @@ type PointerSession = Readonly<{
 	startX: number;
 	startY: number;
 	mode: 'pan' | 'marquee' | 'transform';
+	constrained: boolean;
+	additive: boolean;
 }>;
 
 export const ViewportCanvas = function ViewportCanvas({
@@ -41,8 +43,8 @@ export const ViewportCanvas = function ViewportCanvas({
 	onCanvasMarquee?: (bounds: LogicalBounds, additive: boolean) => void;
 	selection?: Selection;
 	transformTool?: TransformTool;
-	onCanvasTransformStart?: (point: ViewportPoint, tool: TransformTool) => boolean;
-	onCanvasTransform?: (point: ViewportPoint, phase: TransformPhase) => void;
+	onCanvasTransformStart?: (point: ViewportPoint, tool: TransformTool, modifiers?: TransformModifiers) => boolean;
+	onCanvasTransform?: (point: ViewportPoint, phase: TransformPhase, modifiers?: TransformModifiers) => void;
 	gridVisible?: boolean;
 	gridSpacing?: number;
 	snapToGrid?: boolean;
@@ -50,6 +52,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const pointerSessionRef = useRef<PointerSession | undefined>(undefined);
+	const spacePressedRef = useRef(false);
 	const didPanRef = useRef(false);
 	const renderQueueRef = useRef<Promise<void>>(Promise.resolve());
 	const renderRequestRef = useRef(0);
@@ -189,20 +192,21 @@ export const ViewportCanvas = function ViewportCanvas({
 	};
 
 	const beginPan = function beginPan(event: PointerEvent): void {
-		if (event.button !== 0) {
+		if (event.button !== 0 && event.button !== 1) {
 			return;
 		}
 
 		didPanRef.current = false;
 		const stage = viewportRef.current?.getBoundingClientRect();
+		const panRequested = event.button === 1 || spacePressedRef.current;
 		const startPoint = stage
 			? logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current)
 			: undefined;
 		const transformStart = transformStartRef.current;
-		const transformClaimed = !event.shiftKey
+		const transformClaimed = !panRequested
 			&& !!startPoint
 			&& !!transformStart
-			&& transformStart(startPoint, transformToolRef.current);
+			&& transformStart(startPoint, transformToolRef.current, { shiftKey: event.shiftKey });
 
 		pointerSessionRef.current = {
 			id: event.pointerId,
@@ -210,11 +214,13 @@ export const ViewportCanvas = function ViewportCanvas({
 			y: event.clientY,
 			startX: event.clientX,
 			startY: event.clientY,
-			mode: transformClaimed ? 'transform' : event.shiftKey ? 'marquee' : 'pan'
+			mode: panRequested ? 'pan' : transformClaimed ? 'transform' : 'marquee',
+			constrained: event.shiftKey,
+			additive: event.metaKey || event.ctrlKey
 		};
 		setMarquee(undefined);
 		hostRef.current?.setPointerCapture(event.pointerId);
-		setIsPanning(true);
+		setIsPanning(panRequested);
 	};
 
 	const movePan = function movePan(event: PointerEvent): void {
@@ -226,7 +232,7 @@ export const ViewportCanvas = function ViewportCanvas({
 		const deltaX = event.clientX - session.x;
 		const deltaY = event.clientY - session.y;
 
-		if (deltaX !== 0 || deltaY !== 0) {
+		if (Math.hypot(event.clientX - session.startX, event.clientY - session.startY) >= 3) {
 			didPanRef.current = true;
 		}
 
@@ -235,9 +241,9 @@ export const ViewportCanvas = function ViewportCanvas({
 			const onTransform = transformRef.current;
 
 			if (stage && onTransform) {
-				onTransform(logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current), 'update');
+				onTransform(logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current), 'update', { shiftKey: session.constrained });
 			}
-		} else if (session.mode === 'marquee') {
+		} else if (session.mode === 'marquee' && didPanRef.current) {
 			const stage = viewportRef.current?.getBoundingClientRect();
 
 			if (stage) {
@@ -267,7 +273,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			: undefined;
 
 		if (session.mode === 'transform' && onTransform && currentPoint) {
-			onTransform(currentPoint, select ? 'end' : 'cancel');
+			onTransform(currentPoint, select ? 'end' : 'cancel', { shiftKey: session.constrained });
 		} else if (select && session.mode === 'marquee' && didPanRef.current && stage && onMarquee) {
 			onMarquee(screenRectangleToLogicalBounds(
 				{ x: session.startX, y: session.startY },
@@ -275,7 +281,7 @@ export const ViewportCanvas = function ViewportCanvas({
 				stage,
 				viewportStateRef.current,
 				projectRef.current.logicalCanvas
-			), event.metaKey || event.ctrlKey);
+			), session.additive || event.metaKey || event.ctrlKey);
 		} else if (select && !didPanRef.current && stage && onSelect) {
 			onSelect(screenToLogicalPoint(
 				{ x: event.clientX, y: event.clientY },
@@ -319,6 +325,61 @@ export const ViewportCanvas = function ViewportCanvas({
 			host.removeEventListener('pointercancel', releaseWithoutSelection, true);
 		};
 	}, [assets, project]);
+
+	useEffect(() => {
+		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
+			if (event.key === ' ') {
+				event.preventDefault();
+				spacePressedRef.current = true;
+			}
+		};
+		const onKeyUp = function onKeyUp(event: KeyboardEvent): void {
+			if (event.key === ' ') {
+				spacePressedRef.current = false;
+			}
+		};
+
+		window.addEventListener('keydown', onKeyDown);
+		window.addEventListener('keyup', onKeyUp);
+
+		return function cleanup(): void {
+			window.removeEventListener('keydown', onKeyDown);
+			window.removeEventListener('keyup', onKeyUp);
+		};
+	}, []);
+
+	useEffect(() => {
+		const cancelActiveGesture = function cancelActiveGesture(): void {
+			const session = pointerSessionRef.current;
+			const stage = viewportRef.current?.getBoundingClientRect();
+			const onTransform = transformRef.current;
+
+			if (!session) {
+				return;
+			}
+			if (session.mode === 'transform' && stage && onTransform) {
+				onTransform(logicalPointAt({ x: session.startX, y: session.startY }, stage, session.constrained), 'cancel', { shiftKey: session.constrained });
+			}
+			if (hostRef.current?.hasPointerCapture(session.id)) {
+				hostRef.current.releasePointerCapture(session.id);
+			}
+
+			pointerSessionRef.current = undefined;
+			setMarquee(undefined);
+			setIsPanning(false);
+		};
+		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
+			if (event.key === 'Escape') {
+				cancelActiveGesture();
+			}
+		};
+
+		document.addEventListener('keydown', onKeyDown, true);
+
+		return function cleanup(): void {
+			document.removeEventListener('keydown', onKeyDown, true);
+		};
+	}, []);
 
 	const zoomAtCenter = function zoomAtCenter(wheelDelta: number): void {
 		setViewport((current) => zoomViewport(current, wheelDelta, { x: 0, y: 0 }));

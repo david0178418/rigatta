@@ -206,7 +206,8 @@ export const autoKeyCommandsForProperty = function autoKeyCommandsForProperty(
 	targetId: EntityId,
 	property: KeyableProperty,
 	frameIndex: number,
-	idFactory: () => EntityId = createEntityId
+	idFactory: () => EntityId = createEntityId,
+	valueOverride?: number
 ): readonly ProjectCommand[] {
 	const context: KeyingContext = {
 		project,
@@ -217,7 +218,7 @@ export const autoKeyCommandsForProperty = function autoKeyCommandsForProperty(
 		autoKey: true
 	};
 	const definition = trackDefinitionForProperty(project, targetId, property);
-	const value = valueForProperty(project, targetId, property);
+	const value = valueOverride ?? valueForProperty(project, targetId, property);
 
 	return definition && value !== undefined
 		? commandsForKey(context, definition, clip.tracks.find((track) => trackMatchesDefinition(track, definition)), value, idFactory)

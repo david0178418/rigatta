@@ -1,0 +1,178 @@
+import { useEffect, useState, type DragEvent as ReactDragEvent, type ReactElement } from 'react';
+import type { EntityId } from '../domain/ids.ts';
+import type { ImageAsset, Project } from '../domain/model.ts';
+import type { ProjectAssetBlobs } from '../persistence/repository.ts';
+import { buildAssetLibraryEntries, type AssetLibraryEntry } from './asset-library.ts';
+import { isSelected, type Selection } from './selection.ts';
+import type { AssetDensity } from './ui-preferences.ts';
+
+const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
+
+const assetForEntry = function assetForEntry(entry: AssetLibraryEntry): ImageAsset | undefined {
+	return entry.kind === 'asset' ? entry.asset : undefined;
+};
+
+const fileFormat = function fileFormat(asset: ImageAsset): string {
+	return asset.mimeType.replace('image/', '').toUpperCase();
+};
+
+export const AssetBrowser = function AssetBrowser({
+	project,
+	assets,
+	selection,
+	query,
+	density,
+	isImporting,
+	importMessage,
+	dropHint,
+	onQueryChange,
+	onDensityChange,
+	onImport,
+	onSelectionChange,
+	onDragStart,
+	onDragEnd,
+	onDrop,
+	onDragOver
+}: Readonly<{
+	project: Project;
+	assets: ProjectAssetBlobs;
+	selection: Selection;
+	query: string;
+	density: AssetDensity;
+	isImporting: boolean;
+	importMessage?: string;
+	dropHint?: string;
+	onQueryChange: (query: string) => void;
+	onDensityChange: (density: AssetDensity) => void;
+	onImport: () => void;
+	onSelectionChange: (assetId: EntityId, additive: boolean) => void;
+	onDragStart: (event: ReactDragEvent<HTMLElement>, assetId: EntityId) => void;
+	onDragEnd: () => void;
+	onDrop: (event: ReactDragEvent<HTMLElement>) => void;
+	onDragOver: (event: ReactDragEvent<HTMLElement>) => void;
+}>): ReactElement {
+	const [hoveredAssetId, setHoveredAssetId] = useState<EntityId | undefined>(undefined);
+	const entries = buildAssetLibraryEntries(project.assets, query);
+	const visibleAssets = entries.flatMap((entry) => {
+		const asset = assetForEntry(entry);
+
+		return asset ? [asset] : [];
+	});
+	const [objectUrls, setObjectUrls] = useState<ReadonlyMap<EntityId, string>>(new Map());
+
+	useEffect(() => {
+		const urls = new Map<EntityId, string>();
+
+		visibleAssets.forEach((asset) => {
+			const blob = assets.get(asset.id);
+
+			if (blob) {
+				urls.set(asset.id, URL.createObjectURL(blob));
+			}
+		});
+		setObjectUrls(urls);
+
+		return function cleanup(): void {
+			urls.forEach((url) => URL.revokeObjectURL(url));
+		};
+	}, [assets, visibleAssets.map((asset) => asset.id).join('|')]);
+
+	const selectedAsset = project.assets.find((asset) => asset.id === (hoveredAssetId ?? selection.find((entity) => entity.kind === 'asset')?.id));
+	const usage = selectedAsset
+		? project.attachments.flatMap((attachment) => attachment.kind === 'image' && attachment.assetId === selectedAsset.id
+			? [project.slots.find((slot) => slot.id === attachment.slotId)?.name ?? attachment.name]
+			: [])
+		: [];
+	const onDragStartWithAsset = function onDragStartWithAsset(event: ReactDragEvent<HTMLElement>, assetId: EntityId): void {
+		event.dataTransfer.effectAllowed = 'copy';
+		event.dataTransfer.setData(ASSET_DRAG_MIME, assetId);
+		onDragStart(event, assetId);
+	};
+
+	return (
+		<section className="asset-browser" aria-label="Assets" onDragOver={onDragOver} onDrop={onDrop}>
+			<div className="panel-heading">
+				<div>
+					<p className="eyebrow">Sources</p>
+					<h2>Image library</h2>
+				</div>
+				<button className="icon-button" type="button" aria-label="Import image directory" disabled={isImporting} onClick={onImport}>+</button>
+			</div>
+			<div className="asset-browser-controls">
+				<label className="search-field">
+					<span className="sr-only">Search images</span>
+					<input aria-label="Search images" type="search" placeholder="Search images" value={query} disabled={project.assets.length === 0} onChange={(event) => onQueryChange(event.target.value)} />
+				</label>
+				<label className="asset-density-field">
+					<span className="field-label">Density</span>
+					<select aria-label="Asset density" value={density} onChange={(event) => {
+						const next = event.target.value;
+
+						if (next === 'list' || next === 'compact' || next === 'thumbnail') {
+							onDensityChange(next);
+						}
+					}}>
+						<option value="list">List</option>
+						<option value="compact">Compact</option>
+						<option value="thumbnail">Thumbnail</option>
+					</select>
+				</label>
+			</div>
+			{dropHint && <p className="asset-drop-hint" role="status">{dropHint}</p>}
+			{project.assets.length === 0 ? (
+				<div className="empty-state compact-state">
+					<span className="empty-glyph" aria-hidden="true">◇</span>
+					<p>No images imported</p>
+					<span>Drop a folder here to begin.</span>
+				</div>
+			) : entries.length === 0 ? (
+				<div className="tree-empty">No images match “{query}”.</div>
+			) : (
+				<div className={`asset-list asset-density-${density}`} aria-label="Imported images">
+					{entries.map((entry) => entry.kind === 'folder' ? (
+						<div className="asset-folder-row" key={`folder:${entry.path}`} style={{ paddingLeft: `${8 + entry.depth * 12}px` }}>
+							<span className="asset-glyph" aria-hidden="true">▾</span>
+							<span>{entry.name}</span>
+						</div>
+					) : (
+						<button
+							aria-pressed={isSelected(selection, { kind: 'asset', id: entry.asset.id })}
+							className="asset-row"
+							draggable
+							key={entry.asset.id}
+							type="button"
+							onClick={(event) => onSelectionChange(entry.asset.id, event.metaKey || event.ctrlKey)}
+							onDragEnd={onDragEnd}
+							onDragStart={(event) => onDragStartWithAsset(event, entry.asset.id)}
+							onFocus={() => setHoveredAssetId(entry.asset.id)}
+							onMouseEnter={() => setHoveredAssetId(entry.asset.id)}
+							onMouseLeave={() => setHoveredAssetId(undefined)}
+							style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
+							title={`Image: ${entry.asset.relativePath} · Drag to the canvas or a slot`}
+						>
+							{density === 'thumbnail' && objectUrls.get(entry.asset.id) && <img alt="" className="asset-thumbnail" src={objectUrls.get(entry.asset.id)} />}
+							{density !== 'thumbnail' && <span className="asset-glyph" aria-hidden="true">▧</span>}
+							<span>{entry.asset.name}<small>{density === 'compact' ? `${entry.asset.width} × ${entry.asset.height}` : entry.asset.relativePath}</small></span>
+						</button>
+					))}
+				</div>
+			)}
+			{selectedAsset && (
+				<section className="asset-preview" aria-label="Asset preview">
+					<div className="asset-preview-image">
+						{objectUrls.get(selectedAsset.id) ? <img alt={`${selectedAsset.name} preview`} src={objectUrls.get(selectedAsset.id)} /> : <span aria-hidden="true">▧</span>}
+					</div>
+					<div>
+						<strong>{selectedAsset.name}</strong>
+						<span>{selectedAsset.width} × {selectedAsset.height} · {fileFormat(selectedAsset)}</span>
+						<span>{selectedAsset.relativePath}</span>
+						<span>{usage.length > 0 ? `Used by ${usage.join(', ')}` : 'Not used by a slot yet'}</span>
+					</div>
+				</section>
+			)}
+			{(importMessage || isImporting) && <p className="muted-copy asset-import-status" aria-live="polite">{isImporting ? 'Importing images…' : importMessage}</p>}
+		</section>
+	);
+};
+
+export { ASSET_DRAG_MIME };

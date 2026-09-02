@@ -16,7 +16,7 @@ import {
 	type HistoryState
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
-import type { BoneTransformProperty, Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
+import { createEmptyProject, type BoneTransformProperty, type Clip, type CubicBezier, type Interpolation, type Project, type Track } from '../domain/model.ts';
 import { evaluatePose } from '../domain/pose.ts';
 import { validateProject, type ValidationDiagnostic } from '../domain/validation.ts';
 import { canvasWarningsForSetup, type CanvasWarning } from '../domain/canvas-warnings.ts';
@@ -25,19 +25,19 @@ import { advancePlayback, createPlaybackState, frameCountForClip, frameTimeSecon
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
 import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
-import { createAutosaveScheduler } from '../persistence/autosave.ts';
+import { createAutosaveScheduler, type AutosaveStatus } from '../persistence/autosave.ts';
 import { estimateStorage, type StorageReport } from '../persistence/storage.ts';
-import type { ProjectAssetBlobs } from '../persistence/repository.ts';
+import type { ProjectAssetBlobs, RecentProject } from '../persistence/repository.ts';
+import { exportProjectArchive, importProjectArchive } from '../persistence/archive.ts';
 import type { ReadyStartup, StartupState } from './startup.ts';
 import { loadEditorStartup } from './startup.ts';
-import { buildAssetLibraryEntries } from './asset-library.ts';
 import { entitiesInBounds, hitTestProject } from './hit-testing.ts';
 import { boneDropCommands, dropZoneForClientY, type BoneDropZone } from './hierarchy-dnd.ts';
 import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
 import { createSelection, isSelected, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
 import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, frameIndexForTime, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
-import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformPhase, type TransformTool } from './transform-gesture.ts';
+import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
@@ -45,7 +45,19 @@ import { createExportDiagnostics, formatByteCount } from '../export/diagnostics.
 import { createExampleAssetBlobs, exampleProject } from '../examples/example-project.ts';
 import { shortcutActionFor, type ShortcutAction } from './shortcuts.ts';
 import { nextAvailableName } from './entity-names.ts';
-import { ANIMATE_TIMELINE_DEFAULT_HEIGHT, SETUP_TIMELINE_HEIGHT, clampTimelineHeight, timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
+import { SETUP_TIMELINE_HEIGHT, clampTimelineHeight, timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
+import { AssetBrowser } from './asset-browser.tsx';
+import { DockSplitter } from './dock-splitter.tsx';
+import { DrawOrderPanel } from './draw-order-panel.tsx';
+import { DirectNameField, DirectNumericField } from './inspector-fields.tsx';
+import { ProjectMenu } from './project-menu.tsx';
+import { RigTreeView } from './rig-tree-view.tsx';
+import { buildRigTreeViewModel, revealAncestors, selectableEntityForRigNode, type RigTreeNode } from './rig-tree.ts';
+import { MenuButton, Tabs } from './ui-primitives.tsx';
+import { loadUiPreferences, projectUiPreferencesFor, saveUiPreferences, updateProjectUiPreferences, type AssetDensity, type ProjectUiPreferences, type UiPreferences } from './ui-preferences.ts';
+import { clampWorkspaceLayout } from './workspace-layout.ts';
+import type { NumericProperty } from './property-drafts.ts';
+import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty } from './keying.ts';
 
 type EditorMode = 'setup' | 'animate';
 
@@ -74,6 +86,13 @@ const blobForImage = function blobForImage(image: ImportedImage): Blob {
 	new Uint8Array(buffer).set(image.bytes);
 
 	return new Blob([buffer], { type: image.mimeType });
+};
+
+const blobFromBytes = function blobFromBytes(bytes: Uint8Array, mimeType: string): Blob {
+	const buffer = new ArrayBuffer(bytes.byteLength);
+	new Uint8Array(buffer).set(bytes);
+
+	return new Blob([buffer], { type: mimeType });
 };
 
 const formNumber = function formNumber(data: FormData, name: string): number | undefined {
@@ -187,41 +206,6 @@ type PendingAnimationEdit = Readonly<{
 	targetId: EntityId;
 	property: PendingAnimationProperty;
 }>;
-
-type AnimationKeyState = 'unkeyed' | 'edited' | 'keyed';
-
-const keyStateLabels: Readonly<Record<AnimationKeyState, string>> = {
-	unkeyed: 'Unkeyed',
-	edited: 'Pending',
-	keyed: 'Keyed'
-};
-
-const animationKeyState = function animationKeyState(
-	project: Project,
-	clip: Clip | undefined,
-	targetId: EntityId,
-	property: PendingAnimationProperty,
-	frameIndex: number,
-	pendingEdits: readonly PendingAnimationEdit[]
-): AnimationKeyState {
-	if (pendingEdits.some((edit) => edit.targetId === targetId && edit.property === property)) {
-		return 'edited';
-	}
-	if (!clip) {
-		return 'unkeyed';
-	}
-
-	const transformTrackKind = project.bones.some((bone) => bone.id === targetId)
-		? 'bone-transform'
-		: 'attachment-transform';
-	const track = property === 'opacity'
-		? clip.tracks.find((candidate) => candidate.kind === 'attachment-opacity' && candidate.targetId === targetId)
-		: property === 'width' || property === 'height'
-			? clip.tracks.find((candidate) => candidate.kind === 'rectangle-size' && candidate.targetId === targetId && candidate.property === property)
-			: clip.tracks.find((candidate) => candidate.kind === transformTrackKind && candidate.targetId === targetId && candidate.property === property);
-
-	return track?.keys.some((key) => Math.round(key.timeSeconds * clip.fps) === frameIndex) ? 'keyed' : 'unkeyed';
-};
 
 const trackMatchesDefinition = function trackMatchesDefinition(
 	track: Track,
@@ -408,7 +392,7 @@ const BezierGraphEditor = function BezierGraphEditor({
 						cy={graphY(draftCurve.y1)}
 						r="0.045"
 						onPointerDown={(event) => beginPointerDrag('first', event)}
-					/>
+																	/>
 					<circle
 						className="bezier-control-point"
 						cx={draftCurve.x2}
@@ -1395,13 +1379,17 @@ const CanvasWarnings = function CanvasWarnings({ warnings }: Readonly<{ warnings
 
 const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyStartup }>): ReactElement {
 	const [mode, setMode] = useState<EditorMode>('setup');
+	const [uiPreferences, setUiPreferences] = useState<UiPreferences>(loadUiPreferences);
+	const [presentation, setPresentation] = useState<ProjectUiPreferences>(() => projectUiPreferencesFor(loadUiPreferences(), startup.project));
+	const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
 	const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
-	const [timelineHeight, setTimelineHeight] = useState(() => clampTimelineHeight(ANIMATE_TIMELINE_DEFAULT_HEIGHT, window.innerHeight));
 	const [history, setHistory] = useState<HistoryState>(() => createHistory(startup.project));
 	const [persistenceError, setPersistenceError] = useState<string | undefined>(undefined);
 	const [commandError, setCommandError] = useState<string | undefined>(undefined);
 	const [assetError, setAssetError] = useState<string | undefined>(undefined);
-	const [selection, setSelection] = useState<Selection>(createSelection);
+	const [selection, setSelectionState] = useState<Selection>(createSelection);
+	const [selectionHistory, setSelectionHistory] = useState<readonly Selection[]>([]);
+	const selectionHistoryCursorRef = useRef(-1);
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
 	const [gridSettings, setGridSettings] = useState<GridSettings>(() => ({ ...DEFAULT_GRID_SETTINGS }));
 	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
@@ -1415,12 +1403,24 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [exportPanelOpen, setExportPanelOpen] = useState(false);
 	const [exportSelection, setExportSelection] = useState<ExportClipSelection>({ mode: 'combined', clipIds: [] });
 	const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
+	const [recentProjects, setRecentProjects] = useState<readonly RecentProject[]>([]);
+	const [rigSearch, setRigSearch] = useState('');
+	const [inlineRenameId, setInlineRenameId] = useState<EntityId | undefined>(undefined);
+	const [constraintStatus, setConstraintStatus] = useState<string | undefined>(undefined);
+	const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus | undefined>(undefined);
 	const [storageReport, setStorageReport] = useState<StorageReport | undefined>(undefined);
 	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetQuery, setAssetQuery] = useState('');
 	const [assetBlobs, setAssetBlobs] = useState<ProjectAssetBlobs>(startup.assets);
 	const autosave = useMemo(() => createAutosaveScheduler(startup.repository, {
+		onStatus: (status) => {
+			setAutosaveStatus(status);
+
+			if (status === 'saved') {
+				setPersistenceError(undefined);
+			}
+		},
 		onError: (error) => setPersistenceError(error.message)
 	}), [startup.repository]);
 	const project = currentProject(history);
@@ -1431,9 +1431,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const activePlayback = activeClip && playback?.clipId === activeClip.id
 		? playback.state
 		: createPlaybackState();
-	const boundedTimelineHeight = clampTimelineHeight(timelineHeight, viewportHeight);
+	const boundedTimelineHeight = clampTimelineHeight(presentation.layout.timelineHeight, viewportHeight);
 	const shellStyle = {
-		'--timeline-height': `${mode === 'animate' ? boundedTimelineHeight : SETUP_TIMELINE_HEIGHT}px`
+		'--timeline-height': `${mode === 'animate' ? boundedTimelineHeight : SETUP_TIMELINE_HEIGHT}px`,
+		'--left-dock-width': `${presentation.layout.leftDockCollapsed ? 34 : presentation.layout.leftDockWidth}px`,
+		'--right-dock-width': `${presentation.layout.rightDockCollapsed ? 34 : presentation.layout.rightDockWidth}px`
 	} as CSSProperties;
 	const activePose = useMemo(() => {
 		if (mode !== 'animate' || !activeClip) {
@@ -1445,7 +1447,65 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const playbackRef = useRef<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	playbackRef.current = playback;
 	const orderedBones = project.boneOrder.flatMap((boneId) => project.bones.filter((bone) => bone.id === boneId));
-	const libraryEntries = buildAssetLibraryEntries(project.assets, assetQuery);
+	const updatePresentation = function updatePresentation(update: (current: ProjectUiPreferences) => ProjectUiPreferences): void {
+		setPresentation(update);
+	};
+	const setSelection = function setSelection(nextSelection: Selection): void {
+		setSelectionState(nextSelection);
+		const target = nextSelection.at(-1);
+
+		if (!target || target.kind === 'asset') {
+			return;
+		}
+
+		const model = buildRigTreeViewModel(project, nextSelection, new Set(presentation.rigExpandedIds));
+		const expanded = new Set(revealAncestors(model, target.id, new Set(presentation.rigExpandedIds)));
+
+		if (target.kind === 'bone') {
+			expanded.add(target.id);
+		}
+
+		updatePresentation((current) => ({ ...current, rigExpandedIds: [...expanded] }));
+	};
+	const projectHasContent = project.assets.length > 0
+		|| project.bones.length > 0
+		|| project.slots.length > 0
+		|| project.attachments.length > 0
+		|| project.clips.length > 0;
+
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setUiPreferences((current) => {
+				const next = updateProjectUiPreferences(current, project.id, () => presentation);
+
+				saveUiPreferences(next);
+
+				return next;
+			});
+		}, 180);
+
+		return function cleanup(): void {
+			clearTimeout(timer);
+		};
+	}, [presentation, project.id]);
+	const replaceProject = function replaceProject(nextProject: Project, nextAssets: ProjectAssetBlobs): void {
+		setHistory(createHistory(nextProject));
+		setAssetBlobs(nextAssets);
+		setPresentation(projectUiPreferencesFor(uiPreferences, nextProject));
+		setSelection(createSelection());
+		setSelectionHistory([]);
+		selectionHistoryCursorRef.current = -1;
+		setInlineRenameId(undefined);
+		setActiveClipId(nextProject.clips[0]?.id);
+		setPlayback(undefined);
+		setPendingAnimationEdits([]);
+		setExportSelection(createExportClipSelection(nextProject));
+		setCommandError(undefined);
+		setPersistenceError(undefined);
+		setAssetError(undefined);
+		setMode('setup');
+		autosave.schedule(nextProject, blobsForProject(nextProject, nextAssets));
+	};
 	const openExportPanel = function openExportPanel(): void {
 		setExportSelection((current) => current.clipIds.length === 0
 			? createExportClipSelection(project, current.mode)
@@ -1453,29 +1513,92 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setExportPanelOpen(true);
 	};
 	const loadExampleProject = function loadExampleProject(): void {
-		const hasContent = project.assets.length > 0
-			|| project.bones.length > 0
-			|| project.slots.length > 0
-			|| project.attachments.length > 0
-			|| project.clips.length > 0;
-
-		if (hasContent && !window.confirm('Replace the current project with the built-in example?')) {
+		if (projectHasContent && !window.confirm('Replace the current project with the built-in example?')) {
 			return;
 		}
 
-		const nextAssets = createExampleAssetBlobs();
+		replaceProject(exampleProject, createExampleAssetBlobs());
+	};
+	const createNewProject = function createNewProject(): void {
+		if (projectHasContent && !window.confirm('Replace the current project with a new empty project?')) {
+			return;
+		}
 
-		setHistory(createHistory(exampleProject));
-		setAssetBlobs(nextAssets);
-		setSelection(createSelection());
-		setActiveClipId(exampleProject.clips[0]?.id);
-		setPlayback(undefined);
-		setPendingAnimationEdits([]);
-		setExportSelection(createExportClipSelection(exampleProject));
-		setCommandError(undefined);
-		setPersistenceError(undefined);
-		setAssetError(undefined);
-		autosave.schedule(exampleProject, blobsForProject(exampleProject, nextAssets));
+		replaceProject(createEmptyProject(), new Map());
+	};
+	const exportArchive = async function exportArchive(): Promise<void> {
+		const bytePairs = await Promise.all(project.assets.map(async (asset): Promise<readonly [EntityId, Uint8Array] | undefined> => {
+			const blob = assetBlobs.get(asset.id);
+
+			return blob ? [asset.id, new Uint8Array(await blob.arrayBuffer())] : undefined;
+		}));
+		const result = await exportProjectArchive(project, new Map(bytePairs.flatMap((pair) => pair ? [pair] : [])));
+
+		if (!result.ok) {
+			setPersistenceError(result.error.message);
+			return;
+		}
+
+		const url = URL.createObjectURL(blobFromBytes(result.value, 'application/zip'));
+		const link = document.createElement('a');
+
+		link.href = url;
+		link.download = `${project.name.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || 'project'}.boneanim`;
+		link.click();
+		URL.revokeObjectURL(url);
+	};
+	const importArchive = async function importArchive(bytes: Uint8Array): Promise<void> {
+		const result = await importProjectArchive(bytes);
+
+		if (!result.ok) {
+			setPersistenceError(result.error.message);
+			return;
+		}
+		if (projectHasContent && !window.confirm('Replace the current project with the imported archive?')) {
+			return;
+		}
+
+		const nextAssets = new Map(result.value.project.assets.flatMap((asset) => {
+			const bytesForAsset = result.value.assets.get(asset.id);
+
+			return bytesForAsset ? [[asset.id, blobFromBytes(bytesForAsset, asset.mimeType)] as const] : [];
+		}));
+
+		replaceProject(result.value.project, nextAssets);
+	};
+	const openRecentProjects = function openRecentProjects(): void {
+		void startup.repository.listRecentProjects().then((result) => {
+			if (result.ok) {
+				setRecentProjects(result.value);
+				return;
+			}
+
+			setPersistenceError(result.error.message);
+		});
+	};
+	const loadRecentProject = function loadRecentProject(projectId: EntityId): void {
+		const recent = recentProjects.find((candidate) => candidate.id === projectId);
+
+		if (!recent) {
+			setPersistenceError('That recent project is no longer available.');
+			return;
+		}
+
+		void (recent.isRecovery ? startup.repository.loadRecovery(projectId) : startup.repository.loadProject(projectId)).then((result) => {
+			if (!result.ok) {
+				setPersistenceError(result.error.message);
+				return;
+			}
+			if (!result.value) {
+				setPersistenceError('The selected recent project could not be loaded.');
+				return;
+			}
+			if (projectHasContent && !window.confirm(`Replace the current project with “${result.value.project.name}”?`)) {
+				return;
+			}
+
+			replaceProject(result.value.project, result.value.assets);
+		});
 	};
 
 	useEffect(() => {
@@ -1486,6 +1609,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 	useEffect(() => {
 		const updateViewportHeight = function updateViewportHeight(): void {
+			setViewportWidth(window.innerWidth);
 			setViewportHeight(window.innerHeight);
 		};
 
@@ -1495,6 +1619,13 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			window.removeEventListener('resize', updateViewportHeight);
 		};
 	}, []);
+
+	useEffect(() => {
+		setPresentation((current) => ({
+			...current,
+			layout: clampWorkspaceLayout(current.layout, { width: viewportWidth, height: viewportHeight })
+		}));
+	}, [viewportHeight, viewportWidth]);
 
 	useEffect(() => {
 		const lifecycle = { cancelled: false };
@@ -1565,7 +1696,24 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			'toggle-playback': () => toggleActivePlayback(),
 			'step-backward': () => stepActivePlayback(-1),
 			'step-forward': () => stepActivePlayback(1),
-			'open-reference': () => setShortcutPanelOpen(true)
+			'open-reference': () => setShortcutPanelOpen(true),
+			'rename-selection': () => {
+				renameInputRef.current?.focus();
+				renameInputRef.current?.select();
+			},
+			'delete-selection': () => deleteSelected(),
+			'key-selection': () => keySelectedProperties(),
+			cancel: () => {
+				setExportPanelOpen(false);
+				setShortcutPanelOpen(false);
+				updateCanvasTransform({ x: 0, y: 0 }, 'cancel');
+			},
+			'select-previous': () => navigateSelectionHistory(-1),
+			'select-next': () => navigateSelectionHistory(1),
+			'tool-translate': () => setTransformTool('translate'),
+			'tool-rotate': () => setTransformTool('rotate'),
+			'tool-scale': () => setTransformTool('scale'),
+			'tool-shear': () => setTransformTool('shear')
 		};
 		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
 			if (isFormTarget(event.target)) {
@@ -1877,6 +2025,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setAssetBlobs(nextAssets);
 		setAssetError(undefined);
 		commitHistory(nextProject.value, nextAssets);
+		setPresentation((current) => ({ ...current, rightDockTab: 'assets' }));
 	};
 
 	const importDirectory = async function importDirectory(): Promise<void> {
@@ -2100,8 +2249,40 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		applyCommand({ kind: 'assign-slot-attachment', slotId, attachmentId });
 	};
 
+	const recordSelection = function recordSelection(nextSelection: Selection): void {
+		setSelection(nextSelection);
+		const latest = nextSelection.at(-1);
+
+		if (!latest) {
+			return;
+		}
+
+		const current = selectionHistory;
+		const cursor = selectionHistoryCursorRef.current;
+		const previous = current[cursor]?.at(-1);
+
+		if (previous?.kind === latest.kind && previous.id === latest.id) {
+			return;
+		}
+
+		const nextHistory = [...(cursor >= 0 ? current.slice(0, cursor + 1) : current), nextSelection].slice(-20);
+
+		selectionHistoryCursorRef.current = nextHistory.length - 1;
+		setSelectionHistory(nextHistory);
+		updatePresentation((currentPresentation) => ({
+			...currentPresentation,
+			selectionHistory: nextHistory.flatMap((entry) => {
+				const last = entry.at(-1);
+
+				return last ? [last.id] : [];
+			})
+		}));
+	};
+	const setSelectionFromSurface = function setSelectionFromSurface(nextSelection: Selection): void {
+		recordSelection(nextSelection);
+	};
 	const updateSelection = function updateSelection(entity: SelectableEntity, additive: boolean): void {
-		setSelection((current) => selectEntity(current, entity, additive));
+		setSelectionFromSurface(selectEntity(selection, entity, additive));
 	};
 
 	const selectCanvasPoint = function selectCanvasPoint(point: ViewportPoint, additive: boolean): void {
@@ -2113,12 +2294,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 
 		if (!additive) {
-			setSelection(createSelection());
+			setSelectionFromSurface(createSelection());
 		}
 	};
 
 	const selectCanvasMarquee = function selectCanvasMarquee(bounds: Readonly<{ x: number; y: number; w: number; h: number }>, additive: boolean): void {
-		setSelection((current) => selectEntities(current, entitiesInBounds(project, bounds), additive));
+		setSelectionFromSurface(selectEntities(selection, entitiesInBounds(project, bounds), additive));
 	};
 
 	const dragBone = function dragBone(event: DragEvent<HTMLElement>, boneId: EntityId): void {
@@ -2180,22 +2361,264 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		: undefined;
 	const selectedTransform = selectedBone?.transform ?? selectedAttachment?.transform;
 	const renameInputRef = useRef<HTMLInputElement>(null);
-	const animationFieldLabel = function animationFieldLabel(
-		label: string,
-		targetId: EntityId,
-		property: PendingAnimationProperty
-	): ReactElement {
-		const state = mode === 'animate' ? animationKeyState(project, activeClip, targetId, property, activePlayback.frameIndex, pendingAnimationEdits) : undefined;
+	const keyablePropertiesFor = function keyablePropertiesFor(entity: SelectableEntity | undefined): readonly KeyableProperty[] {
+		if (!entity || entity.kind === 'asset' || entity.kind === 'slot') {
+			return [];
+		}
+		if (entity.kind === 'bone') {
+			return animationProperties;
+		}
 
-		return (
-			<span className={state ? `field-label key-state key-state-${state}` : 'field-label'}>
-				<span>{label}</span>
-				{state && <small>{keyStateLabels[state]}</small>}
-			</span>
-		);
+		const attachment = project.attachments.find((candidate) => candidate.id === entity.id);
+
+		return attachment?.kind === 'image'
+			? [...animationProperties, 'opacity']
+			: attachment?.kind === 'rectangle'
+				? [...animationProperties, 'width', 'height']
+				: animationProperties;
 	};
+	const keyStateForProperty = function keyStateForProperty(
+		entityId: EntityId,
+		property: KeyableProperty
+	): 'unkeyed' | 'pending' | 'keyed' | undefined {
+		return mode === 'animate' && activeClip
+			? propertyKeyState({
+				project,
+				clip: activeClip,
+				targetId: entityId,
+				property,
+				frameIndex: activePlayback.frameIndex,
+				autoKey,
+				pendingEdits: pendingAnimationEdits
+			})
+			: undefined;
+	};
+	const togglePropertyKey = function togglePropertyKey(property: KeyableProperty): void {
+		if (!selectedEntity || (selectedEntity.kind !== 'bone' && selectedEntity.kind !== 'attachment') || !activeClip || mode !== 'animate') {
+			return;
+		}
 
-	const beginCanvasTransform = function beginCanvasTransform(point: ViewportPoint, tool: TransformTool): boolean {
+		const plan = planPropertyKeyToggle({
+			project,
+			clip: activeClip,
+			targetId: selectedEntity.id,
+			property,
+			frameIndex: activePlayback.frameIndex,
+			autoKey,
+			pendingEdits: pendingAnimationEdits
+		});
+
+		if (plan.commands.length > 0 && applyCommandSequence(plan.commands)) {
+			setPendingAnimationEdits((current) => current.filter((pending) => pending.targetId !== selectedEntity.id || pending.property !== property));
+			return;
+		}
+		if (plan.reason) {
+			setCommandError(plan.reason);
+		}
+	};
+	const keySelectedProperties = function keySelectedProperties(): void {
+		if (!selectedEntity || !activeClip || mode !== 'animate') {
+			return;
+		}
+
+		const properties = keyablePropertiesFor(selectedEntity);
+		const commands = properties.flatMap((property) => planPropertyKeyToggle({
+			project,
+			clip: activeClip,
+			targetId: selectedEntity.id,
+			property,
+			frameIndex: activePlayback.frameIndex,
+			autoKey,
+			pendingEdits: pendingAnimationEdits
+		}).commands);
+
+		if (commands.length > 0 && applyCommandSequence(commands)) {
+			setPendingAnimationEdits((current) => current.filter((pending) => pending.targetId !== selectedEntity.id));
+		}
+	};
+	const commitDirectProperty = function commitDirectProperty(property: NumericProperty, value: number): string | undefined {
+		if (!selectedEntity || selectedEntity.kind === 'asset' || selectedEntity.kind === 'slot') {
+			return 'Select a bone or attachment before editing properties.';
+		}
+
+		const currentTransform = selectedTransform;
+		const transformProperty = animationProperties.find((candidate) => candidate === property);
+		const keyableProperty: KeyableProperty | undefined = transformProperty
+			?? (property === 'opacity' || property === 'width' || property === 'height' ? property : undefined);
+		let command: ProjectCommand | undefined;
+		let currentValue: number | undefined;
+
+		if (transformProperty && currentTransform) {
+			currentValue = currentTransform[transformProperty];
+			const nextTransform = { ...currentTransform, [transformProperty]: value };
+			command = selectedEntity.kind === 'bone'
+				? { kind: 'update-bone-transform', boneId: selectedEntity.id, transform: nextTransform }
+				: { kind: 'update-attachment-transform', attachmentId: selectedEntity.id, transform: nextTransform };
+		}
+		if (selectedAttachment?.kind === 'image' && (property === 'opacity' || property === 'pivotX' || property === 'pivotY')) {
+			currentValue = selectedAttachment[property];
+			command = {
+				kind: 'update-image-properties',
+				attachmentId: selectedAttachment.id,
+				properties: { [property]: value }
+			};
+		}
+		if (selectedAttachment?.kind === 'rectangle' && (property === 'width' || property === 'height')) {
+			currentValue = selectedAttachment[property];
+			command = {
+				kind: 'update-rectangle-size',
+				attachmentId: selectedAttachment.id,
+				width: property === 'width' ? value : selectedAttachment.width,
+				height: property === 'height' ? value : selectedAttachment.height
+			};
+		}
+
+		if (!command || currentValue === undefined || Object.is(currentValue, value)) {
+			return undefined;
+		}
+
+		const animationClip = mode === 'animate' ? activeClip : undefined;
+		const autoKeys = animationClip && autoKey && keyableProperty
+			? autoKeyCommandsForProperty(project, animationClip, selectedEntity.id, keyableProperty, activePlayback.frameIndex, createEntityId, value)
+			: [];
+		const committed = applyCommandSequence([command, ...autoKeys]);
+
+		if (!committed) {
+			return 'The property could not be committed.';
+		}
+
+		if (animationClip && keyableProperty) {
+			setPendingAnimationEdits((current) => {
+				const retained = current.filter((pending) => pending.targetId !== selectedEntity.id || pending.property !== keyableProperty);
+
+				return autoKey ? retained : [...retained, { targetId: selectedEntity.id, property: keyableProperty }];
+			});
+		}
+
+		return undefined;
+	};
+	const toggleEditorVisibility = function toggleEditorVisibility(node: RigTreeNode): void {
+		if (node.kind === 'slot') {
+			return;
+		}
+
+		const hidden = new Set(presentation.hiddenEntityIds);
+
+		if (hidden.has(node.id)) {
+			hidden.delete(node.id);
+		} else {
+			hidden.add(node.id);
+		}
+
+		updatePresentation((current) => ({ ...current, hiddenEntityIds: [...hidden] }));
+	};
+	const renameRigNode = function renameRigNode(node: RigTreeNode, name: string): void {
+		const command: ProjectCommand = node.kind === 'bone'
+			? { kind: 'rename-bone', boneId: node.id, name }
+			: node.kind === 'slot'
+				? { kind: 'rename-slot', slotId: node.id, name }
+				: { kind: 'rename-attachment', attachmentId: node.id, name };
+
+		if (applyCommand(command)) {
+			setInlineRenameId(undefined);
+		}
+	};
+	const navigateSelectionHistory = function navigateSelectionHistory(direction: -1 | 1): void {
+		const nextIndex = selectionHistoryCursorRef.current + direction;
+		const nextEntry = selectionHistory[nextIndex];
+
+		if (!nextEntry) {
+			return;
+		}
+
+		const validSelection = nextEntry.filter((entity) => entity.kind === 'asset'
+			? project.assets.some((asset) => asset.id === entity.id)
+			: entity.kind === 'bone'
+				? project.bones.some((bone) => bone.id === entity.id)
+				: entity.kind === 'slot'
+					? project.slots.some((slot) => slot.id === entity.id)
+					: project.attachments.some((attachment) => attachment.id === entity.id));
+
+		if (validSelection.length === 0) {
+			selectionHistoryCursorRef.current = nextIndex;
+			navigateSelectionHistory(direction);
+			return;
+		}
+
+		selectionHistoryCursorRef.current = nextIndex;
+		setSelection(validSelection);
+		const model = buildRigTreeViewModel(project, validSelection, new Set(presentation.rigExpandedIds));
+		const target = validSelection.at(-1);
+
+		if (target && target.kind !== 'asset') {
+			const expanded = revealAncestors(model, target.id, new Set(presentation.rigExpandedIds));
+
+			updatePresentation((current) => ({ ...current, rigExpandedIds: [...expanded] }));
+		}
+	};
+	const currentDrawOrder = function currentDrawOrder(): readonly EntityId[] {
+		const track = activeClip?.tracks.find((candidate) => candidate.kind === 'slot-draw-order');
+		const key = track?.kind === 'slot-draw-order' && activeClip
+			? track.keys.find((candidate) => frameIndexForTime(activeClip, candidate.timeSeconds) === activePlayback.frameIndex)
+			: undefined;
+
+		return key?.value ?? project.setupDrawOrder;
+	};
+	const reorderedDrawOrder = function reorderedDrawOrder(order: readonly EntityId[], slotId: EntityId, targetIndex: number): readonly EntityId[] {
+		const without = order.filter((id) => id !== slotId);
+		const boundedIndex = Math.max(0, Math.min(without.length, targetIndex));
+
+		return [...without.slice(0, boundedIndex), slotId, ...without.slice(boundedIndex)];
+	};
+	const reorderDrawOrder = function reorderDrawOrder(slotId: EntityId, targetIndex: number, order: readonly EntityId[]): void {
+		const nextOrder = reorderedDrawOrder(order, slotId, targetIndex);
+
+		if (mode === 'setup' || !activeClip) {
+			applyCommand({ kind: 'reorder-slot', slotId, targetIndex });
+			return;
+		}
+
+		const track = activeClip.tracks.find((candidate) => candidate.kind === 'slot-draw-order');
+		const key = track?.kind === 'slot-draw-order'
+			? track.keys.find((candidate) => frameIndexForTime(activeClip, candidate.timeSeconds) === activePlayback.frameIndex)
+			: undefined;
+
+		if (track && key) {
+			applyCommand({ kind: 'set-draw-order-key', clipId: activeClip.id, trackId: track.id, keyId: key.id, value: nextOrder });
+			return;
+		}
+
+		const trackId = track?.id ?? createEntityId();
+		const commands: readonly ProjectCommand[] = [
+			...(track ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: activeClip.id, definition: { kind: 'slot-draw-order' as const } }]),
+			{ kind: 'add-draw-order-key', id: createEntityId(), clipId: activeClip.id, trackId, input: { timeSeconds: activePlayback.frameIndex / activeClip.fps, value: nextOrder } }
+		];
+
+		applyCommandSequence(commands);
+	};
+	const keyCurrentDrawOrder = function keyCurrentDrawOrder(): void {
+		if (!activeClip) {
+			return;
+		}
+
+		const order = currentDrawOrder();
+		const track = activeClip.tracks.find((candidate) => candidate.kind === 'slot-draw-order');
+		const key = track?.kind === 'slot-draw-order'
+			? track.keys.find((candidate) => frameIndexForTime(activeClip, candidate.timeSeconds) === activePlayback.frameIndex)
+			: undefined;
+
+		if (track && key) {
+			applyCommand({ kind: 'set-draw-order-key', clipId: activeClip.id, trackId: track.id, keyId: key.id, value: order });
+			return;
+		}
+
+		const trackId = track?.id ?? createEntityId();
+		applyCommandSequence([
+			...(track ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: activeClip.id, definition: { kind: 'slot-draw-order' as const } }]),
+			{ kind: 'add-draw-order-key', id: createEntityId(), clipId: activeClip.id, trackId, input: { timeSeconds: activePlayback.frameIndex / activeClip.fps, value: order } }
+		]);
+	};
+	const beginCanvasTransform = function beginCanvasTransform(point: ViewportPoint, tool: TransformTool, modifiers: TransformModifiers = {}): boolean {
 		const transformableSelection = selection.filter((entity) => entity.kind === 'bone' || entity.kind === 'attachment');
 		const hit = hitTestProject(project, point);
 		const selectedEntityHit = !!hit && transformableSelection.some((entity) => entity.kind === hit.kind && entity.id === hit.id);
@@ -2205,7 +2628,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			return false;
 		}
 
-		const gesture = createTransformGesture(project, transformableSelection, point, tool);
+		const gesture = createTransformGesture(project, transformableSelection, point, tool, modifiers);
 
 		if (!gesture) {
 			return false;
@@ -2217,21 +2640,26 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		return true;
 	};
 
-	const updateCanvasTransform = function updateCanvasTransform(point: ViewportPoint, phase: TransformPhase): void {
+	const updateCanvasTransform = function updateCanvasTransform(point: ViewportPoint, phase: TransformPhase, modifiers: TransformModifiers = {}): void {
 		const session = transformSessionRef.current;
 
 		if (!session) {
 			return;
 		}
 		if (phase === 'cancel') {
+			setConstraintStatus(undefined);
 			transformSessionRef.current = undefined;
 			setHistory(cancelTransaction(session.history));
 			return;
 		}
 		if (phase === 'end') {
 			transformSessionRef.current = undefined;
+			setConstraintStatus(undefined);
 			commitHistory(commitTransaction(session.history));
 			return;
+		}
+		if (modifiers.shiftKey) {
+			setConstraintStatus('Shift constraint active');
 		}
 
 		const commands = transformGestureCommands(session.gesture, point);
@@ -2531,9 +2959,21 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<span className="brand-mark" aria-hidden="true">BA</span>
 					<div>
 						<p className="eyebrow">Bone Animation Utility</p>
-						<h1>{project.name}</h1>
+						<div className="project-title-row"><h1>{project.name}</h1><span className="autosave-status" aria-live="polite">{autosaveStatus === 'saving' || autosaveStatus === 'scheduled' ? 'Saving…' : autosaveStatus === 'saved' ? 'Saved locally' : autosaveStatus === 'error' ? 'Save failed' : ''}</span></div>
 					</div>
 				</div>
+				<ProjectMenu
+					canvas={project.logicalCanvas}
+					projectName={project.name}
+					recentProjects={recentProjects}
+					onExportArchive={() => void exportArchive()}
+					onImportArchive={(bytes) => void importArchive(bytes)}
+					onLoadExample={loadExampleProject}
+					onLoadRecent={loadRecentProject}
+					onNew={createNewProject}
+					onOpenRecent={openRecentProjects}
+					onRenameProject={(name) => applyCommand({ kind: 'rename-project', name })}
+				/>
 				<nav className="mode-switcher" aria-label="Editor mode">
 					{(['setup', 'animate'] as const).map((nextMode) => (
 						<button
@@ -2567,64 +3007,97 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			)}
 			{shortcutPanelOpen && <ShortcutReference onClose={() => setShortcutPanelOpen(false)} />}
 
-			<main className="workspace" data-mode={mode}>
-				<aside className="panel library-panel" aria-label="Image library" onDragOver={dragOverLibrary} onDrop={dropOnLibrary}>
-					<div className="panel-heading">
-						<div>
-							<p className="eyebrow">Assets</p>
-							<h2>Image library</h2>
+				<main className="workspace" data-mode={mode}>
+					<aside className={presentation.layout.leftDockCollapsed ? 'panel left-dock is-collapsed' : 'panel left-dock'} aria-label="Rig and draw order">
+						<div className="panel-heading dock-heading">
+							<div>
+								<p className="eyebrow">Structure</p>
+								<h2>{presentation.layout.leftDockCollapsed ? 'Rig' : 'Rig tools'}</h2>
+							</div>
+							<div className="dock-heading-actions">
+								{!presentation.layout.leftDockCollapsed && <MenuButton label="Add" items={[
+									{ id: 'root-bone', label: 'Root bone', description: project.bones.length > 0 ? 'A root bone already exists' : 'Create the first bone', disabled: project.bones.length > 0, onSelect: createRootBone },
+									{ id: 'child-bone', label: 'Child bone', description: selectedBone ? `Under ${selectedBone.name}` : 'Select a bone first', disabled: !selectedBone, onSelect: addChildBone },
+									{ id: 'slot', label: 'Slot', description: selectedBone ? `Under ${selectedBone.name}` : 'Select a bone first', disabled: !selectedBone, onSelect: addSlot },
+									{ id: 'point', label: 'Point attachment', description: selectedBone ? 'Gameplay point under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: addPointAttachment },
+									{ id: 'rectangle', label: 'Rectangle attachment', description: selectedBone ? 'Gameplay rectangle under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: addRectangleAttachment }
+								]} />}
+							<button className="icon-button" type="button" aria-label={presentation.layout.leftDockCollapsed ? 'Expand left dock' : 'Collapse left dock'} onClick={() => updatePresentation((current) => ({ ...current, layout: { ...current.layout, leftDockCollapsed: !current.layout.leftDockCollapsed } }))}>{presentation.layout.leftDockCollapsed ? '»' : '«'}</button>
+							</div>
 						</div>
-						<button className="icon-button" type="button" aria-label="Import image directory" onClick={() => void importDirectory()} disabled={isImporting}>+</button>
-					</div>
-					<label className="search-field">
-						<span className="sr-only">Search images</span>
-						<input
-							type="search"
-							placeholder="Search images"
-							value={assetQuery}
-							onChange={(event) => setAssetQuery(event.target.value)}
-							disabled={project.assets.length === 0}
-						/>
-					</label>
-					{project.assets.length === 0 ? (
-						<div className="empty-state compact-state">
-							<span className="empty-glyph" aria-hidden="true">◇</span>
-							<p>No images imported</p>
-							<span>Drop a folder here to begin.</span>
-						</div>
-					) : libraryEntries.length === 0 ? (
-						<div className="tree-empty">No images match “{assetQuery}”.</div>
-					) : (
-						<div className="asset-list" aria-label="Imported images">
-							{libraryEntries.map((entry) => entry.kind === 'folder' ? (
-								<div className="asset-folder-row" key={`folder:${entry.path}`} style={{ paddingLeft: `${8 + entry.depth * 12}px` }}>
-									<span className="asset-glyph" aria-hidden="true">▾</span>
-									<span>{entry.name}</span>
-								</div>
+						{!presentation.layout.leftDockCollapsed && <>
+							<Tabs
+								label="Left dock"
+								options={[{ value: 'rig', label: 'Rig' }, { value: 'draw-order', label: 'Draw Order' }]}
+								value={presentation.leftDockTab}
+								onChange={(value) => updatePresentation((current) => ({ ...current, leftDockTab: value }))}
+							/>
+							{presentation.leftDockTab === 'rig' ? (
+								<>
+									<label className="search-field">
+										<span className="sr-only">Search rig</span>
+										<input aria-label="Search rig" type="search" placeholder="Search rig" value={rigSearch} onChange={(event) => setRigSearch(event.target.value)} />
+									</label>
+									{project.bones.length === 0 ? (
+										<div className="tree-empty">
+											<p>Create a root bone to see the rig.</p>
+											<button className="secondary-button" type="button" onClick={createRootBone}>Create root bone</button>
+										</div>
+									) : (
+										<RigTreeView
+											assetSlotDropPreview={assetSlotDropPreview}
+											boneDropPreview={boneDropPreview}
+											expandedIds={new Set(presentation.rigExpandedIds)}
+											hiddenIds={new Set(presentation.hiddenEntityIds)}
+											renamingId={inlineRenameId}
+											project={project}
+											searchQuery={rigSearch}
+											selection={selection}
+											slotOrderDropPreview={slotOrderDropPreview}
+											onAssetDragEnd={() => {
+												setAssetSlotDropPreview(undefined);
+												setSlotOrderDropPreview(undefined);
+											}}
+											onDragBone={dragBone}
+											onDragOverBone={dragOverBone}
+											onDragOverSlot={(event, slotId) => {
+												dragOverSlot(event, slotId);
+												dragOverSlotOrder(event, slotId);
+											}}
+											onDragSlot={dragSlot}
+											onDropBone={dropBone}
+											onDropSlot={(event, slotId) => event.dataTransfer.types.includes(SLOT_DRAG_MIME) ? dropSlotOrder(event, slotId) : dropAssetOnSlot(event, slotId)}
+											onExpandedChange={(expandedIds) => updatePresentation((current) => ({ ...current, rigExpandedIds: [...expandedIds] }))}
+											onRenameRequest={(node) => {
+												setSelection([selectableEntityForRigNode(node)]);
+												setInlineRenameId(node.id);
+											}}
+											onRenameCancel={() => setInlineRenameId(undefined)}
+											onRenameCommit={renameRigNode}
+											onSelectionChange={setSelectionFromSurface}
+											onToggleVisibility={toggleEditorVisibility}
+										/>
+									)}
+								</>
 							) : (
-								<button
-									className="asset-row"
-									draggable
-									type="button"
-									key={entry.asset.id}
-									onClick={(event) => updateSelection({ kind: 'asset', id: entry.asset.id }, event.metaKey || event.ctrlKey)}
-									onDragStart={(event) => dragAsset(event, entry.asset.id)}
-									onDragEnd={() => setAssetSlotDropPreview(undefined)}
-									aria-pressed={isSelected(selection, { kind: 'asset', id: entry.asset.id })}
-									style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
-									title={`Drag ${entry.asset.relativePath} into the canvas`}
-								>
-									<span className="asset-glyph" aria-hidden="true">▧</span>
-									<span>{entry.asset.name}<small>{entry.asset.relativePath}</small></span>
-								</button>
-							))}
-						</div>
-					)}
+								<DrawOrderPanel
+									activeClip={activeClip}
+									frameIndex={activePlayback.frameIndex}
+									project={project}
+									selection={selection}
+									onKeyCurrentFrame={mode === 'animate' ? keyCurrentDrawOrder : undefined}
+									onReorder={reorderDrawOrder}
+									onSelectionChange={(slotId, additive) => updateSelection({ kind: 'slot', id: slotId }, additive)}
+								/>
+							)}
+						</>}
 				</aside>
+				<DockSplitter dock="left" layout={presentation.layout} viewport={{ width: viewportWidth, height: viewportHeight }} onChange={(layout) => updatePresentation((current) => ({ ...current, layout }))} />
 
 				<section className="viewport-panel" aria-label="Canvas viewport">
 					<div className="viewport-toolbar">
 						<span className="context-label">{modeLabels[mode]} mode</span>
+						{constraintStatus && <span className="constraint-status" role="status">{constraintStatus}</span>}
 						<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
 						<div className="grid-controls" aria-label="Grid controls">
 							<label className="grid-toggle">
@@ -2703,8 +3176,37 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						</div>
 				</section>
 
-				<aside className="panel inspector-panel" aria-label="Rig hierarchy and inspector">
-					<section className="panel-section">
+				<DockSplitter dock="right" layout={presentation.layout} viewport={{ width: viewportWidth, height: viewportHeight }} onChange={(layout) => updatePresentation((current) => ({ ...current, layout }))} />
+				<aside className="panel right-dock inspector-panel" data-right-tab={presentation.rightDockTab} aria-label="Properties and assets">
+					<Tabs
+						label="Right dock"
+						options={[{ value: 'properties', label: 'Properties' }, { value: 'assets', label: 'Assets' }]}
+						value={presentation.rightDockTab}
+						onChange={(value) => updatePresentation((current) => ({ ...current, rightDockTab: value }))}
+					/>
+					{presentation.rightDockTab === 'properties' && (
+						<button className="secondary-button asset-import-shortcut" type="button" disabled={isImporting} onClick={() => void importDirectory()}>
+							Import image directory
+						</button>
+					)}
+					{presentation.rightDockTab === 'assets' && <AssetBrowser
+						assets={assetBlobs}
+						density={presentation.assetDensity}
+						importMessage={assetError}
+						isImporting={isImporting}
+						project={project}
+						query={assetQuery}
+						selection={selection}
+						onDensityChange={(density: AssetDensity) => updatePresentation((current) => ({ ...current, assetDensity: density }))}
+						onDragEnd={() => setAssetSlotDropPreview(undefined)}
+						onDragOver={dragOverLibrary}
+						onDragStart={dragAsset}
+						onDrop={dropOnLibrary}
+						onImport={() => void importDirectory()}
+						onQueryChange={setAssetQuery}
+						onSelectionChange={(assetId, additive) => updateSelection({ kind: 'asset', id: assetId }, additive)}
+					/>}
+					{false && <section className="panel-section legacy-hierarchy-panel">
 						<div className="panel-heading">
 							<div>
 								<p className="eyebrow">Rig</p>
@@ -2722,7 +3224,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								{orderedBones.flatMap((bone) => [
 									<button
 										className={[
-											isSelected(selection, { kind: 'bone', id: bone.id }) ? 'bone-row is-selected' : 'bone-row',
+																	isSelected(selection, { kind: 'bone', id: bone.id }) ? 'legacy-bone-row is-selected' : 'legacy-bone-row',
 											boneDropPreview?.boneId === bone.id ? `drop-${boneDropPreview.zone}` : ''
 										].filter(Boolean).join(' ')}
 										draggable
@@ -2742,7 +3244,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									...project.slots.filter((slot) => slot.boneId === bone.id).flatMap((slot) => [
 										<button
 											className={[
-												isSelected(selection, { kind: 'slot', id: slot.id }) ? 'slot-row is-selected' : 'slot-row',
+																	isSelected(selection, { kind: 'slot', id: slot.id }) ? 'legacy-slot-row is-selected' : 'legacy-slot-row',
 												assetSlotDropPreview === slot.id
 													? 'drop-target'
 													: slotOrderDropPreview?.slotId === slot.id ? `drop-order-${slotOrderDropPreview.zone}` : ''
@@ -2771,7 +3273,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										</button>,
 										...project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === slot.id).map((attachment) => (
 											<button
-												className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'attachment-row is-selected' : 'attachment-row'}
+																className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'legacy-attachment-row is-selected' : 'legacy-attachment-row'}
 												key={attachment.id}
 												type="button"
 												onClick={(event) => updateSelection({ kind: 'attachment', id: attachment.id }, event.metaKey || event.ctrlKey)}
@@ -2783,7 +3285,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										]),
 										...project.attachments.filter((attachment) => attachment.kind !== 'image' && attachment.boneId === bone.id).map((attachment) => (
 											<button
-												className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'attachment-row is-selected' : 'attachment-row'}
+																className={isSelected(selection, { kind: 'attachment', id: attachment.id }) ? 'legacy-attachment-row is-selected' : 'legacy-attachment-row'}
 												key={attachment.id}
 												type="button"
 												onClick={(event) => updateSelection({ kind: 'attachment', id: attachment.id }, event.metaKey || event.ctrlKey)}
@@ -2795,7 +3297,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									])}
 							</div>
 							)}
-					</section>
+					</section>}
 					<section className="panel-section inspector-section">
 						<p className="eyebrow">Inspector</p>
 						<h2>{selectedName ?? 'Nothing selected'}</h2>
@@ -2808,11 +3310,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									<p className="muted-copy">Drag this source image into the canvas to create a part.</p>
 								) : (
 									<>
-										<form className="inspector-form" key={`${selectedEntity.kind}:${selectedEntity.id}`} onSubmit={submitRename}>
-											<label>
-												<span className="field-label">Name</span>
-												<input ref={renameInputRef} defaultValue={selectedName ?? ''} aria-label="Selected name" />
-											</label>
+										<form className="inspector-form" key={`${selectedEntity.kind}:${selectedEntity.id}:${selectedName ?? ''}`} onSubmit={submitRename}>
+											<DirectNameField
+												inputRef={renameInputRef}
+												value={selectedName ?? ''}
+												name="Selected name"
+												onCommit={(name) => {
+													renameSelected(name);
+													return undefined;
+												}}
+											/>
 											<div className="inspector-actions">
 												<button className="secondary-button" type="submit">Rename</button>
 												<button className="danger-button" type="button" onClick={deleteSelected}>Delete</button>
@@ -2825,26 +3332,31 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 														onSubmit={submitTransform}
 												>
 													<div className="transform-grid">
-														<label>{animationFieldLabel('X', selectedEntity.id, 'x')}<input name="x" type="number" step="any" defaultValue={selectedTransform.x} /></label>
-														<label>{animationFieldLabel('Y', selectedEntity.id, 'y')}<input name="y" type="number" step="any" defaultValue={selectedTransform.y} /></label>
-														<label>{animationFieldLabel('Rotation (deg)', selectedEntity.id, 'rotation')}<input name="rotation" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.rotation)} /></label>
-														<label>{animationFieldLabel('Scale X', selectedEntity.id, 'scaleX')}<input name="scaleX" type="number" step="any" defaultValue={selectedTransform.scaleX} /></label>
-														<label>{animationFieldLabel('Scale Y', selectedEntity.id, 'scaleY')}<input name="scaleY" type="number" step="any" defaultValue={selectedTransform.scaleY} /></label>
-														<label>{animationFieldLabel('Shear X (deg)', selectedEntity.id, 'shearX')}<input name="shearX" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearX)} /></label>
-														<label>{animationFieldLabel('Shear Y (deg)', selectedEntity.id, 'shearY')}<input name="shearY" type="number" step="any" defaultValue={radiansToDegrees(selectedTransform.shearY)} /></label>
+														{(['x', 'y', 'rotation', 'scaleX', 'scaleY', 'shearX', 'shearY'] as const).map((property) => (
+															<DirectNumericField
+																ariaLabel={property === 'rotation' ? 'Rotation (deg)' : property === 'shearX' ? 'Shear X (deg)' : property === 'shearY' ? 'Shear Y (deg)' : undefined}
+																frameIndex={activePlayback.frameIndex}
+																key={`${property}:${selectedTransform[property]}`}
+																keyState={keyStateForProperty(selectedEntity.id, property)}
+																onCommit={commitDirectProperty}
+																onToggleKey={() => togglePropertyKey(property)}
+																property={property}
+																value={selectedTransform[property]}
+															/>
+														))}
 													</div>
-													{selectedAttachment?.kind === 'image' && (
-														<div className="transform-grid compact-grid">
-															<label>{animationFieldLabel('Opacity', selectedAttachment.id, 'opacity')}<input name="opacity" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.opacity} /></label>
-															<label><span className="field-label">Pivot X</span><input name="pivotX" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotX} /></label>
-															<label><span className="field-label">Pivot Y</span><input name="pivotY" type="number" min="0" max="1" step="0.01" defaultValue={selectedAttachment.pivotY} /></label>
-														</div>
-													)}
-													{selectedAttachment?.kind === 'rectangle' && (
-														<div className="transform-grid compact-grid">
-															<label>{animationFieldLabel('Width', selectedAttachment.id, 'width')}<input name="width" type="number" min="0" step="any" defaultValue={selectedAttachment.width} /></label>
-															<label>{animationFieldLabel('Height', selectedAttachment.id, 'height')}<input name="height" type="number" min="0" step="any" defaultValue={selectedAttachment.height} /></label>
-														</div>
+															{selectedAttachment?.kind === 'image' && (
+																<div className="transform-grid compact-grid">
+																	<DirectNumericField frameIndex={activePlayback.frameIndex} key={`opacity:${selectedAttachment.opacity}`} keyState={keyStateForProperty(selectedAttachment.id, 'opacity')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('opacity')} property="opacity" value={selectedAttachment.opacity} />
+																	<DirectNumericField key={`pivotX:${selectedAttachment.pivotX}`} onCommit={commitDirectProperty} property="pivotX" value={selectedAttachment.pivotX} />
+																	<DirectNumericField key={`pivotY:${selectedAttachment.pivotY}`} onCommit={commitDirectProperty} property="pivotY" value={selectedAttachment.pivotY} />
+																</div>
+															)}
+															{selectedAttachment?.kind === 'rectangle' && (
+																<div className="transform-grid compact-grid">
+																	<DirectNumericField frameIndex={activePlayback.frameIndex} key={`width:${selectedAttachment.width}`} keyState={keyStateForProperty(selectedAttachment.id, 'width')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('width')} property="width" value={selectedAttachment.width} />
+																	<DirectNumericField frameIndex={activePlayback.frameIndex} key={`height:${selectedAttachment.height}`} keyState={keyStateForProperty(selectedAttachment.id, 'height')} onCommit={commitDirectProperty} onToggleKey={() => togglePropertyKey('height')} property="height" value={selectedAttachment.height} />
+																</div>
 													)}
 													<button className="secondary-button" type="submit">Apply values</button>
 												</form>
@@ -2889,7 +3401,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<TimelineSplitter
 						height={boundedTimelineHeight}
 						viewportHeight={viewportHeight}
-						onHeightChange={setTimelineHeight}
+						onHeightChange={(height) => updatePresentation((current) => ({
+							...current,
+							layout: { ...current.layout, timelineHeight: height }
+						}))}
 					/>
 				)}
 				<div className="timeline-panel-content">
