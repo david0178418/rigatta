@@ -828,6 +828,17 @@ h2 {
 	text-align: left;
 }
 
+.asset-row:hover,
+.asset-row:focus-visible,
+.asset-row[aria-pressed="true"] {
+	background: var(--surface-hover);
+	color: var(--text);
+}
+
+.asset-row:active {
+	cursor: grabbing;
+}
+
 .asset-row span:last-child {
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2249,6 +2260,8 @@ h2 {
 	border: 1px solid var(--border);
 	border-radius: 3px;
 	background: var(--canvas);
+	pointer-events: none;
+	user-select: none;
 }
 
 .asset-density-compact .asset-row {
@@ -2258,6 +2271,8 @@ h2 {
 
 .asset-density-thumbnail .asset-row {
 	align-items: flex-start;
+	content-visibility: auto;
+	contain-intrinsic-size: 44px;
 	padding-top: 6px;
 	padding-bottom: 6px;
 }
@@ -2287,6 +2302,8 @@ h2 {
 	max-width: 100%;
 	max-height: 100%;
 	object-fit: contain;
+	pointer-events: none;
+	user-select: none;
 }
 
 .asset-preview > div:last-child {

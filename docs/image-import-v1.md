@@ -15,7 +15,17 @@ the editor never relies on a continued handle to the source directory.
 
 The library renders normalized folders as a deterministic tree and searches
 asset paths case-insensitively while retaining matching parent folders. Asset
-rows are draggable. Dropping one onto the fixed canvas creates a slot and
+rows are available in list, compact, and thumbnail densities; all three keep
+the same selection and drag behavior. Thumbnail images use object URLs from
+the stored blobs, revoke those URLs when the browser lifetime or asset set
+changes, and use native lazy loading so offscreen rows are not decoded eagerly.
+
+Hovering, focusing, or selecting an asset shows an in-flow preview with its
+dimensions, format, normalized relative path, and every slot/attachment that
+uses it. The preview is non-interactive and remains inside the library flow,
+so it does not steal focus or cover the canvas and slot drop targets.
+
+Asset rows are draggable. Dropping one onto the fixed canvas creates a slot and
 image attachment at the logical drop point; an empty project receives its
 root bone in the same undoable transaction. A bulk import is one immutable
 project command, allowing one undo entry and one debounced recovery snapshot

@@ -4,6 +4,7 @@ import type { ImageAsset, Project } from '../domain/model.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import type { AssetImportSkip } from '../assets/import.ts';
 import { buildAssetLibraryEntries, type AssetLibraryEntry } from './asset-library.ts';
+import { assetPreviewFor, assetUsageLabelFor } from './asset-browser-model.ts';
 import { isSelected, type Selection } from './selection.ts';
 import type { AssetDensity } from './ui-preferences.ts';
 
@@ -11,10 +12,6 @@ const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
 
 const assetForEntry = function assetForEntry(entry: AssetLibraryEntry): ImageAsset | undefined {
 	return entry.kind === 'asset' ? entry.asset : undefined;
-};
-
-const fileFormat = function fileFormat(asset: ImageAsset): string {
-	return asset.mimeType.replace('image/', '').toUpperCase();
 };
 
 export type AssetImportSummary = Readonly<{
@@ -86,16 +83,22 @@ export const AssetBrowser = function AssetBrowser({
 
 		return asset ? [asset] : [];
 	});
+	const selectedAssetId = hoveredAssetId ?? selection.find((entity) => entity.kind === 'asset')?.id;
+	const selectedAsset = assetPreviewFor(project, selectedAssetId);
+	const objectUrlAssetKey = Array.from(new Set([
+		...(density === 'thumbnail' ? visibleAssets.map((asset) => asset.id) : []),
+		...(selectedAsset ? [selectedAsset.asset.id] : [])
+	])).join('|');
 	const [objectUrls, setObjectUrls] = useState<ReadonlyMap<EntityId, string>>(new Map());
 
 	useEffect(() => {
 		const urls = new Map<EntityId, string>();
 
-		visibleAssets.forEach((asset) => {
-			const blob = assets.get(asset.id);
+		objectUrlAssetKey.split('|').filter(Boolean).forEach((assetId) => {
+			const blob = assets.get(assetId as EntityId);
 
 			if (blob) {
-				urls.set(asset.id, URL.createObjectURL(blob));
+				urls.set(assetId as EntityId, URL.createObjectURL(blob));
 			}
 		});
 		setObjectUrls(urls);
@@ -103,14 +106,7 @@ export const AssetBrowser = function AssetBrowser({
 		return function cleanup(): void {
 			urls.forEach((url) => URL.revokeObjectURL(url));
 		};
-	}, [assets, visibleAssets.map((asset) => asset.id).join('|')]);
-
-	const selectedAsset = project.assets.find((asset) => asset.id === (hoveredAssetId ?? selection.find((entity) => entity.kind === 'asset')?.id));
-	const usage = selectedAsset
-		? project.attachments.flatMap((attachment) => attachment.kind === 'image' && attachment.assetId === selectedAsset.id
-			? [project.slots.find((slot) => slot.id === attachment.slotId)?.name ?? attachment.name]
-			: [])
-		: [];
+	}, [assets, objectUrlAssetKey]);
 	const onDragStartWithAsset = function onDragStartWithAsset(event: ReactDragEvent<HTMLElement>, assetId: EntityId): void {
 		event.dataTransfer.effectAllowed = 'copy';
 		event.dataTransfer.setData(ASSET_DRAG_MIME, assetId);
@@ -172,13 +168,14 @@ export const AssetBrowser = function AssetBrowser({
 							onClick={(event) => onSelectionChange(entry.asset.id, event.metaKey || event.ctrlKey)}
 							onDragEnd={onDragEnd}
 							onDragStart={(event) => onDragStartWithAsset(event, entry.asset.id)}
+							onBlur={() => setHoveredAssetId(undefined)}
 							onFocus={() => setHoveredAssetId(entry.asset.id)}
 							onMouseEnter={() => setHoveredAssetId(entry.asset.id)}
 							onMouseLeave={() => setHoveredAssetId(undefined)}
 							style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
 							title={`Image: ${entry.asset.relativePath} · Drag to the canvas or a slot`}
 						>
-							{density === 'thumbnail' && objectUrls.get(entry.asset.id) && <img alt="" className="asset-thumbnail" src={objectUrls.get(entry.asset.id)} />}
+							{density === 'thumbnail' && objectUrls.get(entry.asset.id) && <img alt="" className="asset-thumbnail" decoding="async" draggable={false} loading="lazy" src={objectUrls.get(entry.asset.id)} />}
 							{density !== 'thumbnail' && <span className="asset-glyph" aria-hidden="true">▧</span>}
 							<span>{entry.asset.name}<small>{density === 'compact' ? `${entry.asset.width} × ${entry.asset.height}` : entry.asset.relativePath}</small></span>
 						</button>
@@ -188,13 +185,13 @@ export const AssetBrowser = function AssetBrowser({
 			{selectedAsset && (
 				<section className="asset-preview" aria-label="Asset preview">
 					<div className="asset-preview-image">
-						{objectUrls.get(selectedAsset.id) ? <img alt={`${selectedAsset.name} preview`} src={objectUrls.get(selectedAsset.id)} /> : <span aria-hidden="true">▧</span>}
+						{objectUrls.get(selectedAsset.asset.id) ? <img alt={`${selectedAsset.asset.name} preview`} decoding="async" draggable={false} src={objectUrls.get(selectedAsset.asset.id)} /> : <span aria-hidden="true">▧</span>}
 					</div>
 					<div>
-						<strong>{selectedAsset.name}</strong>
-						<span>{selectedAsset.width} × {selectedAsset.height} · {fileFormat(selectedAsset)}</span>
-						<span>{selectedAsset.relativePath}</span>
-						<span>{usage.length > 0 ? `Used by ${usage.join(', ')}` : 'Not used by a slot yet'}</span>
+						<strong>{selectedAsset.asset.name}</strong>
+						<span>{selectedAsset.asset.width} × {selectedAsset.asset.height} · {selectedAsset.format}</span>
+						<span>{selectedAsset.asset.relativePath}</span>
+						<span>{selectedAsset.usage.length > 0 ? `Used by ${selectedAsset.usage.map(assetUsageLabelFor).join(', ')}` : 'Not used by a slot or attachment yet'}</span>
 					</div>
 				</section>
 			)}
