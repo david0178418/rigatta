@@ -1028,13 +1028,13 @@ h2 {
 .bezier-graph-grid {
 	fill: none;
 	stroke: var(--border);
-	stroke-width: 0.008;
+	stroke-width: 1px;
 	vector-effect: non-scaling-stroke;
 }
 
 .bezier-control-line {
 	stroke: var(--muted);
-	stroke-width: 0.012;
+	stroke-width: 1px;
 	stroke-dasharray: 0.025 0.02;
 	vector-effect: non-scaling-stroke;
 }
@@ -1042,14 +1042,14 @@ h2 {
 .bezier-curve {
 	fill: none;
 	stroke: var(--accent-strong);
-	stroke-width: 0.02;
+	stroke-width: 2px;
 	vector-effect: non-scaling-stroke;
 }
 
 .bezier-control-point {
 	fill: var(--accent);
 	stroke: var(--surface);
-	stroke-width: 0.01;
+	stroke-width: 1px;
 	cursor: grab;
 	vector-effect: non-scaling-stroke;
 }
