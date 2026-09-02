@@ -46,6 +46,7 @@ describe('versioned UI preferences', () => {
 			...current,
 			assetDensity: 'thumbnail',
 			leftDockTab: 'draw-order',
+			pinnedTimelineEntityIds: [fixtureIds.slot],
 			collapsedInspectorSections: ['entity-properties'],
 			layout: { ...current.layout, leftDockWidth: 312, timelineHeight: 300 }
 		}));
@@ -117,8 +118,8 @@ describe('versioned UI preferences', () => {
 				hiddenEntityIds: [fixtureIds.image, staleId],
 				selectionHistory: [fixtureIds.asset, staleId],
 				timelineExpandedIds: [`entity:${fixtureIds.root}`, `entity:${staleId}`, 'invalid'],
-				pinnedTimelineEntityIds: [fixtureIds.slot, staleId]
-		}));
+				pinnedTimelineEntityIds: [fixtureIds.slot, fixtureIds.asset, staleId]
+			}));
 		const matching = projectUiPreferencesFor(preferences, project);
 		const other = projectUiPreferencesFor(preferences, otherProject);
 

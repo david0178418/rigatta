@@ -143,6 +143,25 @@ const entityKindLabel = function entityKindLabel(project: Project, entityId: Ent
 			: 'Attachment';
 };
 
+export const timelineEntityIdsForProject = function timelineEntityIdsForProject(
+	project: Project
+): ReadonlySet<EntityId> {
+	return new Set([
+		...project.bones.map((bone) => bone.id),
+		...project.slots.map((slot) => slot.id),
+		...project.attachments.map((attachment) => attachment.id)
+	]);
+};
+
+export const validPinnedTimelineEntityIds = function validPinnedTimelineEntityIds(
+	project: Project,
+	pinnedEntityIds: ReadonlySet<EntityId> | undefined
+): ReadonlySet<EntityId> {
+	const validEntityIds = timelineEntityIdsForProject(project);
+
+	return new Set([...pinnedEntityIds ?? []].filter((entityId) => validEntityIds.has(entityId)));
+};
+
 const trackEntityId = function trackEntityId(track: Track): EntityId | undefined {
 	return 'targetId' in track ? track.targetId : undefined;
 };
@@ -248,7 +267,7 @@ const groupTrackRows = function groupTrackRows(
 ): readonly TimelineRow[] {
 	const mode = options.mode ?? 'selection';
 	const selection = options.selection ?? [];
-	const pinnedEntityIds = options.pinnedEntityIds ?? new Set<EntityId>();
+	const pinnedEntityIds = validPinnedTimelineEntityIds(project, options.pinnedEntityIds);
 	const selectedTrackIds = options.selectedTrackIds ?? new Set<EntityId>();
 	const selectedEntityIds = options.selectedEntityIds ?? new Set<EntityId>();
 	const expandedIds = options.expandedIds ?? new Set<string>();
@@ -379,11 +398,12 @@ export const buildGroupedTimelineRows = function buildGroupedTimelineRows(
 	clip: Clip,
 	options: TimelineModelOptions = {}
 ): readonly TimelineRow[] {
+	const pinnedEntityIds = validPinnedTimelineEntityIds(project, options.pinnedEntityIds);
 	const visibleTracks = clip.tracks.filter((track) => trackIsVisible(
 		track,
 		options.mode ?? 'selection',
 		options.selection,
-		options.pinnedEntityIds ?? new Set<EntityId>(),
+		pinnedEntityIds,
 		options.selectedTrackIds ?? new Set<EntityId>(),
 		options.selectedEntityIds ?? new Set<EntityId>()
 	));
@@ -400,7 +420,7 @@ export const buildGroupedTimelineRows = function buildGroupedTimelineRows(
 		keys: keysForTracks(clip, visibleTracks)
 	};
 
-	return [overview, ...groupTrackRows(project, clip, options), ...dedicatedRows(clip, options)];
+	return [overview, ...groupTrackRows(project, clip, { ...options, pinnedEntityIds }), ...dedicatedRows(clip, options)];
 };
 
 const trackForReference = function trackForReference(

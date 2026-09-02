@@ -6,7 +6,7 @@ import { frameCountForClip, frameTimeSeconds, type PlaybackDirection, type Playb
 import type { Clip, CubicBezier, Interpolation, Project, Track } from '../domain/model.ts';
 import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, frameIndexForTime, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
-import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, selectableEntityForTimelineRow, type TimelineClipboard, type TimelineKeyReference, type TimelineMarkerKind, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
+import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, selectableEntityForTimelineRow, validPinnedTimelineEntityIds, type TimelineClipboard, type TimelineKeyReference, type TimelineMarkerKind, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
 import type { SelectableEntity, Selection } from './selection.ts';
 import type { InspectorContext } from './inspector-context.ts';
 import type { TransformTool } from './transform-gesture.ts';
@@ -509,6 +509,7 @@ export const AnimateTimeline = function AnimateTimeline({
 	const timelineRange = timelineFrameRange(timelineViewport, frameCount);
 	const timelineVisibleCount = visibleFrameCount(timelineViewport, frameCount);
 	const trackRows = activeClip ? buildTimelineTrackRows(project, activeClip, trackFilter) : [];
+	const visiblePinnedEntityIds = validPinnedTimelineEntityIds(project, pinnedEntityIds);
 	const selectedTrackEntityIds = selectedTrackId
 		? new Set(trackRows
 			.filter((row) => row.track.id === selectedTrackId)
@@ -518,7 +519,7 @@ export const AnimateTimeline = function AnimateTimeline({
 		mode: rowMode,
 		filter: trackFilter,
 		expandedIds: expandedRowIds,
-		pinnedEntityIds,
+		pinnedEntityIds: visiblePinnedEntityIds,
 		selection,
 		selectedTrackIds: selectedTrackId ? new Set([selectedTrackId]) : new Set<EntityId>(),
 		selectedEntityIds: selectedTrackEntityIds
@@ -1281,7 +1282,7 @@ export const AnimateTimeline = function AnimateTimeline({
 											<option value="all-keyed">All keyed</option>
 										</select>
 									</label>
-									{pinnedEntityIds.size > 0 && <button className="quiet-button" type="button" onClick={onClearPinnedEntities}>Clear pins</button>}
+									{visiblePinnedEntityIds.size > 0 && <button className="quiet-button" type="button" aria-label="Clear pinned timeline rows" title="Clear all pinned timeline rows" onClick={onClearPinnedEntities}>Clear pins</button>}
 									<span className="timeline-zoom-readout">{Math.round(timelineViewport.pixelsPerFrame / 32 * 100)}%</span>
 								</div>
 							</div>
@@ -1325,13 +1326,19 @@ export const AnimateTimeline = function AnimateTimeline({
 											);
 										}
 										if (row.kind === 'entity') {
+											const entityId = row.entityId;
+
+											if (!entityId) {
+												return null;
+											}
+
 											return (
-																<div className={row.selected ? 'track-row timeline-group-row is-selected' : 'track-row timeline-group-row'} data-entity-id={row.entityId} data-timeline-row-id={row.id} key={row.id}>
-															<div className="timeline-group-label timeline-sticky-label">
-														<button className="timeline-row-expander" type="button" aria-expanded={row.expanded} aria-label={`${row.expanded ? 'Collapse' : 'Expand'} ${row.label}`} onClick={() => toggleTimelineGroup(row.id)}>{row.expanded ? '▾' : '▸'}</button>
-														<button className="timeline-row-select" type="button" aria-pressed={row.selected} onClick={(event) => selectTimelineRow(row, event.metaKey || event.ctrlKey)}><span>{row.label}</span><small>{row.subLabel}</small></button>
-														<button className={pinnedEntityIds.has(row.entityId ?? '') ? 'timeline-pin is-pinned' : 'timeline-pin'} type="button" aria-pressed={pinnedEntityIds.has(row.entityId ?? '')} aria-label={`${pinnedEntityIds.has(row.entityId ?? '') ? 'Unpin' : 'Pin'} ${row.label} timeline rows`} onClick={(event) => { event.stopPropagation(); if (row.entityId) { onTogglePinnedEntity(row.entityId); } }}>{pinnedEntityIds.has(row.entityId ?? '') ? '●' : '○'}</button>
-													</div>
+																															<div className={row.selected ? 'track-row timeline-group-row is-selected' : 'track-row timeline-group-row'} data-entity-id={entityId} data-timeline-row-id={row.id} key={row.id}>
+																			<div className="timeline-group-label timeline-sticky-label">
+																	<button className="timeline-row-expander" type="button" aria-expanded={row.expanded} aria-label={`${row.expanded ? 'Collapse' : 'Expand'} ${row.label}`} onClick={() => toggleTimelineGroup(row.id)}>{row.expanded ? '▾' : '▸'}</button>
+																	<button className="timeline-row-select" type="button" aria-pressed={row.selected} onClick={(event) => selectTimelineRow(row, event.metaKey || event.ctrlKey)}><span>{row.label}</span><small>{row.subLabel}</small></button>
+																		{rowMode === 'selection' && <button className={visiblePinnedEntityIds.has(entityId) ? 'timeline-pin is-pinned' : 'timeline-pin'} type="button" aria-pressed={visiblePinnedEntityIds.has(entityId)} aria-label={`${visiblePinnedEntityIds.has(entityId) ? 'Unpin' : 'Pin'} ${row.label} timeline rows`} title={`${visiblePinnedEntityIds.has(entityId) ? 'Unpin' : 'Pin'} ${row.label} timeline rows`} onClick={(event) => { event.stopPropagation(); onTogglePinnedEntity(entityId); }}>{visiblePinnedEntityIds.has(entityId) ? '●' : '○'}</button>}
+																</div>
 															<div className="track-key-lane timeline-summary-lane" onClick={seekTimelinePointer}>{renderKeyMarkers(row)}</div>
 												</div>
 											);

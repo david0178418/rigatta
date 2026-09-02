@@ -36,6 +36,15 @@ line styles distinguish continuous linear, stepped, Bezier, attachment,
 draw-order, enabled, and event data. Markers outside the current navigated
 frame window are hidden.
 
+Selection mode also supports individually pinned entity groups. Use the pin control on
+an entity row to keep that group and its properties visible while project selection
+changes; clicking the row still selects the related bone, slot, or attachment and keeps
+the tree/canvas selection synchronized. `Clear pins` removes every pin. Pin state is a
+project-scoped UI preference, so it survives reloads and does not enter project history,
+`.boneanim` archives, sprite-sheet exports, or pose evaluation. Stale entity IDs are
+discarded when preferences are applied, and pin controls are available only in Selection
+mode; All keyed mode shows every keyed track independently.
+
 Available typed properties can be added from the contextual Track details
 surface. The selected track accepts keys at the current playhead frame. Numeric,
 boolean, slot-attachment, and draw-order key inputs use the corresponding typed

@@ -1,7 +1,7 @@
 import { isEntityId, type EntityId } from '../domain/ids.ts';
 import type { Project } from '../domain/model.ts';
 import { DEFAULT_WORKSPACE_LAYOUT, type WorkspaceLayout } from './workspace-layout.ts';
-import type { TimelineRowMode } from './timeline-model.ts';
+import { timelineEntityIdsForProject, type TimelineRowMode } from './timeline-model.ts';
 
 export const UI_PREFERENCES_STORAGE_KEY = 'bone-animation.ui-preferences.v1';
 export const UI_PREFERENCES_VERSION = 1 as const;
@@ -267,6 +267,7 @@ export const projectUiPreferencesFor = function projectUiPreferencesFor(
 	const storedPreferences = preferences.projects[project.id];
 	const stored = storedPreferences ?? defaultProjectUiPreferences();
 	const validIds = projectEntityIds(project);
+	const validTimelineEntityIds = timelineEntityIdsForProject(project);
 	const validSelectionHistory = validIdsOnly(stored.selectionHistory, validIds);
 	const expandedIds = storedPreferences
 		? validIdsOnly(stored.rigExpandedIds, new Set(project.bones.map((bone) => bone.id)))
@@ -278,7 +279,7 @@ export const projectUiPreferencesFor = function projectUiPreferencesFor(
 		hiddenEntityIds: validIdsOnly(stored.hiddenEntityIds, validIds),
 		selectionHistory: validSelectionHistory,
 		timelineExpandedIds: validTimelineExpandedIdsOnly(stored.timelineExpandedIds, validIds),
-		pinnedTimelineEntityIds: validIdsOnly(stored.pinnedTimelineEntityIds, validIds)
+		pinnedTimelineEntityIds: validIdsOnly(stored.pinnedTimelineEntityIds, validTimelineEntityIds)
 	};
 };
 
