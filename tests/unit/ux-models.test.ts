@@ -27,9 +27,15 @@ import {
 	planPasteTimelineClipboard
 } from '../../src/app/timeline-model.ts';
 import {
+	COLLAPSED_DOCK_WIDTH,
 	clampWorkspaceLayout,
+	MIN_CANVAS_WIDTH,
+	DOCK_SPLITTER_WIDTH,
+	WORKSPACE_COLUMN_GAP,
+	workspaceLayoutBounds,
 	workspaceLayoutFromKeyboard,
 	workspaceLayoutFromLeftPointer,
+	workspaceLayoutFromRightPointer,
 	DEFAULT_WORKSPACE_LAYOUT
 } from '../../src/app/workspace-layout.ts';
 import {
@@ -218,6 +224,63 @@ describe('UX workspace and preference models', () => {
 		expect(clamped.rightDockWidth).toBe(196);
 		expect(workspaceLayoutFromLeftPointer(DEFAULT_WORKSPACE_LAYOUT, 100, 1000, viewport).leftDockWidth).toBe(420);
 		expect(workspaceLayoutFromKeyboard(clamped, 'right', 'End', viewport)?.rightDockWidth).toBe(420);
+	});
+
+	test('keeps the minimum canvas available across supported viewport widths', () => {
+		const supportedViewports = [
+			{ width: 1120, height: 720 },
+			{ width: 1280, height: 800 },
+			{ width: 1440, height: 900 },
+			{ width: 1920, height: 1080 }
+		] as const;
+		const requiredChrome = MIN_CANVAS_WIDTH + (2 * DOCK_SPLITTER_WIDTH) + (4 * WORKSPACE_COLUMN_GAP);
+
+		supportedViewports.forEach((viewport) => {
+			const bounds = workspaceLayoutBounds(viewport);
+			const layout = clampWorkspaceLayout({
+				...DEFAULT_WORKSPACE_LAYOUT,
+				leftDockWidth: 999,
+				rightDockWidth: -1,
+				timelineHeight: Number.NaN
+			}, viewport);
+			const occupiedWidth = layout.leftDockWidth
+				+ layout.rightDockWidth
+				+ (2 * DOCK_SPLITTER_WIDTH)
+				+ (4 * WORKSPACE_COLUMN_GAP)
+				+ MIN_CANVAS_WIDTH;
+
+			expect(layout.leftDockWidth).toBe(bounds.leftMax);
+			expect(layout.rightDockWidth).toBe(bounds.rightMin);
+			expect(layout.timelineHeight).toBeGreaterThanOrEqual(bounds.timelineMin);
+			expect(layout.timelineHeight).toBeLessThanOrEqual(bounds.timelineMax);
+			expect(occupiedWidth).toBeLessThanOrEqual(viewport.width);
+		});
+
+		const narrow = workspaceLayoutBounds({ width: requiredChrome, height: 720 });
+		const collapsed = clampWorkspaceLayout({
+			...DEFAULT_WORKSPACE_LAYOUT,
+			leftDockCollapsed: true,
+			rightDockCollapsed: true
+		}, { width: requiredChrome, height: 720 });
+
+		expect(narrow.leftMax).toBe(0);
+		expect(narrow.rightMax).toBe(0);
+		expect(collapsed.leftDockWidth).toBe(COLLAPSED_DOCK_WIDTH);
+		expect(collapsed.rightDockWidth).toBe(COLLAPSED_DOCK_WIDTH);
+	});
+
+	test('plans symmetric pointer changes and safe keyboard edge behavior', () => {
+		const viewport = { width: 1120, height: 720 } as const;
+		const movedRight = workspaceLayoutFromRightPointer(DEFAULT_WORKSPACE_LAYOUT, 900, 400, viewport);
+		const movedLeft = workspaceLayoutFromLeftPointer(DEFAULT_WORKSPACE_LAYOUT, 400, 900, viewport);
+
+		expect(movedRight.rightDockWidth).toBe(370);
+		expect(movedLeft.leftDockWidth).toBe(370);
+		expect(workspaceLayoutFromKeyboard(DEFAULT_WORKSPACE_LAYOUT, 'left', 'ArrowLeft', viewport)?.leftDockWidth).toBe(232);
+		expect(workspaceLayoutFromKeyboard(DEFAULT_WORKSPACE_LAYOUT, 'left', 'Home', viewport)?.leftDockWidth).toBe(196);
+		expect(workspaceLayoutFromKeyboard(DEFAULT_WORKSPACE_LAYOUT, 'left', 'End', viewport)?.leftDockWidth).toBe(370);
+		expect(workspaceLayoutFromKeyboard(DEFAULT_WORKSPACE_LAYOUT, 'left', 'ArrowRight', viewport, Number.NaN)?.leftDockWidth).toBe(264);
+		expect(workspaceLayoutFromKeyboard(DEFAULT_WORKSPACE_LAYOUT, 'left', 'PageUp', viewport)).toBeUndefined();
 	});
 
 	test('round-trips only validated versioned preferences and drops stale entity IDs', () => {

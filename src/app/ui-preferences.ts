@@ -5,6 +5,7 @@ import type { TimelineRowMode } from './timeline-model.ts';
 
 export const UI_PREFERENCES_STORAGE_KEY = 'bone-animation.ui-preferences.v1';
 export const UI_PREFERENCES_VERSION = 1 as const;
+export const LEGACY_UI_PREFERENCES_VERSION = 0 as const;
 
 export type AssetDensity = 'list' | 'compact' | 'thumbnail';
 export type LeftDockTab = 'rig' | 'draw-order';
@@ -101,57 +102,99 @@ const isWorkspaceLayout = function isWorkspaceLayout(value: unknown): value is W
 		&& isBoolean(value.rightDockCollapsed);
 };
 
-const parseProjectPreferences = function parseProjectPreferences(value: unknown): ProjectUiPreferences | undefined {
-	if (!isRecord(value)
-		|| !isWorkspaceLayout(value.layout)
-		|| !isLeftDockTab(value.leftDockTab)
-		|| !isRightDockTab(value.rightDockTab)
-		|| !isAssetDensity(value.assetDensity)
-		|| !isIdArray(value.rigExpandedIds)
-		|| !isIdArray(value.hiddenEntityIds)
-		|| !isIdArray(value.selectionHistory)
-		|| !isTimelineRowMode(value.timelineRowMode)
-		|| !isStringArray(value.timelineExpandedIds)
-		|| !isIdArray(value.pinnedTimelineEntityIds)
-		|| !isStringArray(value.collapsedInspectorSections)) {
+const parseProjectPreferences = function parseProjectPreferences(
+	value: unknown,
+	legacyDensity: AssetDensity = 'list'
+): ProjectUiPreferences | undefined {
+	if (!isRecord(value)) {
 		return undefined;
 	}
 
+	const defaults = defaultProjectUiPreferences();
+	const density = isAssetDensity(value.assetDensity)
+		? value.assetDensity
+		: isAssetDensity(value.density)
+			? value.density
+			: legacyDensity;
+
 	return {
-		layout: value.layout,
-		leftDockTab: value.leftDockTab,
-		rightDockTab: value.rightDockTab,
-		assetDensity: value.assetDensity,
-		rigExpandedIds: value.rigExpandedIds,
-		hiddenEntityIds: value.hiddenEntityIds,
-		selectionHistory: value.selectionHistory,
-		timelineRowMode: value.timelineRowMode,
-		timelineExpandedIds: value.timelineExpandedIds,
-		pinnedTimelineEntityIds: value.pinnedTimelineEntityIds,
-		collapsedInspectorSections: value.collapsedInspectorSections
+		layout: isWorkspaceLayout(value.layout) ? { ...value.layout } : defaults.layout,
+		leftDockTab: isLeftDockTab(value.leftDockTab) ? value.leftDockTab : defaults.leftDockTab,
+		rightDockTab: isRightDockTab(value.rightDockTab) ? value.rightDockTab : defaults.rightDockTab,
+		assetDensity: density,
+		rigExpandedIds: isIdArray(value.rigExpandedIds) ? [...value.rigExpandedIds] : defaults.rigExpandedIds,
+		hiddenEntityIds: isIdArray(value.hiddenEntityIds) ? [...value.hiddenEntityIds] : defaults.hiddenEntityIds,
+		selectionHistory: isIdArray(value.selectionHistory) ? [...value.selectionHistory] : defaults.selectionHistory,
+		timelineRowMode: isTimelineRowMode(value.timelineRowMode) ? value.timelineRowMode : defaults.timelineRowMode,
+		timelineExpandedIds: isStringArray(value.timelineExpandedIds) ? [...value.timelineExpandedIds] : defaults.timelineExpandedIds,
+		pinnedTimelineEntityIds: isIdArray(value.pinnedTimelineEntityIds) ? [...value.pinnedTimelineEntityIds] : defaults.pinnedTimelineEntityIds,
+		collapsedInspectorSections: isStringArray(value.collapsedInspectorSections) ? [...value.collapsedInspectorSections] : defaults.collapsedInspectorSections
 	};
 };
 
-export const parseUiPreferences = function parseUiPreferences(value: unknown): UiPreferences {
-	if (!isRecord(value) || value.version !== UI_PREFERENCES_VERSION || !isAssetDensity(value.globalDensity) || !isRecord(value.projects)) {
-		return defaultUiPreferences();
+const parseProjects = function parseProjects(
+	value: unknown,
+	legacyDensity: AssetDensity = 'list'
+): Readonly<Record<string, ProjectUiPreferences>> {
+	if (!isRecord(value)) {
+		return {};
 	}
 
-	const projects = Object.entries(value.projects).reduce<Readonly<Record<string, ProjectUiPreferences>>>((current, [id, projectPreferences]) => {
-		const parsed = parseProjectPreferences(projectPreferences);
+	return Object.entries(value).reduce<Readonly<Record<string, ProjectUiPreferences>>>((current, [id, projectPreferences]) => {
+		const parsed = parseProjectPreferences(projectPreferences, legacyDensity);
 
 		return parsed && isEntityId(id) ? { ...current, [id]: parsed } : current;
 	}, {});
+};
+
+const parseCurrentUiPreferences = function parseCurrentUiPreferences(value: Readonly<Record<string, unknown>>): UiPreferences {
+	if (value.version !== UI_PREFERENCES_VERSION || !isAssetDensity(value.globalDensity) || !isRecord(value.projects)) {
+		return defaultUiPreferences();
+	}
 
 	return {
 		version: UI_PREFERENCES_VERSION,
 		globalDensity: value.globalDensity,
-		projects
+		projects: parseProjects(value.projects, value.globalDensity)
 	};
 };
 
+const migrateLegacyUiPreferences = function migrateLegacyUiPreferences(value: Readonly<Record<string, unknown>>): UiPreferences {
+	if (value.version !== LEGACY_UI_PREFERENCES_VERSION) {
+		return defaultUiPreferences();
+	}
+
+	const globalDensity = isAssetDensity(value.globalDensity)
+		? value.globalDensity
+		: isAssetDensity(value.density)
+			? value.density
+			: 'list';
+
+	return {
+		version: UI_PREFERENCES_VERSION,
+		globalDensity,
+		projects: parseProjects(value.projects, globalDensity)
+	};
+};
+
+export const migrateUiPreferences = function migrateUiPreferences(value: unknown): UiPreferences {
+	if (!isRecord(value)) {
+		return defaultUiPreferences();
+	}
+
+	return value.version === LEGACY_UI_PREFERENCES_VERSION
+		? migrateLegacyUiPreferences(value)
+		: parseCurrentUiPreferences(value);
+};
+
+export const parseUiPreferences = migrateUiPreferences;
+
 const browserStorage = function browserStorage(): PreferencesStorage | undefined {
-	return typeof globalThis.localStorage === 'undefined' ? undefined : globalThis.localStorage;
+	try {
+		return typeof globalThis.localStorage === 'undefined' ? undefined : globalThis.localStorage;
+	} catch {
+		return undefined;
+	}
 };
 
 export const loadUiPreferences = function loadUiPreferences(
@@ -189,6 +232,7 @@ export const saveUiPreferences = function saveUiPreferences(
 
 const projectEntityIds = function projectEntityIds(project: Project): ReadonlySet<EntityId> {
 	return new Set([
+		...project.assets.map((asset) => asset.id),
 		...project.bones.map((bone) => bone.id),
 		...project.slots.map((slot) => slot.id),
 		...project.attachments.map((attachment) => attachment.id)
@@ -200,6 +244,20 @@ const validIdsOnly = function validIdsOnly(
 	validIds: ReadonlySet<EntityId>
 ): readonly EntityId[] {
 	return ids.filter((id, index) => validIds.has(id) && ids.indexOf(id) === index);
+};
+
+const validTimelineExpandedIdsOnly = function validTimelineExpandedIdsOnly(
+	ids: readonly string[],
+	validIds: ReadonlySet<EntityId>
+): readonly string[] {
+	return ids.filter((id, index) => {
+		const entityId = id.startsWith('entity:') ? id.slice('entity:'.length) : undefined;
+
+		return entityId !== undefined
+			&& isEntityId(entityId)
+			&& validIds.has(entityId)
+			&& ids.indexOf(id) === index;
+	});
 };
 
 export const projectUiPreferencesFor = function projectUiPreferencesFor(
@@ -219,6 +277,7 @@ export const projectUiPreferencesFor = function projectUiPreferencesFor(
 		rigExpandedIds: expandedIds,
 		hiddenEntityIds: validIdsOnly(stored.hiddenEntityIds, validIds),
 		selectionHistory: validSelectionHistory,
+		timelineExpandedIds: validTimelineExpandedIdsOnly(stored.timelineExpandedIds, validIds),
 		pinnedTimelineEntityIds: validIdsOnly(stored.pinnedTimelineEntityIds, validIds)
 	};
 };

@@ -102,18 +102,20 @@ export const parseNumericDraft = function parseNumericDraft(
 	if (!Number.isFinite(displayValue)) {
 		return { ok: false, error: `${spec.label} must be a finite number.` };
 	}
-	if (spec.minimum !== undefined && displayValue < spec.display(spec.minimum)) {
-		return { ok: false, error: `${spec.label} must be at least ${spec.display(spec.minimum)}.` };
-	}
-	if (spec.maximum !== undefined && displayValue > spec.display(spec.maximum)) {
-		return { ok: false, error: `${spec.label} must be at most ${spec.display(spec.maximum)}.` };
-	}
 
 	const value = spec.parse(displayValue);
 
-	return Number.isFinite(value)
-		? { ok: true, value, text: formatDraftValue(displayValue) }
-		: { ok: false, error: `${spec.label} must be a finite number.` };
+	if (!Number.isFinite(value)) {
+		return { ok: false, error: `${spec.label} must be a finite number.` };
+	}
+	if (spec.minimum !== undefined && value < spec.minimum) {
+		return { ok: false, error: `${spec.label} must be at least ${formatDraftValue(spec.display(spec.minimum))}.` };
+	}
+	if (spec.maximum !== undefined && value > spec.maximum) {
+		return { ok: false, error: `${spec.label} must be at most ${formatDraftValue(spec.display(spec.maximum))}.` };
+	}
+
+	return { ok: true, value, text: formatDraftValue(displayValue) };
 };
 
 export const commitNumericDraft = function commitNumericDraft(

@@ -263,7 +263,7 @@ type assertions to bypass validation.
 
 ### Properties and direct keying
 
-- [ ] **UX-P1-11** Add pure property draft parsing and commit helpers. Depends on
+- [x] **UX-P1-11** Add pure property draft parsing and commit helpers. Depends on
   UX-P1-02. Model display units, valid ranges, committed value, draft text, and
   parse errors for transforms, opacity, pivot, and rectangle size. Add unit tests
   for blank, nonfinite, out-of-range, unchanged, and converted degree values.
@@ -274,7 +274,7 @@ type assertions to bypass validation.
   Each field commit is one history entry; invalid or unchanged drafts produce
   none. Preserve Auto Key and pending-edit behavior.
 
-- [ ] **UX-P1-13** Extract pure current-frame key state and command planning.
+- [x] **UX-P1-13** Extract pure current-frame key state and command planning.
   Depends on UX-P1-11. Given project, clip, target, property, frame, Auto Key, and
   pending edits, derive the diamond state and the exact create-track/add-key/
   delete-key commands. Cover every continuous property type and missing-clip
@@ -286,7 +286,7 @@ type assertions to bypass validation.
   history transaction. Keep the compact pending-edit action near Auto Key and
   announce pending/keyed state changes without moving focus.
 
-- [ ] **UX-P1-15** Automatically create continuous tracks from property keying.
+- [x] **UX-P1-15** Automatically create continuous tracks from property keying.
   Depends on UX-P1-13. Inspector keying and Auto Key create a missing compatible
   track before setting its key. Keep explicit track creation for attachment
   swaps, draw order, enabled state, and other discrete tracks. Prevent duplicate

@@ -35,6 +35,10 @@ export const COLLAPSED_DOCK_WIDTH = 34;
 export const MIN_DOCK_WIDTH = 196;
 export const MAX_DOCK_WIDTH = 420;
 export const MIN_CANVAS_WIDTH = 360;
+export const DOCK_SPLITTER_WIDTH = 8;
+export const WORKSPACE_COLUMN_GAP = 1;
+
+const workspaceChromeWidth = 2 * DOCK_SPLITTER_WIDTH + 4 * WORKSPACE_COLUMN_GAP;
 
 const finiteOr = function finiteOr(value: number, fallback: number): number {
 	return Number.isFinite(value) ? value : fallback;
@@ -49,7 +53,7 @@ export const workspaceLayoutBounds = function workspaceLayoutBounds(
 ): WorkspaceLayoutBounds {
 	const width = Math.max(0, finiteOr(viewport.width, 0));
 	const height = Math.max(0, finiteOr(viewport.height, 0));
-	const availableDockWidth = Math.max(0, width - MIN_CANVAS_WIDTH - 2);
+	const availableDockWidth = Math.max(0, width - MIN_CANVAS_WIDTH - workspaceChromeWidth);
 	const dockMax = Math.min(MAX_DOCK_WIDTH, Math.floor(availableDockWidth / 2));
 	const dockMinimum = Math.min(MIN_DOCK_WIDTH, dockMax);
 	const timeline = timelineHeightBounds(height);
@@ -111,7 +115,8 @@ export const workspaceLayoutFromKeyboard = function workspaceLayoutFromKeyboard(
 	step = 16
 ): WorkspaceLayout | undefined {
 	const current = dock === 'left' ? layout.leftDockWidth : layout.rightDockWidth;
-	const delta = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : undefined;
+	const safeStep = Number.isFinite(step) && step > 0 ? step : 16;
+	const delta = key === 'ArrowLeft' ? -safeStep : key === 'ArrowRight' ? safeStep : undefined;
 
 	if (delta === undefined && key !== 'Home' && key !== 'End') {
 		return undefined;

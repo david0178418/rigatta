@@ -3,7 +3,24 @@ import type { ProjectCommand } from '../domain/commands.ts';
 import type { BoneTransformProperty, Clip, Project, Track } from '../domain/model.ts';
 import type { TrackDefinition } from '../domain/animation.ts';
 
-export type KeyableProperty = BoneTransformProperty | 'opacity' | 'width' | 'height';
+const transformProperties = [
+	'x',
+	'y',
+	'rotation',
+	'scaleX',
+	'scaleY',
+	'shearX',
+	'shearY'
+] as const;
+
+export const continuousKeyableProperties = [
+	...transformProperties,
+	'opacity',
+	'width',
+	'height'
+] as const;
+
+export type KeyableProperty = typeof continuousKeyableProperties[number];
 export type PropertyKeyState = 'unkeyed' | 'pending' | 'keyed';
 
 export type KeyingContext = Readonly<{
@@ -25,13 +42,7 @@ export type KeyingPlan = Readonly<{
 const isTransformProperty = function isTransformProperty(
 	property: KeyableProperty
 ): property is BoneTransformProperty {
-	return property === 'x'
-		|| property === 'y'
-		|| property === 'rotation'
-		|| property === 'scaleX'
-		|| property === 'scaleY'
-		|| property === 'shearX'
-		|| property === 'shearY';
+	return transformProperties.some((candidate) => candidate === property);
 };
 
 const trackMatchesDefinition = function trackMatchesDefinition(
@@ -114,13 +125,19 @@ const keyAtFrame = function keyAtFrame(
 };
 
 export const propertyKeyState = function propertyKeyState(context: KeyingContext): PropertyKeyState {
-	const pending = context.pendingEdits?.some((edit) => edit.targetId === context.targetId && edit.property === context.property);
+	const definition = trackDefinitionForProperty(context.project, context.targetId, context.property);
+
+	if (!definition) {
+		return 'unkeyed';
+	}
+
+	const pending = !context.autoKey
+		&& context.pendingEdits?.some((edit) => edit.targetId === context.targetId && edit.property === context.property);
 
 	if (pending) {
 		return 'pending';
 	}
 
-	const definition = trackDefinitionForProperty(context.project, context.targetId, context.property);
 	const track = context.clip?.tracks.find((candidate) => definition && trackMatchesDefinition(candidate, definition));
 
 	return context.clip && track && keyAtFrame(context.clip, track, context.frameIndex)
@@ -142,12 +159,12 @@ const commandsForKey = function commandsForKey(
 	}
 
 	const trackId = track?.id ?? idFactory();
-
-	return [
-		...(track ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: clip.id, definition }]),
-		{
+	const key = track ? keyAtFrame(clip, track, context.frameIndex) : undefined;
+	const keyId = key?.id ?? idFactory();
+	const keyCommand = key
+		? {
 			kind: 'set-number-key' as const,
-			id: idFactory(),
+			id: key.id,
 			clipId: clip.id,
 			trackId,
 			input: {
@@ -157,6 +174,22 @@ const commandsForKey = function commandsForKey(
 				curve: null
 			}
 		}
+		: {
+			kind: 'add-number-key' as const,
+			id: keyId,
+			clipId: clip.id,
+			trackId,
+			input: {
+				timeSeconds: Math.max(0, context.frameIndex) / clip.fps,
+				value,
+				interpolation: 'linear' as const,
+				curve: null
+			}
+		};
+
+	return [
+		...(track ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: clip.id, definition }]),
+		keyCommand
 	];
 };
 
