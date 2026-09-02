@@ -2,7 +2,7 @@ import { isEntityId, type EntityId } from '../domain/ids.ts';
 import type { TrackDefinition } from '../domain/animation.ts';
 import type { Clip, DiscreteKey, NumberKey, Project, Track } from '../domain/model.ts';
 import type { SelectableEntity, Selection } from './selection.ts';
-import { frameIndexForTime, trackLabel } from './timeline.ts';
+import { trackLabel } from './timeline.ts';
 
 export type TimelineRowKind = 'overview' | 'entity' | 'property' | 'draw-order' | 'events';
 export type TimelineRowMode = 'selection' | 'all-keyed';
@@ -75,6 +75,40 @@ const isSelectedId = function isSelectedId(
 	return selection?.some((entity) => entity.id === entityId) ?? false;
 };
 
+const frameCountForClip = function frameCountForClip(clip: Clip): number | undefined {
+	if (!Number.isFinite(clip.durationSeconds) || clip.durationSeconds <= 0) {
+		return undefined;
+	}
+	if (!Number.isFinite(clip.fps) || clip.fps <= 0) {
+		return undefined;
+	}
+
+	const frameCount = Math.ceil(clip.durationSeconds * clip.fps);
+
+	return Number.isFinite(frameCount) && frameCount > 0 ? frameCount : undefined;
+};
+
+const isValidKeyTime = function isValidKeyTime(clip: Clip, timeSeconds: number): boolean {
+	return frameCountForClip(clip) !== undefined
+		&& Number.isFinite(timeSeconds)
+		&& timeSeconds >= 0
+		&& timeSeconds <= clip.durationSeconds;
+};
+
+const frameIndexForTime = function frameIndexForTime(clip: Clip, timeSeconds: number): number {
+	const frameCount = frameCountForClip(clip);
+
+	if (frameCount === undefined || !Number.isFinite(timeSeconds)) {
+		return 0;
+	}
+
+	return Math.max(0, Math.min(frameCount - 1, Math.round(timeSeconds * clip.fps)));
+};
+
+const hasDuplicateIds = function hasDuplicateIds(ids: readonly EntityId[]): boolean {
+	return new Set(ids).size !== ids.length;
+};
+
 const entityName = function entityName(project: Project, entityId: EntityId): string {
 	return project.bones.find((bone) => bone.id === entityId)?.name
 		?? project.slots.find((slot) => slot.id === entityId)?.name
@@ -131,7 +165,9 @@ const markersForTrack = function markersForTrack(
 	clip: Clip,
 	track: Track
 ): readonly TimelineKeyMarker[] {
-	return track.keys.map((key) => ({ id: key.id, frameIndex: frameIndexForTime(clip, key.timeSeconds) }));
+	return track.keys
+		.map((key) => ({ id: key.id, frameIndex: frameIndexForTime(clip, key.timeSeconds) }))
+		.toSorted((left, right) => left.frameIndex - right.frameIndex || left.id.localeCompare(right.id));
 };
 
 const keysForTracks = function keysForTracks(
@@ -158,7 +194,7 @@ const trackIsVisible = function trackIsVisible(
 	selectedEntityIds: ReadonlySet<EntityId>
 ): boolean {
 	if (mode === 'all-keyed') {
-		return true;
+		return track.keys.length > 0;
 	}
 
 	const targetId = trackEntityId(track);
@@ -190,12 +226,16 @@ const groupTrackRows = function groupTrackRows(
 
 		return new Map([...groups, [targetId, [...current, track]]]);
 	}, new Map());
-const groupOrder = [...grouped.keys()].toSorted((left, right) => entityName(project, left).localeCompare(entityName(project, right)));
+	const groupOrder = [...grouped.keys()].toSorted((left, right) => (
+		entityName(project, left).localeCompare(entityName(project, right)) || left.localeCompare(right)
+	));
 
 	return groupOrder.flatMap((entityId) => {
-		const entityTracks = grouped.get(entityId) ?? [];
+		const entityTracks = (grouped.get(entityId) ?? []).toSorted((left, right) => (
+			trackLabel(project, left).localeCompare(trackLabel(project, right)) || left.id.localeCompare(right.id)
+		));
 		const groupId = `entity:${entityId}`;
-		const group: TimelineRow = {
+		const groupBase: TimelineRow = {
 			id: groupId,
 			kind: 'entity',
 			depth: 0,
@@ -203,8 +243,10 @@ const groupOrder = [...grouped.keys()].toSorted((left, right) => entityName(proj
 			subLabel: entityKindLabel(project, entityId),
 			entityId,
 			expandable: true,
-			expanded: expandedIds.has(groupId) || expandedIds.size === 0,
-			selected: isSelectedId(selection, entityId),
+			expanded: false,
+			selected: isSelectedId(selection, entityId)
+				|| selectedEntityIds.has(entityId)
+				|| entityTracks.some((track) => selectedTrackIds.has(track.id)),
 			keyed: entityTracks.some((track) => track.keys.length > 0),
 			keys: keysForTracks(clip, entityTracks)
 		};
@@ -220,6 +262,12 @@ const groupOrder = [...grouped.keys()].toSorted((left, right) => entityName(proj
 			keyed: track.keys.length > 0,
 			keys: markersForTrack(clip, track)
 		}, query));
+		const expandsByDefault = expandedIds.size === 0;
+		const expandsForFilter = query.trim().length > 0 && matchingTracks.length > 0;
+		const group: TimelineRow = {
+			...groupBase,
+			expanded: expandsByDefault || expandedIds.has(groupId) || expandsForFilter
+		};
 
 		if (!rowMatchesFilter(group, query) && matchingTracks.length === 0) {
 			return [];
@@ -236,7 +284,7 @@ const groupOrder = [...grouped.keys()].toSorted((left, right) => entityName(proj
 				trackId: track.id,
 				expandable: false,
 				expanded: false,
-				selected: false,
+				selected: selectedTrackIds.has(track.id),
 				keyed: track.keys.length > 0,
 				keys: markersForTrack(clip, track)
 			}))
@@ -276,7 +324,9 @@ const dedicatedRows = function dedicatedRows(
 		expanded: false,
 		selected: false,
 		keyed: clip.events.length > 0,
-		keys: clip.events.map((event) => ({ id: event.id, frameIndex: frameIndexForTime(clip, event.timeSeconds) }))
+		keys: clip.events
+			.map((event) => ({ id: event.id, frameIndex: frameIndexForTime(clip, event.timeSeconds) }))
+			.toSorted((left, right) => left.frameIndex - right.frameIndex || left.id.localeCompare(right.id))
 	};
 
 	return [
@@ -303,11 +353,11 @@ export const buildGroupedTimelineRows = function buildGroupedTimelineRows(
 		kind: 'overview',
 		depth: 0,
 		label: clip.name,
-		subLabel: `${clip.tracks.length} track${clip.tracks.length === 1 ? '' : 's'}`,
+		subLabel: `${visibleTracks.length} track${visibleTracks.length === 1 ? '' : 's'}`,
 		expandable: false,
 		expanded: false,
 		selected: false,
-		keyed: clip.tracks.some((track) => track.keys.length > 0),
+		keyed: visibleTracks.some((track) => track.keys.length > 0),
 		keys: keysForTracks(clip, visibleTracks)
 	};
 
@@ -319,6 +369,20 @@ const trackForReference = function trackForReference(
 	reference: TimelineKeyReference
 ): Track | undefined {
 	return clip.tracks.find((track) => track.id === reference.trackId && track.keys.some((key) => key.id === reference.keyId));
+};
+
+const referenceKey = function referenceKey(reference: TimelineKeyReference): string {
+	return `${reference.trackId}:${reference.keyId}`;
+};
+
+const invalidTimelineData = function invalidTimelineData(clip: Clip): boolean {
+	const trackIds = clip.tracks.map((track) => track.id);
+	const keyIds = clip.tracks.flatMap((track) => track.keys.map((key) => key.id));
+
+	return frameCountForClip(clip) === undefined
+		|| hasDuplicateIds(trackIds)
+		|| hasDuplicateIds(keyIds)
+		|| clip.tracks.some((track) => track.keys.some((key) => !isValidKeyTime(clip, key.timeSeconds)));
 };
 
 export const planKeyDrag = function planKeyDrag(
@@ -333,8 +397,17 @@ export const planKeyDrag = function planKeyDrag(
 	if (!Number.isFinite(pixelsPerFrame) || pixelsPerFrame <= 0) {
 		return { ok: false, error: 'Timeline scale is unavailable.' };
 	}
+	if (!Number.isFinite(deltaPixels)) {
+		return { ok: false, error: 'Pointer movement is unavailable.' };
+	}
+	if (invalidTimelineData(clip)) {
+		return { ok: false, error: 'Animation keys or clip timing are invalid.' };
+	}
+	if (hasDuplicateIds(selectedKeys.map(referenceKey))) {
+		return { ok: false, error: 'Each selected key may appear only once.' };
+	}
 
-	const deltaFrames = Number.isFinite(deltaPixels) ? Math.round(deltaPixels / pixelsPerFrame) : 0;
+	const deltaFrames = Math.round(deltaPixels / pixelsPerFrame);
 	const selected = selectedKeys.flatMap((reference) => {
 		const track = trackForReference(clip, reference);
 		const key = track?.keys.find((candidate) => candidate.id === reference.keyId);
@@ -346,21 +419,34 @@ export const planKeyDrag = function planKeyDrag(
 		return { ok: false, error: 'One or more selected keys no longer exists.' };
 	}
 
-	const frameCount = Math.max(1, Math.ceil(clip.durationSeconds * clip.fps));
+	const frameCount = frameCountForClip(clip);
+
+	if (frameCount === undefined) {
+		return { ok: false, error: 'Animation keys or clip timing are invalid.' };
+	}
+
 	const minimum = Math.min(...selected.map((item) => item.frameIndex));
 	const maximum = Math.max(...selected.map((item) => item.frameIndex));
 	const clampedDelta = Math.max(-minimum, Math.min(frameCount - 1 - maximum, deltaFrames));
-	const selectedIds = new Set(selected.map((item) => item.key.id));
+
+	if (clampedDelta === 0) {
+		return { ok: true, value: { deltaFrames: 0, changes: [] } };
+	}
+
+	const selectedReferences = new Set(selected.map((item) => referenceKey(item.reference)));
 	const changes = selected.map((item) => ({
 		trackId: item.track.id,
 		keyId: item.key.id,
 		timeSeconds: (item.frameIndex + clampedDelta) / clip.fps
 	}));
 	const collisions = clip.tracks.some((track) => {
-		const targetTimes = changes.filter((change) => change.trackId === track.id).map((change) => change.timeSeconds);
+		const targetFrames = changes
+			.filter((change) => change.trackId === track.id)
+			.map((change) => Math.round(change.timeSeconds * clip.fps));
 
-		return new Set(targetTimes).size !== targetTimes.length
-			|| track.keys.some((key) => !selectedIds.has(key.id) && targetTimes.includes(key.timeSeconds));
+		return new Set(targetFrames).size !== targetFrames.length
+			|| track.keys.some((key) => !selectedReferences.has(referenceKey({ trackId: track.id, keyId: key.id }))
+				&& targetFrames.includes(frameIndexForTime(clip, key.timeSeconds)));
 	});
 
 	if (collisions) {
@@ -527,9 +613,14 @@ export const selectableEntityForTimelineRow = function selectableEntityForTimeli
 		return undefined;
 	}
 
-	return project.bones.some((bone) => bone.id === row.entityId)
-		? { kind: 'bone', id: row.entityId }
-		: project.slots.some((slot) => slot.id === row.entityId)
-			? { kind: 'slot', id: row.entityId }
-			: { kind: 'attachment', id: row.entityId };
+	if (project.bones.some((bone) => bone.id === row.entityId)) {
+		return { kind: 'bone', id: row.entityId };
+	}
+	if (project.slots.some((slot) => slot.id === row.entityId)) {
+		return { kind: 'slot', id: row.entityId };
+	}
+
+	return project.attachments.some((attachment) => attachment.id === row.entityId)
+		? { kind: 'attachment', id: row.entityId }
+		: undefined;
 };

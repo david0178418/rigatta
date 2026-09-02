@@ -105,6 +105,13 @@ export const RigTreeView = function RigTreeView({
 		? baseModel
 		: buildRigTreeViewModel(project, selection, filterExpandedIds);
 	const visibleNodes = model.visibleNodes.filter((node) => !filteredIds || filteredIds.has(node.id));
+	const activeFocusedId = focusedId && visibleNodes.some((node) => node.id === focusedId)
+		? focusedId
+		: visibleNodes[0]?.id;
+	const siblingNodesFor = function siblingNodesFor(node: RigTreeNode): readonly RigTreeNode[] {
+		return model.nodes.filter((candidate) => candidate.parentId === node.parentId
+			&& (!filteredIds || filteredIds.has(candidate.id)));
+	};
 
 	const setFocusedNode = function setFocusedNode(node: RigTreeNode | undefined): void {
 		if (!node) {
@@ -120,7 +127,7 @@ export const RigTreeView = function RigTreeView({
 		}
 
 		setFocusedNode(node);
-		window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-rig-row-id="${node.id}"]`)?.focus());
+		window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-treeitem-id="${node.id}"]`)?.focus());
 	};
 	const toggleExpanded = function toggleExpanded(node: RigTreeNode): void {
 		const next = new Set(expandedIds);
@@ -137,15 +144,21 @@ export const RigTreeView = function RigTreeView({
 		const anchorId = anchorIdRef.current;
 
 		anchorIdRef.current = node.id;
-		setFocusedNode(node);
+		focusNode(node);
 		onSelectionChange(treeSelectionForClick(selection, visibleNodes, node, {
 			...interaction,
 			anchorId
 		}));
 	};
-	const onRowKeyDown = function onRowKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, node: RigTreeNode): void {
-		const index = visibleNodes.findIndex((candidate) => candidate.id === node.id);
+	const onRowKeyDown = function onRowKeyDown(event: ReactKeyboardEvent<HTMLDivElement>, node: RigTreeNode): void {
+		if (event.target instanceof HTMLInputElement
+			|| event.target instanceof HTMLTextAreaElement
+			|| event.target instanceof HTMLSelectElement) {
+			return;
+		}
+
 		const parent = node.parentId ? model.nodes.find((candidate) => candidate.id === node.parentId) : undefined;
+		const firstChild = visibleNodes.find((candidate) => candidate.parentId === node.id);
 
 		if (event.key === 'ArrowRight') {
 			event.preventDefault();
@@ -154,7 +167,7 @@ export const RigTreeView = function RigTreeView({
 				return;
 			}
 
-			focusNode(node.expandable ? visibleNodes[index + 1] : undefined);
+			focusNode(node.expandable ? firstChild : undefined);
 			return;
 		}
 		if (event.key === 'ArrowLeft') {
@@ -218,10 +231,12 @@ export const RigTreeView = function RigTreeView({
 	return (
 		<div className="rig-tree" role="tree" aria-label="Rig hierarchy" aria-multiselectable="true">
 			{visibleNodes.length === 0 && <div className="tree-empty">No rig items match “{searchQuery}”.</div>}
-			{visibleNodes.map((node, index) => {
+			{visibleNodes.map((node) => {
 				const isHidden = hiddenIds.has(node.id);
 				const selected = isSelected(selection, selectableEntityForRigNode(node));
 				const expanded = expandedIds.has(node.id) || Boolean(filteredIds?.has(node.id));
+				const siblings = siblingNodesFor(node);
+				const siblingIndex = siblings.findIndex((candidate) => candidate.id === node.id);
 				const rowClasses = [
 					node.kind === 'bone' ? 'bone-row' : node.kind === 'slot' ? 'slot-row' : 'attachment-row',
 					selected ? 'is-selected' : '',
@@ -235,23 +250,35 @@ export const RigTreeView = function RigTreeView({
 				return (
 					<div
 						aria-expanded={node.expandable ? expanded : undefined}
+						aria-label={`${node.typeLabel}: ${node.name}`}
 						aria-level={node.depth + 1}
-						aria-posinset={index + 1}
+						aria-posinset={Math.max(0, siblingIndex) + 1}
 						aria-selected={selected}
+						aria-setsize={siblings.length}
 						className="rig-tree-item"
 						key={node.id}
 						role="treeitem"
 						data-rig-tree-id={node.id}
+						data-rig-treeitem-id={node.id}
 						style={{ paddingLeft: `${node.depth * 16}px` }}
+						tabIndex={activeFocusedId === node.id ? 0 : -1}
+						onFocus={() => setFocusedNode(node)}
+						onKeyDown={(event) => onRowKeyDown(event, node)}
 					>
 						{node.expandable && (
 							<button
 								aria-describedby={`rig-node-description-${node.id}`}
 								aria-label={expanded ? 'Collapse' : 'Expand'}
 								className="tree-disclosure"
+								tabIndex={-1}
 								type="button"
 								title={disclosureLabel(node, expanded)}
-								onClick={() => toggleExpanded(node)}
+								onClick={(event) => {
+									event.stopPropagation();
+									toggleExpanded(node);
+									focusNode(node);
+								}}
+								onKeyDown={(event) => event.stopPropagation()}
 							>
 								{expanded ? '▾' : '▸'}
 							</button>
@@ -259,33 +286,32 @@ export const RigTreeView = function RigTreeView({
 						{!node.expandable && <span className="tree-disclosure-placeholder" aria-hidden="true" />}
 						{renamingId === node.id ? (
 							<input
-								aria-label={`Rename ${node.name}`}
-								autoFocus
-								className="rig-inline-rename"
+									aria-label={`Rename ${node.name}`}
+									autoFocus
+									className="rig-inline-rename"
 								defaultValue={node.name}
 								key={`rename:${node.id}:${node.name}`}
 								onBlur={(event) => onRenameCommit?.(node, event.currentTarget.value)}
 								onKeyDown={(event) => onInlineRenameKeyDown(event, node)}
 							/>
-		) : <button
-			aria-label={node.name}
-			aria-pressed={selected}
-							className={rowClasses}
+			) : <button
+				aria-label={node.name}
+				aria-pressed={selected}
+								className={rowClasses}
 							data-bone-id={node.kind === 'bone' ? node.id : undefined}
 							data-parent-id={node.kind === 'bone' ? node.parentId ?? 'root' : undefined}
 							data-rig-row-id={node.id}
 							data-slot-id={node.kind === 'slot' ? node.id : undefined}
-							data-draw-order-index={node.kind === 'slot' ? project.setupDrawOrder.indexOf(node.id) : undefined}
-							draggable={node.kind === 'bone' || node.kind === 'slot'}
-							role="button"
-							tabIndex={focusedId === node.id || (focusedId === undefined && index === 0) ? 0 : -1}
-							title={`${node.typeLabel}: ${node.name}${node.activeAttachment ? ' · setup attachment' : ''}`}
-							type="button"
-							onClick={(event) => selectNode(node, { ctrlOrMeta: event.metaKey || event.ctrlKey, shift: event.shiftKey })}
-							onDoubleClick={() => onRenameRequest?.(node)}
-							onFocus={() => setFocusedNode(node)}
-							onKeyDown={(event) => onRowKeyDown(event, node)}
-							onDragStart={(event) => {
+								data-draw-order-index={node.kind === 'slot' ? project.setupDrawOrder.indexOf(node.id) : undefined}
+								draggable={node.kind === 'bone' || node.kind === 'slot'}
+								role="button"
+								tabIndex={-1}
+								title={`${node.typeLabel}: ${node.name}${node.activeAttachment ? ' · setup attachment' : ''}`}
+								type="button"
+								onClick={(event) => selectNode(node, { ctrlOrMeta: event.metaKey || event.ctrlKey, shift: event.shiftKey })}
+								onDoubleClick={() => onRenameRequest?.(node)}
+								onFocus={() => setFocusedNode(node)}
+								onDragStart={(event) => {
 								if (node.kind === 'bone') {
 									onDragBone?.(event, node.id);
 								}
@@ -316,13 +342,19 @@ export const RigTreeView = function RigTreeView({
 							<span className="rig-row-type">{node.typeLabel}</span>
 						</button>}
 		{onToggleVisibility && node.kind !== 'slot' && (
-			<button
-				aria-describedby={`rig-node-description-${node.id}`}
-				aria-label={isHidden ? 'Show' : 'Hide'}
-				className={isHidden ? 'tree-visibility is-hidden' : 'tree-visibility'}
-				type="button"
-				title={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}
-				onClick={() => onToggleVisibility(node)}
+							<button
+								aria-describedby={`rig-node-description-${node.id}`}
+								aria-label={isHidden ? 'Show' : 'Hide'}
+								className={isHidden ? 'tree-visibility is-hidden' : 'tree-visibility'}
+								tabIndex={-1}
+								type="button"
+								title={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}
+								onClick={(event) => {
+									event.stopPropagation();
+									onToggleVisibility(node);
+									focusNode(node);
+								}}
+								onKeyDown={(event) => event.stopPropagation()}
 							>
 				{isHidden ? '◌' : '◉'}
 			</button>

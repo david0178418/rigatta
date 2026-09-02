@@ -1,0 +1,125 @@
+import { expect, test, type Page } from '@playwright/test';
+
+const createThreeBoneRig = async function createThreeBoneRig(page: Page): Promise<void> {
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Create root bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add child bone' }).click();
+	await page.getByRole('button', { name: 'root', exact: true }).click();
+	await page.getByRole('button', { name: 'Add child bone' }).click();
+
+	const rows = page.getByRole('tree', { name: 'Rig hierarchy' }).locator('.bone-row');
+	await expect(rows).toHaveCount(3);
+};
+
+test('exposes semantic treeitems with roving keyboard focus and selection keys', async ({ page }) => {
+	await createThreeBoneRig(page);
+
+	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
+	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
+	const firstChild = tree.getByRole('treeitem', { name: 'Bone: bone', exact: true });
+	const secondChild = tree.getByRole('treeitem', { name: 'Bone: bone 2', exact: true });
+
+	await expect(tree).toHaveAttribute('aria-multiselectable', 'true');
+	await expect(root).toHaveAttribute('aria-level', '1');
+	await expect(root).toHaveAttribute('aria-posinset', '1');
+	await expect(root).toHaveAttribute('aria-setsize', '1');
+	await expect(firstChild).toHaveAttribute('aria-level', '2');
+	await expect(firstChild).toHaveAttribute('aria-posinset', '1');
+	await expect(firstChild).toHaveAttribute('aria-setsize', '2');
+	await expect(secondChild).toHaveAttribute('aria-posinset', '2');
+	await expect(secondChild).toHaveAttribute('aria-setsize', '2');
+
+	await root.locator('.bone-row').click();
+	await root.focus();
+	await expect(root).toBeFocused();
+	await expect(tree.locator('[role="treeitem"][tabindex="0"]')).toHaveCount(1);
+	await expect(root).toHaveAttribute('aria-selected', 'true');
+
+	await root.press('ArrowLeft');
+	await expect(root).toHaveAttribute('aria-expanded', 'false');
+	await expect(firstChild).toHaveCount(0);
+	await expect(root).toBeFocused();
+
+	await root.press('ArrowRight');
+	await expect(root).toHaveAttribute('aria-expanded', 'true');
+	await expect(firstChild).toBeVisible();
+	await expect(root).toBeFocused();
+
+	await root.press('ArrowRight');
+	await expect(firstChild).toBeFocused();
+	await expect(root).toHaveAttribute('aria-selected', 'true');
+	await expect(firstChild).toHaveAttribute('aria-selected', 'false');
+
+	await firstChild.press('ArrowLeft');
+	await expect(root).toBeFocused();
+	await root.press('ArrowRight');
+	await firstChild.press('Space');
+	await expect(root).toHaveAttribute('aria-selected', 'true');
+	await expect(firstChild).toHaveAttribute('aria-selected', 'true');
+
+	await firstChild.press('Enter');
+	await expect(root).toHaveAttribute('aria-selected', 'false');
+	await expect(firstChild).toHaveAttribute('aria-selected', 'true');
+	await expect(firstChild).toBeFocused();
+});
+
+test('supports mouse additive and visible-range selection, typeahead, and collapse preservation', async ({ page }) => {
+	await createThreeBoneRig(page);
+
+	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
+	const rows = tree.locator('.bone-row');
+	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
+	const firstChild = tree.getByRole('treeitem', { name: 'Bone: bone', exact: true });
+	const secondChild = tree.getByRole('treeitem', { name: 'Bone: bone 2', exact: true });
+
+	await rows.nth(1).click();
+	await rows.nth(2).click({ modifiers: ['Control'] });
+	await expect(rows.nth(1)).toHaveAttribute('aria-pressed', 'true');
+	await expect(rows.nth(2)).toHaveAttribute('aria-pressed', 'true');
+	await expect(rows.nth(0)).toHaveAttribute('aria-pressed', 'false');
+
+	await rows.nth(0).click({ modifiers: ['Shift'] });
+	await expect(rows.nth(0)).toHaveAttribute('aria-pressed', 'true');
+	await expect(rows.nth(1)).toHaveAttribute('aria-pressed', 'true');
+	await expect(rows.nth(2)).toHaveAttribute('aria-pressed', 'true');
+
+	await root.focus();
+	await root.press('b');
+	await expect(firstChild).toBeFocused();
+
+	const undo = page.getByRole('button', { name: 'Undo', exact: true });
+	const undoEnabledBeforeCollapse = await undo.isEnabled();
+	await root.focus();
+	await root.press('ArrowLeft');
+	await expect(root).toHaveAttribute('aria-expanded', 'false');
+	await expect(secondChild).toHaveCount(0);
+	expect(await undo.isEnabled()).toBe(undoEnabledBeforeCollapse);
+
+	await root.press('ArrowRight');
+	await expect(secondChild).toBeVisible();
+	await expect(secondChild.locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('reveals filtered descendants without adding a history entry', async ({ page }) => {
+	await createThreeBoneRig(page);
+
+	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
+	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
+	const secondChild = tree.getByRole('treeitem', { name: 'Bone: bone 2', exact: true });
+	const undo = page.getByRole('button', { name: 'Undo', exact: true });
+
+	await root.focus();
+	await root.press('ArrowLeft');
+	await expect(root).toHaveAttribute('aria-expanded', 'false');
+	await expect(secondChild).toHaveCount(0);
+	const undoEnabledBeforeReveal = await undo.isEnabled();
+
+	await page.getByLabel('Search rig').fill('bone 2');
+	await expect(secondChild).toBeVisible();
+	await expect(root).toHaveAttribute('aria-expanded', 'true');
+	expect(await undo.isEnabled()).toBe(undoEnabledBeforeReveal);
+
+	await page.getByLabel('Search rig').fill('');
+	await expect(secondChild).toHaveCount(0);
+});
