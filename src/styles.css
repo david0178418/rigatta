@@ -567,6 +567,14 @@ h2 {
 	cursor: grabbing;
 }
 
+.pixi-host.is-marquee {
+	cursor: crosshair;
+}
+
+.pixi-host.is-transforming {
+	cursor: move;
+}
+
 .pixi-canvas {
 	image-rendering: auto;
 }
@@ -1940,8 +1948,29 @@ h2 {
 	border-radius: 5px;
 }
 
+.rig-tree-item:hover {
+	background: rgba(143, 155, 173, 0.08);
+	box-shadow: inset 2px 0 0 var(--border);
+}
+
+.rig-tree-item:focus-visible {
+	outline: 2px solid var(--accent-strong);
+	outline-offset: 1px;
+}
+
 .rig-tree-item[aria-selected="true"] {
 	background: rgba(111, 212, 189, 0.07);
+	box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.rig-tree-item[data-selection-state="multi-selected"] {
+	background: repeating-linear-gradient(
+		-45deg,
+		rgba(111, 212, 189, 0.12),
+		rgba(111, 212, 189, 0.12) 4px,
+		rgba(111, 212, 189, 0.04) 4px,
+		rgba(111, 212, 189, 0.04) 8px
+	);
 }
 
 .rig-tree-item > .bone-row,
@@ -1967,6 +1996,55 @@ h2 {
 .rig-tree-item > .slot-row.is-selected,
 .rig-tree-item > .attachment-row.is-selected {
 	border-color: rgba(111, 212, 189, 0.42);
+}
+
+.rig-tree-item > .bone-row:hover,
+.rig-tree-item > .slot-row:hover,
+.rig-tree-item > .attachment-row:hover {
+	border-color: rgba(143, 155, 173, 0.7);
+}
+
+.rig-tree-item > .bone-row.is-multi-selected,
+.rig-tree-item > .slot-row.is-multi-selected,
+.rig-tree-item > .attachment-row.is-multi-selected {
+	border-style: dashed;
+	border-color: var(--accent-strong);
+}
+
+.rig-tree-item > .bone-row.is-active-attachment,
+.rig-tree-item > .slot-row.is-active-attachment,
+.rig-tree-item > .attachment-row.is-active-attachment {
+	position: relative;
+	padding-left: 5px;
+	border-left: 3px solid var(--warning);
+}
+
+.rig-tree-item > .bone-row.is-active-attachment::after,
+.rig-tree-item > .slot-row.is-active-attachment::after,
+.rig-tree-item > .attachment-row.is-active-attachment::after {
+	content: "";
+	flex: 0 0 7px;
+	width: 7px;
+	height: 7px;
+	margin-left: 2px;
+	border: 2px solid var(--warning);
+	border-radius: 50%;
+}
+
+.rig-tree-item > .bone-row.drop-before,
+.rig-tree-item > .slot-row.drop-order-before {
+	border-top: 2px solid var(--accent-strong);
+}
+
+.rig-tree-item > .bone-row.drop-after,
+.rig-tree-item > .slot-row.drop-order-after {
+	border-bottom: 2px solid var(--accent-strong);
+}
+
+.rig-tree-item > .bone-row.drop-inside,
+.rig-tree-item > .slot-row.drop-target {
+	outline: 2px dashed var(--accent-strong);
+	outline-offset: -2px;
 }
 
 .tree-disclosure,
@@ -2007,10 +2085,25 @@ h2 {
 }
 
 .rig-icon {
+	display: block;
 	flex: 0 0 16px;
 	width: 16px;
+	height: 16px;
 	color: var(--accent);
-	text-align: center;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 1.35;
+}
+
+.rig-control-icon {
+	display: block;
+	width: 15px;
+	height: 15px;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 1.35;
 }
 
 .rig-icon-slot,

@@ -9,6 +9,7 @@ import {
 	treeNodeForTypeahead,
 	treeSelectionForClick,
 	type RigTreeInteraction,
+	type RigTreeEntityKind,
 	type RigTreeNode
 } from './rig-tree.ts';
 import type { BoneDropZone } from './hierarchy-dnd.ts';
@@ -65,6 +66,87 @@ const idsForFilteredTree = function idsForFilteredTree(
 
 const disclosureLabel = function disclosureLabel(node: RigTreeNode, expanded: boolean): string {
 	return `${expanded ? 'Collapse' : 'Expand'} ${node.typeLabel.toLowerCase()} ${node.name}`;
+};
+
+const rigIconMarks: Readonly<Record<RigTreeEntityKind, ReactElement>> = {
+	bone: <circle cx="8" cy="8" r="3.5" />,
+	slot: <path d="M3 2.5v11M3 8h5m0 0 3-3m-3 3 3 3" />,
+	image: <>
+		<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+		<circle cx="6" cy="6" r="1" />
+		<path d="m3.5 11 2.5-2.5 2 2 1.5-1.5 2.5 2.5" />
+	</>,
+	point: <>
+		<circle cx="8" cy="8" r="3" />
+		<path d="M8 2v3m0 6v3M2 8h3m6 0h3" />
+	</>,
+	rectangle: <rect x="3" y="3" width="10" height="10" rx="1" />
+};
+
+const RigIcon = function RigIcon({ kind }: Readonly<{ kind: RigTreeEntityKind }>): ReactElement {
+	return (
+		<svg
+			aria-hidden="true"
+			className={`rig-icon rig-icon-${kind}`}
+			fill="none"
+			focusable="false"
+			viewBox="0 0 16 16"
+			xmlns="http://www.w3.org/2000/svg"
+		>
+			{rigIconMarks[kind]}
+		</svg>
+	);
+};
+
+const DisclosureIcon = function DisclosureIcon({ expanded }: Readonly<{ expanded: boolean }>): ReactElement {
+	return (
+		<svg
+			aria-hidden="true"
+			className="rig-control-icon"
+			fill="none"
+			focusable="false"
+			viewBox="0 0 16 16"
+			xmlns="http://www.w3.org/2000/svg"
+		>
+			<path d={expanded ? 'm3.5 6 4.5 4 4.5-4' : 'm6 3.5 4.5 4.5L6 12.5'} />
+		</svg>
+	);
+};
+
+const VisibilityIcon = function VisibilityIcon({ hidden }: Readonly<{ hidden: boolean }>): ReactElement {
+	return (
+		<svg
+			aria-hidden="true"
+			className="rig-control-icon"
+			fill="none"
+			focusable="false"
+			viewBox="0 0 16 16"
+			xmlns="http://www.w3.org/2000/svg"
+		>
+			{hidden ? <>
+				<path d="M2 8s2.2-3.5 6-3.5S14 8 14 8s-2.2 3.5-6 3.5S2 8 2 8Z" />
+				<path d="m3 3 10 10" />
+			</> : <>
+				<path d="M2 8s2.2-3.5 6-3.5S14 8 14 8s-2.2 3.5-6 3.5S2 8 2 8Z" />
+				<circle cx="8" cy="8" r="1.5" />
+			</>}
+		</svg>
+	);
+};
+
+const relationshipDescription = function relationshipDescription(
+	node: RigTreeNode,
+	nodes: readonly RigTreeNode[]
+): string {
+	if (!node.parentId) {
+		return 'Root item';
+	}
+
+	const parent = nodes.find((candidate) => candidate.id === node.parentId);
+
+	return parent
+		? `Child of ${parent.typeLabel.toLowerCase()} ${parent.name}`
+		: 'Parent reference unavailable';
 };
 
 export const RigTreeView = function RigTreeView({
@@ -234,12 +316,22 @@ export const RigTreeView = function RigTreeView({
 			{visibleNodes.map((node) => {
 				const isHidden = hiddenIds.has(node.id);
 				const selected = isSelected(selection, selectableEntityForRigNode(node));
+				const multiSelected = selected && selection.length > 1;
 				const expanded = expandedIds.has(node.id) || Boolean(filteredIds?.has(node.id));
 				const siblings = siblingNodesFor(node);
 				const siblingIndex = siblings.findIndex((candidate) => candidate.id === node.id);
+				const relationship = relationshipDescription(node, model.nodes);
+				const nodeDescription = [
+					`${node.typeLabel}: ${node.name}.`,
+					`${relationship}.`,
+					multiSelected ? 'Part of the current multi-selection.' : selected ? 'Selected.' : '',
+					node.activeAttachment ? 'Active setup attachment.' : '',
+					isHidden ? 'Hidden in the editor.' : ''
+				].filter(Boolean).join(' ');
 				const rowClasses = [
 					node.kind === 'bone' ? 'bone-row' : node.kind === 'slot' ? 'slot-row' : 'attachment-row',
 					selected ? 'is-selected' : '',
+					multiSelected ? 'is-multi-selected' : '',
 					node.activeAttachment ? 'is-active-attachment' : '',
 					isHidden ? 'is-hidden-editor-item' : '',
 					node.kind === 'bone' && boneDropPreview?.boneId === node.id ? `drop-${boneDropPreview.zone}` : '',
@@ -255,11 +347,14 @@ export const RigTreeView = function RigTreeView({
 						aria-posinset={Math.max(0, siblingIndex) + 1}
 						aria-selected={selected}
 						aria-setsize={siblings.length}
+						aria-describedby={`rig-node-description-${node.id}`}
 						className="rig-tree-item"
 						key={node.id}
 						role="treeitem"
 						data-rig-tree-id={node.id}
 						data-rig-treeitem-id={node.id}
+						data-selection-state={multiSelected ? 'multi-selected' : selected ? 'selected' : 'unselected'}
+						data-active-attachment={node.activeAttachment ? 'true' : 'false'}
 						style={{ paddingLeft: `${node.depth * 16}px` }}
 						tabIndex={activeFocusedId === node.id ? 0 : -1}
 						onFocus={() => setFocusedNode(node)}
@@ -280,7 +375,7 @@ export const RigTreeView = function RigTreeView({
 								}}
 								onKeyDown={(event) => event.stopPropagation()}
 							>
-								{expanded ? '▾' : '▸'}
+								<DisclosureIcon expanded={expanded} />
 							</button>
 						)}
 						{!node.expandable && <span className="tree-disclosure-placeholder" aria-hidden="true" />}
@@ -295,8 +390,9 @@ export const RigTreeView = function RigTreeView({
 								onKeyDown={(event) => onInlineRenameKeyDown(event, node)}
 							/>
 			) : <button
-				aria-label={node.name}
-				aria-pressed={selected}
+								aria-label={node.name}
+								aria-pressed={selected}
+								aria-describedby={`rig-node-description-${node.id}`}
 								className={rowClasses}
 							data-bone-id={node.kind === 'bone' ? node.id : undefined}
 							data-parent-id={node.kind === 'bone' ? node.parentId ?? 'root' : undefined}
@@ -306,7 +402,7 @@ export const RigTreeView = function RigTreeView({
 								draggable={node.kind === 'bone' || node.kind === 'slot'}
 								role="button"
 								tabIndex={-1}
-								title={`${node.typeLabel}: ${node.name}${node.activeAttachment ? ' · setup attachment' : ''}`}
+								title={`${node.typeLabel}: ${node.name} · ${relationship}${node.activeAttachment ? ' · active setup attachment' : ''}`}
 								type="button"
 								onClick={(event) => selectNode(node, { ctrlOrMeta: event.metaKey || event.ctrlKey, shift: event.shiftKey })}
 								onDoubleClick={() => onRenameRequest?.(node)}
@@ -336,8 +432,8 @@ export const RigTreeView = function RigTreeView({
 									onDropSlot?.(event, node.id);
 								}
 							}}
-						> 
-							<span className={`rig-icon rig-icon-${node.kind}`} aria-hidden="true">{node.kind === 'bone' ? '●' : node.kind === 'slot' ? '↳' : node.kind === 'image' ? '▧' : node.kind === 'point' ? '◇' : '□'}</span>
+						>
+							<RigIcon kind={node.kind} />
 							<span className="rig-row-name">{node.name}</span>
 							<span className="rig-row-type">{node.typeLabel}</span>
 						</button>}
@@ -348,7 +444,7 @@ export const RigTreeView = function RigTreeView({
 								className={isHidden ? 'tree-visibility is-hidden' : 'tree-visibility'}
 								tabIndex={-1}
 								type="button"
-								title={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}
+									 title={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}
 								onClick={(event) => {
 									event.stopPropagation();
 									onToggleVisibility(node);
@@ -356,10 +452,10 @@ export const RigTreeView = function RigTreeView({
 								}}
 								onKeyDown={(event) => event.stopPropagation()}
 							>
-				{isHidden ? '◌' : '◉'}
-			</button>
-		)}
-		<span className="sr-only" id={`rig-node-description-${node.id}`}>{node.typeLabel}: {node.name}</span>
+								<VisibilityIcon hidden={isHidden} />
+							</button>
+						)}
+						<span className="sr-only" id={`rig-node-description-${node.id}`}>{nodeDescription}</span>
 	</div>
 				);
 			})}
