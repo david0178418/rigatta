@@ -557,6 +557,7 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	await page.mouse.up();
 	await page.keyboard.up('Shift');
 	await page.keyboard.up('Control');
+	await page.getByRole('tab', { name: 'Properties', exact: true }).click();
 	await expect(page.getByText('2 items selected.', { exact: true })).toBeVisible();
 	await expect(page.getByText('Mixed', { exact: true }).first()).toBeVisible();
 	const multiSelectionX = page.locator('input[name="x"]');
@@ -575,11 +576,15 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	);
 	await page.mouse.up();
 	await expect(multiSelectionX).not.toHaveValue(originalMultiSelectionX);
+	await page.getByRole('tab', { name: 'Assets', exact: true }).click();
 	await page.locator('.slot-row').click();
 	await expect(page.getByText(/Drop on .* to add an attachment\./, { exact: false })).toBeVisible();
+	await page.getByRole('tab', { name: 'Properties', exact: true }).click();
 	const setupImage = page.getByRole('combobox', { name: 'Setup image' });
 	await expect(setupImage).toHaveValue(/.+/);
+	await page.getByRole('tab', { name: 'Assets', exact: true }).click();
 	await page.locator('.asset-row').filter({ hasText: 'alt.png' }).dragTo(page.locator('.slot-row'));
+	await page.getByRole('tab', { name: 'Properties', exact: true }).click();
 	await page.locator('.slot-row').click();
 	const alternateAttachmentId = await page.getByRole('option', { name: 'alt.png' }).getAttribute('value');
 
