@@ -9,5 +9,7 @@ are rounded independently to the nearest grid intersection. Selection, marquee
 bounds, and viewport pan remain continuous. These are editor-session settings,
 not project entities, and therefore do not create history entries.
 
-The pure snap helper is covered by unit tests, and the Setup browser coverage
-verifies the controls can change visibility, spacing, and snapping state.
+`ViewportCanvas` uses the pure `snapPointToGrid` helper for drop and transform
+pointer positions. The Setup browser coverage verifies that the controls can
+change visibility, spacing, and snapping state; the current unit suite does not
+contain a dedicated snap-point assertion.

@@ -1,24 +1,54 @@
 # Viewport navigation v1
 
-The viewport displays the fixed logical canvas inside a clipped square stage.
-Navigation transforms the display host with CSS while leaving the Pixi canvas
-pixel dimensions and logical coordinate system unchanged.
+The `.pixi-viewport` fills the usable `.viewport-stage` and is the single
+pointer, wheel, drag/drop, and coordinate surface for the center workspace. The
+fixed logical canvas is rendered as content in that surface; the surrounding
+pasteboard remains visible and is not a DOM clipping boundary for editor
+interaction.
 
-- The mouse wheel zooms between 25% and 400%, anchored at the pointer.
+Navigation uses the immutable camera contract from `src/app/viewport.ts`:
+
+```ts
+type ViewportCamera = Readonly<{
+	scale: number;
+	offsetX: number;
+	offsetY: number;
+	mode: 'fit' | 'manual';
+}>;
+```
+
+`scale` is CSS pixels per logical pixel and the offsets are screen-pixel offsets
+from centered logical-canvas placement. Fit uses the available viewport minus a
+32 CSS pixel inset. Manual scale is clamped from 5% through 1600%. The initial
+camera is fitted; manual navigation survives a resize by preserving the logical
+point at the viewport center, while Fit refits to the new measurement.
+
+- The mouse wheel zooms around the pointer. The `−`, `+`, and centered zoom
+  actions use the same camera limits; `Fit canvas` and `Actual size` are
+  separate actions, and `100%` means one CSS pixel per logical pixel.
 - Primary dragging is reserved for the editor: click an entity to select it,
   drag an empty region for a marquee, or drag a selected entity/handle to
   transform it.
-- Middle-button dragging and Space+primary dragging pan the canvas in screen
-  pixels. Pan takes precedence over selection, marquee, and transform claims.
+- Middle-button dragging and Space+primary dragging pan in screen pixels. The
+  full pasteboard surface accepts these gestures as well as marquee starts and
+  asset drops.
 - Escape cancels the active pan, marquee, or transform gesture before release
   can change selection.
-- The `−`, percentage, `+`, and `Center` controls provide keyboard-focusable
-  zoom and reset actions. Each compact control exposes its action in a visible
-  hover/focus tooltip as well as an accessible name.
+- The coordinate readout, selection, marquee, transform, and drop paths use the
+  same screen-to-world mapping. Pasteboard coordinates can therefore be
+  negative or outside the logical canvas and are passed to the existing canvas
+  warning flow.
+- The viewport controls are keyboard-focusable and expose accessible names and
+  visible action tooltips. Setup and Animate mode changes preserve the mounted
+  camera.
 
-The default state is 100% zoom with zero offset. Export and PNG extraction use
-the renderer canvas directly, so viewport navigation cannot alter exported
-frame dimensions or coordinates.
+The current focused browser evidence covers full-stage bounds, pasteboard
+marquee/pan/zoom, non-square Fit/Actual size, resize behavior, pasteboard drop,
+camera history isolation, transform cancellation, and the supported desktop
+layout matrix. The full `bun run test:e2e` suite passes all 112 tests against a
+manually held occupied `bun run dev` server. The navigation state is UI-only;
+fixed-renderer export and archive pixel invariance are not directly reverified
+by this slice.
 
 Move, Rotate, Scale, and Shear are available in a persistent toolbar at the
 canvas edge. The toolbar remains available while the hierarchy/inspector dock
