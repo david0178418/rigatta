@@ -25,6 +25,19 @@ test('keeps the desktop editor usable at supported viewport sizes', async ({ pag
 		await expect(page.getByRole('button', { name: 'Scale', exact: true })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Shear', exact: true })).toBeVisible();
 
+		const stageBounds = await page.locator('.viewport-stage').boundingBox();
+		const viewportBounds = await page.locator('.pixi-viewport').boundingBox();
+
+		if (!stageBounds || !viewportBounds) {
+			throw new Error(`The viewport bounds are unavailable at ${viewport.width}x${viewport.height}.`);
+		}
+
+		expect(Math.abs(viewportBounds.x - stageBounds.x)).toBeLessThan(1);
+		expect(Math.abs(viewportBounds.y - stageBounds.y)).toBeLessThan(1);
+		expect(Math.abs(viewportBounds.width - stageBounds.width)).toBeLessThan(1);
+		expect(Math.abs(viewportBounds.height - stageBounds.height)).toBeLessThan(1);
+		await expect(page.locator('.pixi-viewport')).toHaveAttribute('data-camera-mode', 'fit');
+
 		const setupScrollMetrics = await page.evaluate(() => ({
 			documentHeight: document.documentElement.scrollHeight,
 			documentWidth: document.documentElement.scrollWidth,

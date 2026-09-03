@@ -2795,7 +2795,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
 						</div>
 						<div className="viewport-body">
-							<CanvasWarnings warnings={canvasWarnings} />
 							<div className="viewport-stage">
 								<div className="canvas-stage-content">
 									<CanvasToolbar
@@ -2832,6 +2831,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 									)}
 								</div>
 							</div>
+							{canvasWarnings.length > 0 && (
+								<div className="viewport-warning-overlay">
+									<CanvasWarnings warnings={canvasWarnings} />
+								</div>
+							)}
 						</div>
 					</section>
 				</WorkspaceDocks>

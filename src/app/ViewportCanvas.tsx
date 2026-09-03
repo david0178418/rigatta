@@ -3,9 +3,26 @@ import type { Project } from '../domain/model.ts';
 import type { EntityId } from '../domain/ids.ts';
 import type { EvaluatedPose } from '../domain/pose.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
-import type { FixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
-import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
-import { createViewportState, formatViewportCoordinate, formatViewportZoom, normalizeViewportRectangle, panViewport, resetViewport, screenRectangleToLogicalBounds, screenToLogicalPoint, zoomViewport, type LogicalBounds, type ViewportPoint, type ViewportRectangle, type ViewportState } from './viewport.ts';
+import { createEditorViewportRenderer, type EditorViewportRenderer } from '../rendering/editor-viewport.ts';
+import {
+	actualSizeViewportCamera,
+	fitViewportCamera,
+	formatViewportCoordinate,
+	formatViewportScale,
+	normalizeViewportRectangle,
+	panViewportCamera,
+	resizeViewportCamera,
+	screenRectangleToWorldBounds,
+	screenToWorldPoint,
+	worldToScreenPoint,
+	zoomViewportCameraAtCenter,
+	zoomViewportCameraAtPointer,
+	type LogicalBounds,
+	type ViewportCamera,
+	type ViewportMeasurement,
+	type ViewportPoint,
+	type ViewportRectangle
+} from './viewport.ts';
 import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from './grid.ts';
 import type { Selection } from './selection.ts';
 import { canvasGestureModeFor, type CanvasGestureMode, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
@@ -24,6 +41,61 @@ type PointerSession = Readonly<{
 }>;
 
 type ViewportGestureMode = CanvasGestureMode | 'idle';
+
+type RenderRequest = Readonly<{
+	id: number;
+	renderer: EditorViewportRenderer;
+	project: Project;
+	assets: ProjectAssetBlobs;
+	pose: EvaluatedPose | undefined;
+	gridVisible: boolean | undefined;
+	gridSpacing: number | undefined;
+	hiddenIds: ReadonlySet<EntityId>;
+	selectedIds: readonly EntityId[];
+	transformTool: TransformTool | undefined;
+}>;
+
+const devicePixelRatioFor = function devicePixelRatioFor(): number {
+	const value = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+
+	return Number.isFinite(value) && value > 0 ? value : 1;
+};
+
+const measurementFor = function measurementFor(element: HTMLElement): ViewportMeasurement {
+	const bounds = element.getBoundingClientRect();
+
+	return {
+		left: bounds.left,
+		top: bounds.top,
+		width: bounds.width,
+		height: bounds.height
+	};
+};
+
+const measurementsEqual = function measurementsEqual(
+	left: ViewportMeasurement | undefined,
+	right: ViewportMeasurement
+): boolean {
+	return left?.left === right.left
+		&& left?.top === right.top
+		&& left?.width === right.width
+		&& left?.height === right.height;
+};
+
+const localPointFor = function localPointFor(
+	point: ViewportPoint,
+	measurement: ViewportMeasurement
+): ViewportPoint {
+	return {
+		x: point.x - (measurement.left ?? 0),
+		y: point.y - (measurement.top ?? 0)
+	};
+};
+
+const isViewportControlTarget = function isViewportControlTarget(target: EventTarget | null): boolean {
+	return target instanceof Element
+		&& target.closest('button, input, select, textarea, [data-viewport-control]') !== null;
+};
 
 export const ViewportCanvas = function ViewportCanvas({
 	project,
@@ -61,17 +133,21 @@ export const ViewportCanvas = function ViewportCanvas({
 	const pointerSessionRef = useRef<PointerSession | undefined>(undefined);
 	const spacePressedRef = useRef(false);
 	const didPanRef = useRef(false);
-	const renderQueueRef = useRef<Promise<void>>(Promise.resolve());
 	const renderRequestRef = useRef(0);
+	const latestRenderRef = useRef<RenderRequest | undefined>(undefined);
+	const renderingRef = useRef(false);
 	const [error, setError] = useState<string | undefined>(undefined);
-	const [renderer, setRenderer] = useState<FixedCanvasRenderer | undefined>(undefined);
-	const rendererRef = useRef<FixedCanvasRenderer | undefined>(undefined);
-	const [viewport, setViewport] = useState<ViewportState>(createViewportState);
+	const [renderer, setRenderer] = useState<EditorViewportRenderer | undefined>(undefined);
+	const rendererRef = useRef<EditorViewportRenderer | undefined>(undefined);
+	const [measurement, setMeasurement] = useState<ViewportMeasurement | undefined>(undefined);
+	const [devicePixelRatio, setDevicePixelRatio] = useState(devicePixelRatioFor);
+	const [camera, setCamera] = useState<ViewportCamera>(() => fitViewportCamera(undefined, project.logicalCanvas));
 	const [isPanning, setIsPanning] = useState(false);
 	const [gestureMode, setGestureMode] = useState<ViewportGestureMode>('idle');
 	const [marquee, setMarquee] = useState<ViewportRectangle | undefined>(undefined);
 	const [pointerPoint, setPointerPoint] = useState<ViewportPoint | undefined>(undefined);
-	const viewportStateRef = useRef(viewport);
+	const cameraRef = useRef(camera);
+	const measurementRef = useRef(measurement);
 	const projectRef = useRef(project);
 	const canvasSelectRef = useRef(onCanvasSelect);
 	const canvasMarqueeRef = useRef(onCanvasMarquee);
@@ -80,7 +156,8 @@ export const ViewportCanvas = function ViewportCanvas({
 	const transformToolRef = useRef<TransformTool>(transformTool ?? 'translate');
 	const gridSpacingRef = useRef(gridSpacing ?? DEFAULT_GRID_SETTINGS.spacing);
 	const snapToGridRef = useRef(snapToGrid ?? DEFAULT_GRID_SETTINGS.snap);
-	viewportStateRef.current = viewport;
+	cameraRef.current = camera;
+	measurementRef.current = measurement;
 	projectRef.current = project;
 	canvasSelectRef.current = onCanvasSelect;
 	canvasMarqueeRef.current = onCanvasMarquee;
@@ -89,6 +166,75 @@ export const ViewportCanvas = function ViewportCanvas({
 	transformToolRef.current = transformTool ?? 'translate';
 	gridSpacingRef.current = gridSpacing ?? DEFAULT_GRID_SETTINGS.spacing;
 	snapToGridRef.current = snapToGrid ?? DEFAULT_GRID_SETTINGS.snap;
+
+	const updateCamera = function updateCamera(nextCamera: ViewportCamera): void {
+		cameraRef.current = nextCamera;
+		setCamera(nextCamera);
+	};
+
+	const currentMeasurement = function currentMeasurement(): ViewportMeasurement | undefined {
+		const viewport = viewportRef.current;
+
+		return viewport ? measurementFor(viewport) : measurementRef.current;
+	};
+
+	const logicalPointAt = function logicalPointAt(
+		screenPoint: ViewportPoint,
+		viewportMeasurement: ViewportMeasurement,
+		snap: boolean
+	): ViewportPoint {
+		const point = screenToWorldPoint(
+			screenPoint,
+			viewportMeasurement,
+			cameraRef.current,
+			projectRef.current.logicalCanvas
+		);
+
+		return snap ? snapPointToGrid(point, gridSpacingRef.current) : point;
+	};
+
+	useEffect(() => {
+		const viewport = viewportRef.current;
+
+		if (!viewport) {
+			return function cleanup(): void {};
+		}
+
+		const measure = function measure(): void {
+			const nextMeasurement = measurementFor(viewport);
+
+			setMeasurement((current) => measurementsEqual(current, nextMeasurement) ? current : nextMeasurement);
+			setDevicePixelRatio((current) => {
+				const nextRatio = devicePixelRatioFor();
+
+				return Object.is(current, nextRatio) ? current : nextRatio;
+			});
+		};
+		const observer = typeof ResizeObserver === 'undefined'
+			? undefined
+			: new ResizeObserver(measure);
+
+		measure();
+		observer?.observe(viewport);
+		window.addEventListener('resize', measure);
+
+		return function cleanup(): void {
+			observer?.disconnect();
+			window.removeEventListener('resize', measure);
+		};
+	}, []);
+
+	useEffect(() => {
+		updateCamera(fitViewportCamera(measurementRef.current, project.logicalCanvas));
+	}, [project.id, project.logicalCanvas.height, project.logicalCanvas.width]);
+
+	useEffect(() => {
+		if (!measurement) {
+			return function cleanup(): void {};
+		}
+
+		updateCamera(resizeViewportCamera(cameraRef.current, measurement, project.logicalCanvas));
+	}, [measurement, project.logicalCanvas.height, project.logicalCanvas.width]);
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -100,9 +246,10 @@ export const ViewportCanvas = function ViewportCanvas({
 		const lifecycle = { cancelled: false };
 
 		setError(undefined);
-		void createFixedCanvasRenderer(host, {
-			width: project.logicalCanvas.width,
-			height: project.logicalCanvas.height
+		void createEditorViewportRenderer(host, {
+			width: measurementRef.current?.width ?? 1,
+			height: measurementRef.current?.height ?? 1,
+			resolution: devicePixelRatioFor()
 		})
 			.then((created) => {
 				if (!created.ok) {
@@ -128,6 +275,7 @@ export const ViewportCanvas = function ViewportCanvas({
 		return function cleanup(): void {
 			lifecycle.cancelled = true;
 			renderRequestRef.current += 1;
+			latestRenderRef.current = undefined;
 			rendererRef.current?.destroy();
 			rendererRef.current = undefined;
 			setRenderer(undefined);
@@ -135,74 +283,119 @@ export const ViewportCanvas = function ViewportCanvas({
 	}, [project.logicalCanvas.height, project.logicalCanvas.width]);
 
 	useEffect(() => {
+		if (!renderer || !measurement) {
+			return function cleanup(): void {};
+		}
+
+		const resized = renderer.resize({
+			width: measurement.width,
+			height: measurement.height,
+			resolution: devicePixelRatio
+		});
+
+		if (!resized.ok) {
+			setError(resized.error.message);
+		}
+
+		return function cleanup(): void {};
+	}, [devicePixelRatio, measurement?.height, measurement?.width, renderer]);
+
+	useEffect(() => {
 		if (!renderer) {
 			return function cleanup(): void {};
 		}
 
+		const cameraResult = renderer.setCamera(camera, project.logicalCanvas);
+
+		if (!cameraResult.ok) {
+			setError(cameraResult.error.message);
+		}
+
+		return function cleanup(): void {};
+	}, [camera, project.logicalCanvas.height, project.logicalCanvas.width, renderer]);
+
+	useEffect(() => {
 		const requestId = renderRequestRef.current + 1;
+
 		renderRequestRef.current = requestId;
-		let cancelled = false;
-		const renderCurrent = async function renderCurrent(): Promise<void> {
-			if (cancelled || renderRequestRef.current !== requestId) {
+		latestRenderRef.current = renderer
+			? {
+				id: requestId,
+				renderer,
+				project,
+				assets,
+				pose,
+				gridVisible,
+				gridSpacing,
+				hiddenIds,
+				selectedIds: selection?.map((entity) => entity.id) ?? [],
+				transformTool
+			}
+			: undefined;
+
+		const renderLatest = async function renderLatest(): Promise<void> {
+			const request = latestRenderRef.current;
+
+			latestRenderRef.current = undefined;
+
+			if (!request) {
+				renderingRef.current = false;
 				return;
 			}
 
+			if (renderRequestRef.current !== request.id) {
+				return renderLatest();
+			}
+
 			try {
-				const rendered = pose
-					? await renderer.renderPose(project, pose, assets, {
-						gridVisible,
-						gridSpacing,
-						hiddenIds,
-						selectedIds: selection?.map((entity) => entity.id),
-						transformTool,
+				const rendered = request.pose
+					? await request.renderer.renderPose(request.project, request.pose, request.assets, {
+						gridVisible: request.gridVisible,
+						gridSpacing: request.gridSpacing,
+						hiddenIds: request.hiddenIds,
+						selectedIds: request.selectedIds,
+						transformTool: request.transformTool,
 						showBones: true,
 						showGameplay: true
 					})
-					: await renderer.renderSetup(project, assets, {
-						selectedIds: selection?.map((entity) => entity.id),
-						transformTool,
-						gridVisible,
-						gridSpacing,
-						hiddenIds
+					: await request.renderer.renderSetup(request.project, request.assets, {
+						selectedIds: request.selectedIds,
+						transformTool: request.transformTool,
+						gridVisible: request.gridVisible,
+						gridSpacing: request.gridSpacing,
+						hiddenIds: request.hiddenIds
 					});
 
-				if (cancelled || renderRequestRef.current !== requestId) {
-					return;
+				if (renderRequestRef.current === request.id) {
+					if (!rendered.ok) {
+						setError(rendered.error.message);
+					} else {
+						setError(undefined);
+					}
 				}
-				if (!rendered.ok) {
-					setError(rendered.error.message);
-					return;
-				}
-
-				setError(undefined);
 			} catch (reason: unknown) {
-				if (!cancelled && renderRequestRef.current === requestId) {
+				if (renderRequestRef.current === request.id) {
 					setError(reason instanceof Error ? reason.message : 'Canvas rendering failed.');
 				}
 			}
+
+			return renderLatest();
 		};
 
-		renderQueueRef.current = renderQueueRef.current.then(renderCurrent, renderCurrent);
+		if (!renderingRef.current && renderer) {
+			renderingRef.current = true;
+			void renderLatest();
+		}
 
 		return function cleanup(): void {
-			cancelled = true;
+			if (renderRequestRef.current === requestId) {
+				renderRequestRef.current += 1;
+			}
+			if (latestRenderRef.current?.id === requestId) {
+				latestRenderRef.current = undefined;
+			}
 		};
 	}, [assets, gridSpacing, gridVisible, hiddenIds, pose, project, renderer, selection, transformTool]);
-
-	const logicalPointAt = function logicalPointAt(
-		screenPoint: ViewportPoint,
-		stage: DOMRect,
-		snap: boolean
-	): ViewportPoint {
-		const point = screenToLogicalPoint(
-			screenPoint,
-			stage,
-			viewportStateRef.current,
-			projectRef.current.logicalCanvas
-		);
-
-		return snap ? snapPointToGrid(point, gridSpacingRef.current) : point;
-	};
 
 	const beginPan = function beginPan(event: PointerEvent): void {
 		if (event.button !== 0 && event.button !== 1) {
@@ -210,7 +403,7 @@ export const ViewportCanvas = function ViewportCanvas({
 		}
 
 		didPanRef.current = false;
-		const stage = viewportRef.current?.getBoundingClientRect();
+		const stage = currentMeasurement();
 		const panRequested = event.button === 1 || spacePressedRef.current;
 		const startPoint = stage
 			? logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current)
@@ -221,6 +414,10 @@ export const ViewportCanvas = function ViewportCanvas({
 			&& !!transformStart
 			&& transformStart(startPoint, transformToolRef.current, { shiftKey: event.shiftKey });
 		const mode = canvasGestureModeFor(event.button, spacePressedRef.current, transformClaimed);
+
+		if (panRequested || mode !== 'transform') {
+			event.preventDefault();
+		}
 
 		pointerSessionRef.current = {
 			id: event.pointerId,
@@ -252,23 +449,23 @@ export const ViewportCanvas = function ViewportCanvas({
 		}
 
 		if (session.mode === 'transform') {
-			const stage = viewportRef.current?.getBoundingClientRect();
+			const stage = currentMeasurement();
 			const onTransform = transformRef.current;
 
 			if (stage && onTransform) {
 				onTransform(logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current), 'update', { shiftKey: session.constrained });
 			}
 		} else if (session.mode === 'marquee' && didPanRef.current) {
-			const stage = viewportRef.current?.getBoundingClientRect();
+			const stage = currentMeasurement();
 
 			if (stage) {
 				setMarquee(normalizeViewportRectangle(
-					{ x: session.startX - stage.left, y: session.startY - stage.top },
-					{ x: event.clientX - stage.left, y: event.clientY - stage.top }
+					localPointFor({ x: session.startX, y: session.startY }, stage),
+					localPointFor({ x: event.clientX, y: event.clientY }, stage)
 				));
 			}
 		} else if (session.mode === 'pan') {
-			setViewport((current) => panViewport(current, { x: deltaX, y: deltaY }));
+			updateCamera(panViewportCamera(cameraRef.current, { x: deltaX, y: deltaY }));
 		}
 		pointerSessionRef.current = { ...session, x: event.clientX, y: event.clientY };
 	};
@@ -279,7 +476,7 @@ export const ViewportCanvas = function ViewportCanvas({
 		if (!session || session.id !== event.pointerId) {
 			return;
 		}
-		const stage = viewportRef.current?.getBoundingClientRect();
+		const stage = currentMeasurement();
 		const onSelect = canvasSelectRef.current;
 		const onMarquee = canvasMarqueeRef.current;
 		const onTransform = transformRef.current;
@@ -290,20 +487,23 @@ export const ViewportCanvas = function ViewportCanvas({
 		if (session.mode === 'transform' && onTransform && currentPoint) {
 			onTransform(currentPoint, select ? 'end' : 'cancel', { shiftKey: session.constrained });
 		} else if (select && session.mode === 'marquee' && didPanRef.current && stage && onMarquee) {
-			onMarquee(screenRectangleToLogicalBounds(
+			onMarquee(screenRectangleToWorldBounds(
 				{ x: session.startX, y: session.startY },
 				{ x: event.clientX, y: event.clientY },
 				stage,
-				viewportStateRef.current,
+				cameraRef.current,
 				projectRef.current.logicalCanvas
 			), session.additive || event.metaKey || event.ctrlKey);
 		} else if (select && session.mode === 'marquee' && !didPanRef.current && stage && onSelect) {
-			onSelect(screenToLogicalPoint(
-				{ x: event.clientX, y: event.clientY },
-				stage,
-				viewportStateRef.current,
-				projectRef.current.logicalCanvas
-			), event.metaKey || event.ctrlKey);
+			onSelect(
+				screenToWorldPoint(
+					{ x: event.clientX, y: event.clientY },
+					stage,
+					cameraRef.current,
+					projectRef.current.logicalCanvas
+				),
+				event.metaKey || event.ctrlKey
+			);
 		}
 		setMarquee(undefined);
 
@@ -340,7 +540,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			host.removeEventListener('pointerup', releaseWithSelection, true);
 			host.removeEventListener('pointercancel', releaseWithoutSelection, true);
 		};
-	}, [assets, project]);
+	}, []);
 
 	useEffect(() => {
 		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
@@ -372,7 +572,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	useEffect(() => {
 		const cancelActiveGesture = function cancelActiveGesture(): boolean {
 			const session = pointerSessionRef.current;
-			const stage = viewportRef.current?.getBoundingClientRect();
+			const stage = currentMeasurement();
 			const onTransform = transformRef.current;
 
 			if (!session) {
@@ -407,34 +607,46 @@ export const ViewportCanvas = function ViewportCanvas({
 	}, []);
 
 	const zoomAtCenter = function zoomAtCenter(wheelDelta: number): void {
-		setViewport((current) => zoomViewport(current, wheelDelta, { x: 0, y: 0 }));
+		updateCamera(zoomViewportCameraAtCenter(cameraRef.current, wheelDelta));
+	};
+
+	const fitCanvas = function fitCanvas(): void {
+		updateCamera(fitViewportCamera(currentMeasurement(), projectRef.current.logicalCanvas));
+	};
+
+	const actualSize = function actualSize(): void {
+		updateCamera(actualSizeViewportCamera());
 	};
 
 	const zoomWithWheel = function zoomWithWheel(event: ReactWheelEvent<HTMLDivElement>): void {
-		event.preventDefault();
-		const bounds = event.currentTarget.getBoundingClientRect();
+		if (isViewportControlTarget(event.target)) {
+			return;
+		}
 
-		setViewport((current) => zoomViewport(current, event.deltaY, {
-			x: event.clientX - bounds.left - bounds.width / 2,
-			y: event.clientY - bounds.top - bounds.height / 2
-		}));
+		event.preventDefault();
+		const bounds = measurementFor(event.currentTarget);
+
+		updateCamera(zoomViewportCameraAtPointer(
+			cameraRef.current,
+			event.deltaY,
+			{ x: event.clientX, y: event.clientY },
+			bounds
+		));
 	};
 
 	const updatePointerPoint = function updatePointerPoint(event: ReactPointerEvent<HTMLDivElement>): void {
-		const bounds = event.currentTarget.getBoundingClientRect();
+		const bounds = measurementFor(event.currentTarget);
 
-		setPointerPoint(screenToLogicalPoint(
+		setPointerPoint(screenToWorldPoint(
 			{ x: event.clientX, y: event.clientY },
 			bounds,
-			viewportStateRef.current,
+			cameraRef.current,
 			projectRef.current.logicalCanvas
 		));
 	};
 
-	const viewportTransform = `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.zoom})`;
-
 	const dragOverViewport = function dragOverViewport(event: ReactDragEvent<HTMLDivElement>): void {
-		if (!event.dataTransfer.types.includes('application/x-bone-animation-asset')) {
+		if (!event.dataTransfer.types.includes('application/x-bone-animation-asset') || isViewportControlTarget(event.target)) {
 			return;
 		}
 
@@ -443,9 +655,13 @@ export const ViewportCanvas = function ViewportCanvas({
 	};
 
 	const dropAsset = function dropAsset(event: ReactDragEvent<HTMLDivElement>): void {
+		if (isViewportControlTarget(event.target)) {
+			return;
+		}
+
 		event.preventDefault();
 		const assetId = event.dataTransfer.getData('application/x-bone-animation-asset');
-		const stage = viewportRef.current?.getBoundingClientRect();
+		const stage = currentMeasurement();
 
 		if (!assetId || !stage || !onAssetDrop) {
 			return;
@@ -458,12 +674,27 @@ export const ViewportCanvas = function ViewportCanvas({
 		));
 	};
 
+	const originScreen = worldToScreenPoint(
+		{ x: 0, y: 0 },
+		measurement,
+		camera,
+		project.logicalCanvas
+	);
+	const originLeft = originScreen.x - (measurement?.left ?? 0);
+	const originTop = originScreen.y - (measurement?.top ?? 0);
+
 	return (
 		<div
 			className="pixi-viewport"
+			data-camera-mode={camera.mode}
+			data-camera-scale={String(camera.scale)}
+			data-camera-offset-x={String(camera.offsetX)}
+			data-camera-offset-y={String(camera.offsetY)}
 			data-gesture-mode={gestureMode}
 			ref={viewportRef}
-			aria-label="Pixi fixed logical canvas"
+			role="application"
+			aria-label="Editor viewport"
+			tabIndex={0}
 			onPointerLeave={() => setPointerPoint(undefined)}
 			onPointerMove={updatePointerPoint}
 			onWheel={zoomWithWheel}
@@ -478,32 +709,36 @@ export const ViewportCanvas = function ViewportCanvas({
 					gestureMode === 'transform' ? 'is-transforming' : ''
 				].filter(Boolean).join(' ')}
 				ref={hostRef}
-				style={{ transform: viewportTransform }}
 			/>
 			{marquee && <div className="viewport-marquee" style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }} />}
-			<div className="viewport-content-overlay" style={{ transform: viewportTransform }}>
-				<div className="viewport-canvas-boundary" />
-				{!pose && (
-					<div className="viewport-origin-marker" role="img" aria-label="Setup origin at X 0, Y 0">
-						<span className="viewport-origin-crosshair" aria-hidden="true" />
-						<span className="viewport-origin-label" aria-hidden="true">0,0</span>
-					</div>
-				)}
-			</div>
+			{!pose && (
+				<div
+					className="viewport-origin-accessible"
+					role="img"
+					aria-label="Setup origin at X 0, Y 0"
+					style={{ left: originLeft, top: originTop }}
+				/>
+			)}
 			<div className="viewport-overlay">
 				<div className="viewport-coordinate-readout" aria-label="Canvas coordinate readout" role="status">{formatViewportCoordinate(pointerPoint)}</div>
 				<div className="viewport-controls" aria-label="Viewport controls">
 					<Tooltip label="Zoom out">
-						<button type="button" aria-label="Zoom out" onClick={() => zoomAtCenter(1)}>−</button>
+						<button data-viewport-control type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoomAtCenter(1)}>−</button>
+					</Tooltip>
+					<Tooltip label="Fit canvas">
+						<button data-viewport-control type="button" aria-label="Fit canvas" title="Fit canvas" onClick={fitCanvas}>Fit</button>
+					</Tooltip>
+					<Tooltip label="Actual size">
+						<button data-viewport-control type="button" aria-label="Actual size" title="Actual size · 100%" onClick={actualSize}>100%</button>
 					</Tooltip>
 					<Tooltip label="Reset viewport">
-						<button type="button" aria-label="Reset viewport" onClick={() => setViewport(resetViewport())}>{formatViewportZoom(viewport.zoom)}</button>
+						<button data-viewport-control data-testid="viewport-zoom-status" type="button" aria-label="Reset viewport" title="Current zoom; reset to actual size" onClick={actualSize}>{formatViewportScale(camera.scale)}</button>
 					</Tooltip>
 					<Tooltip label="Zoom in">
-						<button type="button" aria-label="Zoom in" onClick={() => zoomAtCenter(-1)}>+</button>
+						<button data-viewport-control type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoomAtCenter(-1)}>+</button>
 					</Tooltip>
 					<Tooltip label="Center viewport">
-						<button type="button" aria-label="Center viewport" onClick={() => setViewport(resetViewport())}>Center</button>
+						<button data-viewport-control type="button" aria-label="Center viewport" title="Center viewport at actual size" onClick={actualSize}>Center</button>
 					</Tooltip>
 				</div>
 			</div>

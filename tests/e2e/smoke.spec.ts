@@ -29,23 +29,11 @@ test('renders the evaluated animation pose in the viewport', async ({ page }) =>
 
 	const canvas = page.locator('canvas.pixi-canvas');
 	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
-	const firstFrame = await canvas.evaluate((element) => {
-		if (!(element instanceof HTMLCanvasElement)) {
-			throw new Error('The Pixi canvas was not mounted.');
-		}
-
-		return element.toDataURL('image/png');
-	});
+	const firstFrame = (await canvas.screenshot()).toString('base64');
 
 	await page.getByRole('button', { name: 'Step forward' }).click();
 	await expect(page.getByText('Frame 2 / 12', { exact: false })).toBeVisible();
-	await expect.poll(async () => canvas.evaluate((element) => {
-		if (!(element instanceof HTMLCanvasElement)) {
-			throw new Error('The Pixi canvas was not mounted.');
-		}
-
-		return element.toDataURL('image/png');
-	})).not.toBe(firstFrame);
+	await expect.poll(async () => (await canvas.screenshot()).toString('base64')).not.toBe(firstFrame);
 });
 
 test('recovers a committed root edit after reload', async ({ page }) => {
@@ -61,13 +49,32 @@ test('recovers a committed root edit after reload', async ({ page }) => {
 	await expect(page.getByText('root', { exact: true })).toBeVisible();
 });
 
-test('renders a fixed logical canvas and exposes PNG extraction', async ({ page }) => {
+test('renders a viewport-sized editor canvas and exposes PNG extraction', async ({ page }) => {
 	await page.goto('/');
 
 	const canvas = page.locator('canvas.pixi-canvas');
 	await expect(canvas).toBeVisible();
-	expect(await canvas.getAttribute('width')).toBe('1024');
-	expect(await canvas.getAttribute('height')).toBe('1024');
+	const canvasMetrics = await canvas.evaluate((element) => {
+		if (!(element instanceof HTMLCanvasElement)) {
+			throw new Error('The Pixi canvas was not mounted.');
+		}
+
+		const bounds = element.getBoundingClientRect();
+		const resolution = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+
+		return {
+			attributeWidth: element.width,
+			attributeHeight: element.height,
+			cssWidth: bounds.width,
+			cssHeight: bounds.height,
+			resolution
+		};
+	});
+
+	expect(canvasMetrics.attributeWidth).toBe(Math.round(canvasMetrics.cssWidth * canvasMetrics.resolution));
+	expect(canvasMetrics.attributeHeight).toBe(Math.round(canvasMetrics.cssHeight * canvasMetrics.resolution));
+	expect(canvasMetrics.cssWidth).toBeGreaterThan(640);
+	expect(canvasMetrics.cssHeight).toBeGreaterThan(480);
 
 	const dataUrlPrefix = await page.evaluate(() => {
 		const renderedCanvas = document.querySelector<HTMLCanvasElement>('canvas.pixi-canvas');
@@ -82,15 +89,34 @@ test('renders a fixed logical canvas and exposes PNG extraction', async ({ page 
 	expect(dataUrlPrefix).toBe('data:image/png;base64,');
 });
 
-test('supports viewport zoom controls and reset', async ({ page }) => {
+test('supports distinct fit, actual-size, zoom, and legacy reset controls', async ({ page }) => {
 	await page.goto('/');
+
+	const viewport = page.locator('.pixi-viewport');
+	const status = page.getByTestId('viewport-zoom-status');
+	await expect(page.getByRole('button', { name: 'Fit canvas', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Actual size', exact: true })).toBeVisible();
+	await expect(status).toHaveText(/\d+%/);
+	const fittedScale = await viewport.getAttribute('data-camera-scale');
+	await expect(viewport).toHaveAttribute('data-camera-mode', 'fit');
 
 	const zoom = page.getByRole('button', { name: 'Zoom in' });
 	await zoom.click();
-	await expect(page.getByRole('button', { name: 'Reset viewport' })).toHaveText('110%');
+	await expect(viewport).toHaveAttribute('data-camera-mode', 'manual');
+	await expect(status).not.toHaveText(fittedScale ? `${Math.round(Number(fittedScale) * 100)}%` : '');
 
-	await page.getByRole('button', { name: 'Center viewport' }).click();
-	await expect(page.getByRole('button', { name: 'Reset viewport' })).toHaveText('100%');
+	await page.getByRole('button', { name: 'Fit canvas', exact: true }).click();
+	await expect(viewport).toHaveAttribute('data-camera-mode', 'fit');
+	await expect(status).toHaveText(/\d+%/);
+
+	await page.getByRole('button', { name: 'Actual size', exact: true }).click();
+	await expect(viewport).toHaveAttribute('data-camera-mode', 'manual');
+	await expect(status).toHaveText('100%');
+
+	await page.getByRole('button', { name: 'Reset viewport', exact: true }).click();
+	await expect(status).toHaveText('100%');
+	await page.getByRole('button', { name: 'Center viewport', exact: true }).click();
+	await expect(status).toHaveText('100%');
 });
 
 test('configures setup grid visibility, spacing, and snapping', async ({ page }) => {
@@ -602,10 +628,13 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 		throw new Error('The viewport bounds are unavailable.');
 	}
 
+	const cameraScale = Number(await viewport.getAttribute('data-camera-scale'));
+	const cameraOffsetX = Number(await viewport.getAttribute('data-camera-offset-x'));
+	const cameraOffsetY = Number(await viewport.getAttribute('data-camera-offset-y'));
 	const alternateWorldX = rootX + alternateLocalX;
 	const alternateWorldY = rootY + alternateLocalY;
-	const alternateScreenX = imageBounds.x + imageBounds.width / 2 + (alternateWorldX - 512) * imageBounds.width / 1024;
-	const alternateScreenY = imageBounds.y + imageBounds.height / 2 + (alternateWorldY - 512) * imageBounds.height / 1024;
+	const alternateScreenX = imageBounds.x + imageBounds.width / 2 + cameraOffsetX + (alternateWorldX - 512) * cameraScale;
+	const alternateScreenY = imageBounds.y + imageBounds.height / 2 + cameraOffsetY + (alternateWorldY - 512) * cameraScale;
 	await page.mouse.move(alternateScreenX, alternateScreenY);
 	await page.mouse.down();
 	await page.mouse.move(alternateScreenX + 24, alternateScreenY);
