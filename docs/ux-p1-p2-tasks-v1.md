@@ -26,20 +26,18 @@ The plan assumes the completed P0 implementation:
 
 P1 and P2 must preserve those guarantees.
 
-## Implementation checkpoint — 2026-09-02 (259 unit / 78 Chromium tests)
+## Completion checkpoint — 2026-09-03 (274 unit / 107 Chromium tests)
 
-This document records the 2026-09-02 implementation checkpoint and the
-subsequent verified P1/P2 increments. The checkpoint commits are listed below;
-the current working tree also contains uncommitted follow-up implementation and
-tests. The clean checkpoint gate passed 259 unit tests and 78 Chromium tests.
-This is not yet a completed P1/P2 release; the task checkboxes below remain the
-source of truth for final acceptance.
+This document records the completed P1/P2 implementation. Commit `10329c6`
+contains the final shared-inspector, selection-history, accessibility,
+documentation, and release-gate increment. All checklist items below are
+implemented and the completion commands pass from clean `master`.
 
 ### Repository state
 
 - Branch: `master`.
-- Implementation checkpoint commits through `HEAD` (`73717d1 Complete P1
-  Project menu`) include `5514d62 Add P1 structure characterization`,
+- Implementation commits through `10329c6 Complete remaining P1 and P2 UX
+  workflows` include `5514d62 Add P1 structure characterization`,
   `8beefbe Complete P1 keying contracts`, `e91c175 Complete P2 layout and
   presentation persistence integration`, `cb5cf67 Complete persistent
   inspector disclosures`, `ed71f08 Complete P1 semantic Rig tree
@@ -52,12 +50,12 @@ source of truth for final acceptance.
   workspace and Rig efficiency`, `f7fd908 Complete timeline direct editing
   and shortcuts`, `4a1defe Complete P1 Draw Order workflow`, `8cf1d7f
   Complete P2 pinned timeline rows`, and `73717d1 Complete P1 Project menu`.
-- Remaining unchecked tasks are still in progress. Preserve unrelated working
-  tree changes when resuming; do not reset or discard them.
+- All 27 P1 tasks and all 25 P2 tasks have current implementation,
+  requirement-level automated evidence, and affected documentation.
 - Browser checks use `http://localhost:3000/`; reuse an occupied local Bun
   development server when available.
 
-### Implemented or substantially in place
+### Implemented capabilities
 
 - The fixed workspace has left-side Rig/Draw Order tabs and right-side
   Properties/Assets tabs, with dock splitters, collapse controls, timeline
@@ -68,9 +66,9 @@ source of truth for final acceptance.
 - The pure timeline model derives stable overview/entity/property, Draw Order,
   and Events rows with Selection/All keyed filtering, expansion, aggregate key
   summaries, target references, and immutable whole-frame key-drag plans.
-- The editor shell has the remaining direct timeline interactions wired in
-  incrementally; their dependent P1 tasks remain unchecked until their complete
-  browser workflows are verified.
+- The editor shell wires direct timeline seeking, selection, retiming, marquee,
+  clipboard, deletion, nudge, and Properties-context workflows, with focused
+  browser coverage for their complete interactions.
 - Property draft parsing, direct numeric/name editing, current-frame key
   planning, automatic continuous-track creation, pending Auto Key state, and
   interactive key controls are present. Key diamonds now use distinct hollow,
@@ -101,16 +99,15 @@ source of truth for final acceptance.
   coordinates, the setup origin, viewport controls, and a labelled grid
   popover.
 
-### Validation already recorded
+### Final validation
 
-- `bun test src tests/unit`: 259 tests passed, including semantic Rig-tree,
+- `bun test src tests/unit`: 274 tests passed, including semantic Rig-tree,
   contextual workspace Add actions, linked tabpanels, grouped timeline/key-drag,
   typed clipboard commands, preference migration, storage failure, layout
-  matrix, and stale-ID coverage.
-- `bun run lint`: passed with the three explicit-return annotations in the
-  Animate timeline follow-up and one pre-existing missing-return-type warning
-  in `tests/unit/ux-models.test.ts`.
-- `bun run typecheck`, `bun run build`, and `git diff --check` pass.
+  matrix, stale-ID handling, typed inspector contexts, and shared-inspector
+  rendering coverage.
+- `bun run lint`, `bun run typecheck`, `bun run build`, and `git diff --check`
+  pass without warnings or errors.
 - Focused Chromium workflows cover direct field commits and validation, mixed
   multi-selection display, current-frame key diamonds and undo, grouped timeline
   seeking, key dragging, marquee selection, typed clipboard commands, precision
@@ -120,26 +117,26 @@ source of truth for final acceptance.
   presentation restoration, inspector disclosure persistence/isolation, canvas
   gesture precedence, and transform constraints. The workspace/Add-menu suite
   passes all 3 tests, and the affected existing suites pass all 16 tests.
-- The latest full `bun run test:e2e` run passes all 78 Chromium tests. The P1/P2
-  release gate remains open because the final accessibility, regression, and
-  documentation tasks are still unchecked.
+- The final `bun run test:e2e` run passes all 107 Chromium tests, including the
+  P0 layout regression suite, focused P1/P2 suites, accessibility audit, and
+  task-based release gates.
 
-### Resume from here
+### Verified final state
 
-1. The shared inspector styles, mixed-value helpers, direct field wiring, entity
-   field cleanup, accessible UI primitives, durable Rig visuals, key diamonds,
-   autosave lifecycle, canvas gesture precedence, and transform constraints are
-   complete and covered by typecheck/unit/browser validation.
-2. P2-07 import/drop outcomes and P2-13 canvas overlays are complete for the
-   verified workflows below; their focused coverage is retained in the smoke
-   suite.
-3. Continue with the remaining unchecked P1/P2 tasks, adding their required
-   unit/browser coverage before marking them complete. The full P1/P2 exit
-   workflows are not claimed by this checkpoint.
-4. Keep `bun run check`, `bun run test:e2e`, and the documentation updates as
-   the regression gate for subsequent UX increments.
+1. Shared project selection remains synchronized across Rig, Draw Order,
+   canvas, inspector, and timeline surfaces, with bounded project-scoped
+   selection history and reliable reveal.
+2. Contextual clip, key, event, draw-order, attachment-swap, gameplay, and
+   multi-entity editing uses the typed right-dock Properties inspector.
+3. Menus, dialogs, tabs, toolbars, tooltips, splitters, Rig rows, and timeline
+   lanes have focused keyboard and browser coverage for state, dismissal,
+   shortcut isolation, focus movement, and focus return.
+4. Layout, visibility, pins, selection history, and all other UI preferences
+   remain outside project history, archives, pose evaluation, and exports.
+5. Keep `bun run check` and `bun run test:e2e` as the regression gate for later
+   editor changes.
 
-### Files changed in the current working tree
+### Main completion surfaces
 
 The main implementation surface is `src/app/App.tsx`,
 `src/app/ViewportCanvas.tsx`, `src/app/hit-testing.ts`,
@@ -148,12 +145,11 @@ The main implementation surface is `src/app/App.tsx`,
 `src/app/timeline-model.ts`, `src/rendering/fixed-canvas.ts`, and
 `src/styles.css`. New supporting modules are
 `src/app/editor-visibility.ts`, `src/app/inspector-context.ts`,
-`src/app/shared-inspector.tsx`, and the shared UI primitives. Related unit
-coverage is in `tests/unit/hit-testing.test.ts`, `tests/unit/import.test.ts`,
-and `tests/unit/viewport.test.ts`; browser coverage is in
-`tests/e2e/smoke.spec.ts` and `tests/e2e/layout.spec.ts`. Keep
-`docs/ux-usability-pass-v1.md` with this task document as the companion
-documentation update.
+`src/app/selection-history.ts`, `src/app/shared-inspector.tsx`, and the shared UI
+primitives. Focused final browser evidence is in
+`tests/e2e/p1-accessibility.spec.ts`, `tests/e2e/p1-selection.spec.ts`,
+`tests/e2e/p2-shared-inspector.spec.ts`, and
+`tests/e2e/p1-p2-release-gates.spec.ts`.
 
 ## Scope boundaries
 
@@ -297,7 +293,7 @@ type assertions to bypass validation.
   setup or a current keyed override and provide an explicit current-frame key
   action. Reuse existing setup and keyed draw-order commands.
 
-- [ ] **UX-P1-10** Synchronize project selection across Rig, Draw Order, canvas,
+- [x] **UX-P1-10** Synchronize project selection across Rig, Draw Order, canvas,
   and timeline rows. Depends on UX-P1-06 and UX-P1-09. Selecting from canvas or
   timeline reveals the entity in the Rig tree. Selecting a Draw Order row selects
   its slot everywhere. Avoid feedback loops and preserve additive selection.
@@ -397,17 +393,18 @@ type assertions to bypass validation.
   displays the fixed logical canvas; it does not introduce new project-schema or
   export-setting behavior.
 
-- [ ] **UX-P1-26** Add consistent action tooltips and menu semantics. Depends on
+- [x] **UX-P1-26** Add consistent action tooltips and menu semantics. Depends on
   UX-P1-04. Every icon-only action exposes a visible tooltip on hover/focus with
   action and shortcut where one exists. Do not duplicate essential labels only
   in tooltips. Audit `aria-expanded`, `aria-haspopup`, pressed/selected states,
   Escape behavior, and focus return for every contextual surface.
 
-- [ ] **UX-P1-27** Complete the P1 regression and documentation gate. Depends on
+- [x] **UX-P1-27** Complete the P1 regression and documentation gate. Depends on
   UX-P1-07 through UX-P1-26. Add focused unit tests and a new P1 Playwright suite;
-  retain P0 layout tests unchanged. Update hierarchy, selection, draw order,
-  transform inspector, keyboard, animate timeline, archive/recovery, and layout
-  documents. Run the completion commands and the P1 exit workflow.
+  retain the P0 layout guarantees and migrate only the obsolete contextual-detail
+  assertion to the P2 right-dock Properties design. Update hierarchy, selection,
+  draw order, transform inspector, keyboard, animate timeline, archive/recovery,
+  and layout documents. Run the completion commands and the P1 exit workflow.
 
 ## P1 acceptance matrix
 
@@ -505,7 +502,7 @@ or `Move key`, and without document scrolling.
   evaluation unchanged. Parent visibility may hide descendants visually without
   rewriting each descendant preference.
 
-- [ ] **UX-P2-10** Add selection history and reliable reveal. Depends on
+- [x] **UX-P2-10** Add selection history and reliable reveal. Depends on
   UX-P1-10. Record explicit entity selections in bounded immutable UI history;
   Page Up/Page Down navigate backward/forward, expanding ancestors and scrolling
   the row into view. Ignore removed entities and do not add history entries while
@@ -581,18 +578,18 @@ or `Move key`, and without document scrolling.
 
 ### P2 release gate
 
-- [ ] **UX-P2-23** Complete keyboard and accessibility audit. Depends on
+- [x] **UX-P2-23** Complete keyboard and accessibility audit. Depends on
   UX-P2-03 through UX-P2-22. Verify logical focus order, roving focus, visible
   focus, state names, non-color cues, menu/dialog dismissal, tooltip behavior,
   scroll-to-focus, and no shortcut interception in editable controls.
 
-- [ ] **UX-P2-24** Add task-based efficiency coverage. Depends on UX-P2-23.
+- [x] **UX-P2-24** Add task-based efficiency coverage. Depends on UX-P2-23.
   Create focused unit tests plus a P2 Playwright suite for preference recovery,
   dock resizing, density modes, inline rename, visibility/export isolation,
   selection history, canvas gestures, shared inspectors, multi-edit, and pinned
   rows. Keep the full P0/P1 suites passing at every supported viewport.
 
-- [ ] **UX-P2-25** Update documentation and run the final UX gate. Depends on
+- [x] **UX-P2-25** Update documentation and run the final UX gate. Depends on
   UX-P2-24. Update layout, hierarchy, assets, selection, viewport navigation,
   transform handles/inspector, timeline, events, gameplay attachments, draw
   order, keyboard, persistence/recovery, and deferred-feature documents. Run the
