@@ -47,11 +47,11 @@ test('reveals a canvas selection in the Rig tree and clears its filter', async (
 	await loadExample(page);
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
+	const robotCore = tree.getByRole('treeitem', { name: 'Image attachment: robot core', exact: true });
 	const search = page.getByLabel('Search rig');
 
 	await search.fill('does-not-match');
-	await expect(arm).toHaveCount(0);
+	await expect(robotCore).toHaveCount(0);
 	await page.getByRole('tab', { name: 'Draw Order', exact: true }).click();
 
 	const viewport = page.locator('.pixi-viewport');
@@ -61,10 +61,11 @@ test('reveals a canvas selection in the Rig tree and clears its filter', async (
 		throw new Error('The viewport bounds are unavailable.');
 	}
 
-	await page.mouse.click(bounds.x + bounds.width / 2 + 62, bounds.y + bounds.height / 2);
+	await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
 	await expect(page.getByRole('tab', { name: 'Rig', exact: true })).toHaveAttribute('aria-selected', 'true');
 	await expect(search).toHaveValue('');
-	await expect(arm.locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
+	await tree.getByRole('treeitem', { name: 'Slot: body', exact: true }).getByRole('button', { name: 'Expand', exact: true }).click();
+	await expect(robotCore.locator('.attachment-row')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('replays a mixed additive selection with both Rig and Assets revealed', async ({ page }) => {

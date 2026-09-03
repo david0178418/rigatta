@@ -342,13 +342,13 @@ test('keeps camera state out of project history and preserves it across Setup an
 test('constrains a transform, exposes feedback, groups history, and cancels on Escape', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await loadExample(page);
-	const arm = page.getByRole('button', { name: 'arm', exact: true });
-	await arm.click();
-	await expect(arm).toHaveAttribute('aria-pressed', 'true');
+	const root = page.getByRole('button', { name: 'root', exact: true });
+	await root.click();
+	await expect(root).toHaveAttribute('aria-pressed', 'true');
 	await page.getByRole('button', { name: 'Center viewport' }).click();
 
 	const viewport = page.locator('.pixi-viewport');
-	const start = await screenPointForLogical(page, { x: 190, y: 128 }, { width: 256, height: 256 });
+	const start = await screenPointForLogical(page, { x: 128, y: 128 }, { width: 256, height: 256 });
 	const end = { x: start.x + 32, y: start.y + 18 };
 	const xField = page.locator('input[name="x"]');
 	const yField = page.locator('input[name="y"]');

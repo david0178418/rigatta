@@ -11,14 +11,14 @@ test('moves clip and event editing into Properties and preserves invalid JSON dr
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 	await page.getByRole('button', { name: 'Clip settings', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Clip properties' })).toBeVisible();
-	await expect(page.getByLabel('Clip name')).toHaveValue('pulse');
+	await expect(page.getByLabel('Clip name')).toHaveValue('walk');
 	await expect(page.getByRole('button', { name: 'Duplicate clip', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Delete clip', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Rename', exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Apply playback', exact: true })).toHaveCount(0);
 	await expect(page.locator('.timeline-detail-surface')).toHaveCount(0);
 
-	await page.getByRole('button', { name: 'Event pulse-hit at frame 7', exact: true }).click();
+	await page.getByRole('button', { name: 'Event right-footstep at frame 7', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Event properties' })).toBeVisible();
 	const payload = page.getByLabel('Payload JSON');
 
@@ -28,7 +28,7 @@ test('moves clip and event editing into Properties and preserves invalid JSON dr
 	await expect(payload).toHaveAttribute('aria-invalid', 'true');
 	await expect(payload).toHaveAttribute('aria-describedby', /event-editor-error/);
 	await expect(page.getByRole('alert')).toContainText('valid JSON');
-	await expect(page.getByRole('button', { name: 'Event pulse-hit at frame 7', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Event right-footstep at frame 7', exact: true })).toBeVisible();
 
 	await payload.fill('{"intensity":2}');
 	await page.getByRole('button', { name: 'Apply event', exact: true }).click();
@@ -38,7 +38,7 @@ test('moves clip and event editing into Properties and preserves invalid JSON dr
 test('rebinds the inspector context when switching clips', async ({ page }) => {
 	await loadExample(page);
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await page.getByRole('button', { name: 'Event pulse-hit at frame 7', exact: true }).click();
+	await page.getByRole('button', { name: 'Event right-footstep at frame 7', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Event properties' })).toBeVisible();
 
 	await page.getByRole('button', { name: '+ Clip', exact: true }).click();

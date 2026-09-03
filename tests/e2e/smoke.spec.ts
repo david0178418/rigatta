@@ -17,7 +17,7 @@ test('loads the built-in example project', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'root', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Animate' }).click();
-	await expect(page.getByRole('button', { name: 'pulse', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'walk', exact: true })).toBeVisible();
 	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
 });
 

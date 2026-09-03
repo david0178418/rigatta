@@ -119,13 +119,13 @@ test('canvas image translation creates one track with keys at two frames', async
 	await dragLogical(page, { x: 128, y: 128 }, { x: 144, y: 128 });
 
 	await expect(page.getByText('Image transform · x · robot core', { exact: true })).toHaveCount(1);
-	await expect(page.getByRole('button', { name: 'Key frame 1', exact: true })).toHaveCount(1);
+	await expect(page.getByRole('button', { name: 'Key frame 1', exact: true })).toHaveCount(2);
 	const firstFrameImage = (await page.locator('canvas.pixi-canvas').screenshot()).toString('base64');
 
 	await page.getByLabel('Playhead', { exact: true }).fill('4');
 	await dragLogical(page, { x: 144, y: 128 }, { x: 160, y: 128 });
 
-	await expect(page.getByRole('button', { name: 'Key frame 5', exact: true })).toHaveCount(1);
+	await expect(page.getByRole('button', { name: 'Key frame 5', exact: true })).toHaveCount(2);
 	await expect.poll(async () => (await page.locator('canvas.pixi-canvas').screenshot()).toString('base64')).not.toBe(firstFrameImage);
 });
 
