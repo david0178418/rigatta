@@ -17,6 +17,14 @@ recovery assets. A stable save replaces the stable snapshot, removes its stale
 asset records, and clears the matching recovery snapshot in one transaction.
 Autosave writes the recovery snapshot without changing the stable project.
 
+Workspace presentation preferences are stored separately in the versioned
+`bone-animation.ui-preferences.v2` local-storage record. Project-scoped layout,
+including the Animate timeline height, dock tabs, disclosures, density, pins,
+hidden editor IDs, Rig expansion, and selection history is keyed by `Project.id`.
+It is restored for the matching project only and never participates in an
+IndexedDB project/recovery snapshot, archive, sprite-sheet export, or project
+history entry.
+
 ## Validation and recovery
 
 Project records are parsed through the versioned Valibot schema whenever they

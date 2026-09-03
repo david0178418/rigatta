@@ -8,12 +8,11 @@ const focusableElements = function focusableElements(container: ParentNode | nul
 		: [];
 };
 
-const focusRelativeElement = function focusRelativeElement(
-	container: ParentNode | null,
+const focusRelativeElements = function focusRelativeElements(
+	elements: readonly HTMLElement[],
 	current: HTMLElement,
 	direction: -1 | 1
 ): void {
-	const elements = focusableElements(container);
 	const currentIndex = elements.indexOf(current);
 
 	if (currentIndex < 0 || elements.length === 0) {
@@ -21,6 +20,14 @@ const focusRelativeElement = function focusRelativeElement(
 	}
 
 	elements[(currentIndex + direction + elements.length) % elements.length]?.focus();
+};
+
+const focusRelativeElement = function focusRelativeElement(
+	container: ParentNode | null,
+	current: HTMLElement,
+	direction: -1 | 1
+): void {
+	focusRelativeElements(focusableElements(container), current, direction);
 };
 
 const floatingOffsetFor = function floatingOffsetFor(element: HTMLElement): Readonly<{ x: number; y: number }> {
@@ -77,6 +84,78 @@ const useFloatingOffset = function useFloatingOffset(
 	return offset.x === 0 && offset.y === 0
 		? {}
 		: { transform: transformFor(offset.x, offset.y) };
+};
+
+const tooltipPositionFor = function tooltipPositionFor(
+	anchor: HTMLElement,
+	tooltip: HTMLElement
+): CSSProperties {
+	const anchorBounds = anchor.getBoundingClientRect();
+	const tooltipBounds = tooltip.getBoundingClientRect();
+	const viewportWidth = window.innerWidth;
+	const viewportHeight = window.innerHeight;
+	const edge = 8;
+	const gap = 6;
+	const centeredLeft = anchorBounds.left + anchorBounds.width / 2;
+	const minimumLeft = Math.min(viewportWidth / 2, edge + tooltipBounds.width / 2);
+	const maximumLeft = Math.max(viewportWidth / 2, viewportWidth - edge - tooltipBounds.width / 2);
+	const left = Math.max(minimumLeft, Math.min(maximumLeft, centeredLeft));
+	const below = anchorBounds.bottom + gap;
+	const above = anchorBounds.top - gap - tooltipBounds.height;
+	const top = below + tooltipBounds.height <= viewportHeight - edge
+		? below
+		: Math.max(edge, above);
+
+	return {
+		top: `${top}px`,
+		left: `${left}px`,
+		transform: 'translateX(-50%)'
+	};
+};
+
+const useTooltipPosition = function useTooltipPosition(
+	open: boolean,
+	anchorRef: Readonly<{ current: HTMLElement | null }>,
+	tooltipRef: Readonly<{ current: HTMLElement | null }>
+): CSSProperties {
+	const [position, setPosition] = useState<CSSProperties>({});
+
+	useLayoutEffect(() => {
+		if (!open) {
+			setPosition((current) => Object.keys(current).length === 0 ? current : {});
+			return function cleanup(): void {};
+		}
+
+		const reposition = function reposition(): void {
+			const anchor = anchorRef.current;
+			const tooltip = tooltipRef.current;
+
+			if (!anchor || !tooltip) {
+				return;
+			}
+
+			const nextPosition = tooltipPositionFor(anchor, tooltip);
+
+			setPosition((current) => current.top === nextPosition.top
+				&& current.left === nextPosition.left
+				&& current.transform === nextPosition.transform
+				? current
+				: nextPosition);
+		};
+
+		reposition();
+		window.addEventListener('resize', reposition);
+		window.addEventListener('scroll', reposition, true);
+		window.visualViewport?.addEventListener('resize', reposition);
+
+		return function cleanup(): void {
+			window.removeEventListener('resize', reposition);
+			window.removeEventListener('scroll', reposition, true);
+			window.visualViewport?.removeEventListener('resize', reposition);
+		};
+	}, [anchorRef, open, tooltipRef]);
+
+	return position;
 };
 
 export type TabOption<TValue extends string> = Readonly<{
@@ -164,17 +243,20 @@ export const Tabs = function Tabs<TValue extends string>({
 export const Tooltip = function Tooltip({
 	label,
 	shortcut,
+	className = '',
 	children
 }: Readonly<{
 	label: string;
 	shortcut?: string;
+	className?: string;
 	children: ReactNode;
 }>): ReactElement {
 	const text = shortcut ? `${label} · ${shortcut}` : label;
 	const tooltipId = `tooltip-${useId()}`;
 	const [visible, setVisible] = useState(false);
+	const anchorRef = useRef<HTMLSpanElement>(null);
 	const tooltipRef = useRef<HTMLSpanElement>(null);
-	const tooltipStyle = useFloatingOffset(visible, tooltipRef, (x, y) => `translate(calc(-50% + ${x}px), ${y}px)`);
+	const tooltipStyle = useTooltipPosition(visible, anchorRef, tooltipRef);
 	const describedChildren = Children.map(children, (child) => {
 		if (!isValidElement<{ 'aria-describedby'?: string }>(child)) {
 			return child;
@@ -195,8 +277,9 @@ export const Tooltip = function Tooltip({
 
 	return (
 		<span
-			className="tooltip-wrap"
+			className={`tooltip-wrap ${className}`.trim()}
 			data-tooltip={text}
+			ref={anchorRef}
 			onBlur={hideOnBlur}
 			onFocus={() => setVisible(true)}
 			onMouseEnter={() => setVisible(true)}
@@ -212,33 +295,84 @@ export const Toolbar = function Toolbar({
 	label,
 	children,
 	orientation = 'horizontal',
-	className = ''
+	className = '',
+	testId
 }: Readonly<{
 	label: string;
 	children: ReactNode;
 	orientation?: 'horizontal' | 'vertical';
 	className?: string;
+	testId?: string;
 }>): ReactElement {
 	const toolbarRef = useRef<HTMLDivElement>(null);
+	const toolbarItems = function toolbarItems(): readonly HTMLElement[] {
+		const toolbar = toolbarRef.current;
+
+		return focusableElements(toolbar).filter((element) => element.closest('[role="toolbar"]') === toolbar);
+	};
+	const setToolbarTabStops = function setToolbarTabStops(
+		elements: readonly HTMLElement[],
+		focusedElement?: HTMLElement
+	): void {
+		const activeElement = focusedElement && elements.includes(focusedElement)
+			? focusedElement
+			: elements[0];
+
+		elements.forEach((element) => {
+			element.tabIndex = element === activeElement ? 0 : -1;
+		});
+	};
+
+	useLayoutEffect(() => {
+		const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+
+		setToolbarTabStops(toolbarItems(), activeElement);
+		return function cleanup(): void {};
+	}, [children]);
+
+	const onFocus = function onFocus(event: ReactFocusEvent<HTMLDivElement>): void {
+		const target = event.target;
+		const current = target instanceof HTMLElement
+			? toolbarItems().find((element) => element === target || element.contains(target))
+			: undefined;
+
+		if (current) {
+			setToolbarTabStops(toolbarItems(), current);
+		}
+	};
 
 	const onKeyDown = function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+		const target = event.target;
+		const isFormTarget = target instanceof HTMLInputElement
+			|| target instanceof HTMLTextAreaElement
+			|| target instanceof HTMLSelectElement
+			|| target instanceof HTMLElement && target.isContentEditable;
+
+		if (event.defaultPrevented || isFormTarget) {
+			return;
+		}
+
 		const direction = orientation === 'vertical'
 			? event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
 			: event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
 
 		if (direction !== 0) {
 			event.preventDefault();
-			const elements = focusableElements(toolbarRef.current);
+			event.stopPropagation();
+			const elements = toolbarItems();
 			const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : event.currentTarget;
-			const current = elements.find((element) => element === activeElement || element.contains(activeElement)) ?? event.currentTarget;
+			const current = elements.find((element) => element === activeElement || element.contains(activeElement));
 
-			focusRelativeElement(toolbarRef.current, current, direction);
+			if (current) {
+				focusRelativeElements(elements, current, direction);
+			}
 			return;
 		}
 
 		if (event.key === 'Home' || event.key === 'End') {
 			event.preventDefault();
-			const elements = focusableElements(toolbarRef.current);
+			event.stopPropagation();
+			const elements = toolbarItems();
 			(event.key === 'Home' ? elements[0] : elements.at(-1))?.focus();
 		}
 	};
@@ -248,8 +382,10 @@ export const Toolbar = function Toolbar({
 			aria-label={label}
 			aria-orientation={orientation}
 			className={`toolbar ${className}`.trim()}
+			data-testid={testId}
 			ref={toolbarRef}
 			role="toolbar"
+			onFocus={onFocus}
 			onKeyDown={onKeyDown}
 		>
 			{children}
@@ -471,11 +607,17 @@ export const Popover = function Popover({
 export const Dialog = function Dialog({
 	label,
 	children,
-	onClose
+	onClose,
+	className = '',
+	overlayClassName = '',
+	id
 }: Readonly<{
 	label: string;
 	children: ReactNode;
 	onClose: () => void;
+	className?: string;
+	overlayClassName?: string;
+	id?: string;
 }>): ReactElement {
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const closeRef = useRef<HTMLButtonElement>(null);
@@ -532,8 +674,8 @@ export const Dialog = function Dialog({
 	}, []);
 
 	return (
-		<div className="dialog-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-			<div aria-labelledby={dialogTitleId} aria-modal="true" className="dialog-surface" ref={dialogRef} role="dialog" tabIndex={-1}>
+		<div className={`dialog-overlay ${overlayClassName}`.trim()} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+			<div aria-labelledby={dialogTitleId} aria-modal="true" className={`dialog-surface ${className}`.trim()} id={id} ref={dialogRef} role="dialog" tabIndex={-1}>
 				<div className="dialog-heading">
 					<h2 id={dialogTitleId}>{label}</h2>
 					<button aria-label={`Close ${label}`} className="quiet-button" ref={closeRef} type="button" onClick={onClose}>Close</button>

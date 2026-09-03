@@ -23,7 +23,8 @@ import {
 	updateDrawOrderKey,
 	updateEvent,
 	upsertNumberKey,
-	updateClipPlayback
+	updateClipPlayback,
+	updateBooleanKey
 } from './animation.ts';
 import type {
 	AttachmentKeyInput,
@@ -58,7 +59,9 @@ import {
 	updateBoneSetupTransform,
 	updateAttachmentSetupTransform,
 	updateImageAttachmentProperties,
-	updateRectangleAttachmentSize
+	updateRectangleAttachmentSize,
+	updatePointAttachmentEnabled,
+	updateRectangleAttachmentEnabled
 } from './operations.ts';
 import type {
 	CreateBoneInput,
@@ -85,6 +88,8 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'update-attachment-transform'; attachmentId: EntityId; transform: LocalTransform }>
 	| Readonly<{ kind: 'update-image-properties'; attachmentId: EntityId; properties: Readonly<Partial<{ opacity: number; pivotX: number; pivotY: number }>> }>
 	| Readonly<{ kind: 'update-rectangle-size'; attachmentId: EntityId; width: number; height: number }>
+	| Readonly<{ kind: 'update-point-enabled'; attachmentId: EntityId; enabled: boolean }>
+	| Readonly<{ kind: 'update-rectangle-enabled'; attachmentId: EntityId; enabled: boolean }>
 	| Readonly<{ kind: 'create-slot'; id: EntityId; input: CreateSlotInput }>
 	| Readonly<{ kind: 'rename-slot'; slotId: EntityId; name: string }>
 	| Readonly<{ kind: 'delete-slot'; slotId: EntityId }>
@@ -114,6 +119,7 @@ export type ProjectCommand =
 	| Readonly<{ kind: 'set-number-key-interpolation'; clipId: EntityId; trackId: EntityId; keyId: EntityId; input: NumberKeyInterpolationInput }>
 	| Readonly<{ kind: 'set-attachment-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; value: EntityId | null }>
 	| Readonly<{ kind: 'set-draw-order-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; value: readonly EntityId[] }>
+	| Readonly<{ kind: 'set-boolean-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; value: boolean }>
 	| Readonly<{ kind: 'move-key'; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'copy-key'; id: EntityId; clipId: EntityId; trackId: EntityId; keyId: EntityId; timeSeconds: number }>
 	| Readonly<{ kind: 'retime-keys'; clipId: EntityId; changes: readonly KeyTimeChange[] }>
@@ -162,6 +168,12 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'update-rectangle-size') {
 		return updateRectangleAttachmentSize(project, command.attachmentId, command.width, command.height);
+	}
+	if (command.kind === 'update-point-enabled') {
+		return updatePointAttachmentEnabled(project, command.attachmentId, command.enabled);
+	}
+	if (command.kind === 'update-rectangle-enabled') {
+		return updateRectangleAttachmentEnabled(project, command.attachmentId, command.enabled);
 	}
 	if (command.kind === 'create-slot') {
 		return createSlot(project, command.input, () => command.id);
@@ -249,6 +261,9 @@ export const reduceProject = function reduceProject(
 	}
 	if (command.kind === 'set-draw-order-key') {
 		return updateDrawOrderKey(project, command.clipId, command.trackId, command.keyId, command.value);
+	}
+	if (command.kind === 'set-boolean-key') {
+		return updateBooleanKey(project, command.clipId, command.trackId, command.keyId, command.value);
 	}
 	if (command.kind === 'move-key') {
 		return moveKey(project, command.clipId, command.trackId, command.keyId, command.timeSeconds);

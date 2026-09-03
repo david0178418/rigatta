@@ -5,6 +5,7 @@ import { drawOrderViewForFrame, reorderDrawOrder } from './draw-order-model.ts';
 import type { Selection } from './selection.ts';
 import { isSelected } from './selection.ts';
 import { SLOT_DRAG_MIME } from './rig-tree-view.tsx';
+import { Tooltip } from './ui-primitives.tsx';
 
 type DrawOrderMode = 'setup' | 'animate';
 
@@ -65,7 +66,7 @@ export const DrawOrderPanel = function DrawOrderPanel({
 					<p className="eyebrow">Setup and Animate</p>
 					<h2>Draw Order</h2>
 				</div>
-				{isAnimateMode && activeClip && onKeyCurrentFrame && <button className="secondary-button" data-testid="key-current-draw-order" type="button" title={`Key current draw order at frame ${frameIndex + 1}`} onClick={() => onKeyCurrentFrame(order)}>Key current order</button>}
+				{isAnimateMode && activeClip && onKeyCurrentFrame && <Tooltip label={`Key current draw order at frame ${frameIndex + 1}`}><button className="secondary-button" data-testid="key-current-draw-order" type="button" onClick={() => onKeyCurrentFrame(order)}>Key current order</button></Tooltip>}
 			</div>
 			<p className="muted-copy draw-order-status" aria-live="polite">
 				{status}
@@ -89,18 +90,19 @@ export const DrawOrderPanel = function DrawOrderPanel({
 						return (
 							<li className="draw-order-item" data-draw-order-index={index} data-draw-order-position={index + 1} data-slot-id={slot.id} key={slot.id} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDrop={(event) => onDrop(event, index)}>
 								<span className="draw-order-index" aria-hidden="true">{index + 1}</span>
-								<button
-									aria-pressed={isSelected(selection, { kind: 'slot', id: slot.id })}
-									className={isSelected(selection, { kind: 'slot', id: slot.id }) ? 'draw-order-row is-selected' : 'draw-order-row'}
-									draggable
-									type="button"
-									onClick={(event) => onSelectionChange(slot.id, event.metaKey || event.ctrlKey)}
-									onDragStart={(event) => onDragStart(event, slot.id)}
-									title={`Slot ${slot.name} · position ${index + 1} of ${order.length} · ${keyed ? 'keyed override' : 'setup order'}`}
-								>
-									<span className="rig-icon rig-icon-slot" aria-hidden="true">↳</span>
-									<span>{slot.name}</span>
-								</button>
+								<Tooltip className="draw-order-row-tooltip" label={`Slot ${slot.name} · position ${index + 1} of ${order.length} · ${keyed ? 'keyed override' : 'setup order'}`}>
+									<button
+										aria-pressed={isSelected(selection, { kind: 'slot', id: slot.id })}
+										className={isSelected(selection, { kind: 'slot', id: slot.id }) ? 'draw-order-row is-selected' : 'draw-order-row'}
+										draggable
+										type="button"
+										onClick={(event) => onSelectionChange(slot.id, event.metaKey || event.ctrlKey)}
+										onDragStart={(event) => onDragStart(event, slot.id)}
+									>
+										<span className="rig-icon rig-icon-slot" aria-hidden="true">↳</span>
+										<span>{slot.name}</span>
+									</button>
+								</Tooltip>
 							</li>
 						);
 					})}

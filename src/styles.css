@@ -81,7 +81,8 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
 	outline: 2px solid var(--accent-strong);
 	outline-offset: 2px;
 }
@@ -2092,8 +2093,24 @@ h2 {
 	font-size: 12px;
 }
 
-.tree-disclosure {
+.tooltip-wrap.tree-disclosure-tooltip,
+.tooltip-wrap.tree-visibility-tooltip {
+	display: grid;
+	place-items: center;
+	height: 26px;
+}
+
+.tooltip-wrap.tree-disclosure-tooltip {
 	grid-column: 1;
+	width: 22px;
+}
+
+.tooltip-wrap.tree-visibility-tooltip {
+	grid-column: 3;
+	width: 24px;
+}
+
+.tree-disclosure {
 	cursor: pointer;
 }
 
@@ -2106,7 +2123,6 @@ h2 {
 }
 
 .tree-visibility {
-	grid-column: 3;
 	width: 24px;
 	cursor: pointer;
 }
@@ -2238,6 +2254,12 @@ h2 {
 	grid-template-columns: minmax(0, 1fr) 24px;
 	align-items: center;
 	gap: 5px;
+}
+
+.direct-property-control > .tooltip-wrap {
+	grid-column: 2;
+	width: 24px;
+	height: 24px;
 }
 
 .direct-property-control input {
@@ -2503,6 +2525,11 @@ h2 {
 	cursor: grab;
 }
 
+.tooltip-wrap.draw-order-row-tooltip {
+	display: block;
+	min-width: 0;
+}
+
 .draw-order-row:hover,
 .draw-order-row.is-selected {
 	border-color: rgba(111, 212, 189, 0.42);
@@ -2529,16 +2556,26 @@ h2 {
 	align-items: stretch;
 }
 
+.toolbar.canvas-tool-toolbar {
+	display: grid;
+	align-items: stretch;
+	gap: 4px;
+}
+
 .tooltip-wrap {
 	position: relative;
 	display: inline-flex;
 }
 
+.tooltip-wrap.timeline-marker-tooltip {
+	position: static;
+}
+
 .tooltip-content {
-	position: absolute;
-	top: calc(100% + 6px);
-	left: 50%;
-	z-index: 50;
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 1000;
 	width: max-content;
 	max-width: min(280px, calc(100vw - 16px));
 	padding: 5px 7px;
@@ -2970,6 +3007,17 @@ h2 {
 	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
 }
 
+.dialog-surface.export-panel {
+	width: min(360px, calc(100vw - 44px));
+	max-height: calc(100vh - 104px);
+	padding: 18px;
+}
+
+.dialog-surface.shortcut-panel {
+	width: min(390px, calc(100vw - 44px));
+	padding: 18px;
+}
+
 .shortcut-list {
 	display: grid;
 	gap: 10px;
@@ -3327,6 +3375,13 @@ kbd {
 	cursor: pointer;
 }
 
+.timeline-ruler:focus-visible,
+.track-key-lane:focus-visible,
+.timeline-row-select:focus-visible {
+	outline: 2px solid var(--accent-strong);
+	outline-offset: -2px;
+}
+
 .timeline-key-marker {
 	z-index: 1;
 	transition: left 90ms ease, box-shadow 90ms ease;
@@ -3410,7 +3465,94 @@ kbd {
 	transform: translate(-50%, -50%);
 }
 
+button.event-key[class],
+button.track-key.timeline-key-marker[class],
+button.timeline-summary-key.timeline-key-marker[class] {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	transform: translate(-50%, -50%);
+}
+
+.timeline-marker-glyph {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 9px;
+	height: 9px;
+	border: 1px solid var(--accent-strong);
+	background: var(--accent);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+
+.event-key .timeline-marker-glyph {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+
+.timeline-summary-key .timeline-marker-glyph {
+	width: 7px;
+	height: 7px;
+	border-color: var(--warning);
+	border-radius: 50%;
+	background: var(--surface-raised);
+}
+
+.timeline-key-marker.is-linear .timeline-marker-glyph {
+	border-radius: 1px;
+	background: var(--accent);
+	transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.timeline-key-marker.is-stepped .timeline-marker-glyph {
+	border-style: dashed;
+	background: var(--surface-raised);
+}
+
+.timeline-key-marker.is-bezier .timeline-marker-glyph,
+.timeline-key-marker.is-draw-order .timeline-marker-glyph {
+	border-radius: 50%;
+}
+
+.timeline-key-marker.is-bezier .timeline-marker-glyph {
+	background: var(--accent-strong);
+}
+
+.timeline-key-marker.is-attachment .timeline-marker-glyph {
+	border-radius: 2px;
+	background: var(--warning);
+}
+
+.timeline-key-marker.is-draw-order .timeline-marker-glyph {
+	border-style: dashed;
+	background: var(--surface-raised);
+}
+
+.track-key.timeline-key-marker.is-enabled .timeline-marker-glyph {
+	width: 4px;
+	height: 16px;
+	border-radius: 2px;
+	background: var(--accent-strong);
+}
+
+.timeline-summary-key.timeline-key-marker.is-enabled .timeline-marker-glyph {
+	width: 4px;
+	height: 13px;
+	border-radius: 2px;
+	background: var(--accent-strong);
+}
+
 .timeline-key-marker.is-selected {
+	box-shadow: none;
+}
+
+.timeline-key-marker.is-selected .timeline-marker-glyph,
+.event-key.is-selected .timeline-marker-glyph {
 	box-shadow: 0 0 0 2px rgba(240, 184, 109, 0.9);
 }
 

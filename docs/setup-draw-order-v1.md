@@ -21,6 +21,11 @@ displayed order at the current frame through the existing create-track,
 add-key, or set-key history commands. Animate rows can also be dragged to edit
 the displayed order at the current frame.
 
+Selecting a draw-order key opens its context in the right-dock Properties
+inspector. Properties labels the setup fallback, current evaluated order, and
+selected keyed order separately. Slot links in either list select the related
+slot while retaining the active clip, playhead, and draw-order context.
+
 Unit coverage exercises setup fallback, preceding-key evaluation, incomplete
 order normalization, immutable reordering, and panel source labels. Browser
 coverage verifies the dedicated tab, back-to-front slot inventory, setup drag

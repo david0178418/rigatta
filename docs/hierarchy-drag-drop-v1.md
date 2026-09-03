@@ -13,3 +13,7 @@ sibling indices without mutating the project.
 The row preview is an editor-only drop indicator. Unit coverage exercises zone
 calculation, command construction, successful preserving reparenting, and
 self/descendant rejection.
+
+Successful drops retain the shared project selection and reveal the affected
+Rig row. Draw-order changes remain confined to the dedicated Draw Order surface;
+hierarchy reparenting never changes slot draw order implicitly.

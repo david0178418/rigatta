@@ -21,9 +21,9 @@ accessible disclosure, matching-project restore, new-project isolation, and
 reload restore; shared clip, track, key, event, draw-order, and attachment
 contexts use the same persisted disclosure primitive.
 
-The same suite verifies the P0 exit workflow: Rotate and apply an inspector
-transform, switch to Animate, scrub to frame 7, open and close Key details with
-focus returned to its trigger, and start/stop playback. At 1280 × 800 it also
+The same suite verifies the P0 exit workflow: Rotate and commit an inspector
+transform, switch to Animate, scrub to frame 7, select a key and verify its
+right-dock Properties context, and start/stop playback. At 1280 × 800 it also
 checks splitter keyboard and pointer resizing, the 190 px minimum, the 55%
 maximum, and independent library, inspector, and dopesheet scroll containers.
 

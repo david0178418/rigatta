@@ -15,6 +15,7 @@ import {
 	setNumberKeyInterpolation,
 	updateAttachmentKey,
 	updateDrawOrderKey,
+	updateBooleanKey,
 	upsertNumberKey,
 	updateClipPlayback
 } from '../../src/domain/animation.ts';
@@ -172,6 +173,22 @@ describe('typed animation tracks', () => {
 		}]);
 		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: keyIds[4], value: null }]);
 		expect(invalid).toMatchObject({ ok: false, error: { code: 'invalid-reference' } });
+	});
+
+	test('updates a boolean key immutably while preserving its time and ID', () => {
+		const project = withClip();
+		const withTrack = unwrap(createTrack(project, clipId, {
+			kind: 'point-enabled',
+			targetId: fixtureIds.point
+		}, () => pointTrackId));
+		const withKey = unwrap(addBooleanKey(withTrack, clipId, pointTrackId, {
+			timeSeconds: 0.5,
+			value: true
+		}, () => keyIds[6]));
+		const updated = unwrap(updateBooleanKey(withKey, clipId, pointTrackId, keyIds[6], false));
+
+		expect(updated.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: keyIds[6], timeSeconds: 0.5, value: false }]);
+		expect(withKey.clips[0]?.tracks[0]?.keys).toMatchObject([{ id: keyIds[6], timeSeconds: 0.5, value: true }]);
 	});
 
 	test('updates a draw-order key with a complete immutable slot order', () => {

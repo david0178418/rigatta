@@ -13,7 +13,8 @@ pixel dimensions and logical coordinate system unchanged.
 - Escape cancels the active pan, marquee, or transform gesture before release
   can change selection.
 - The `−`, percentage, `+`, and `Center` controls provide keyboard-focusable
-  zoom and reset actions.
+  zoom and reset actions. Each compact control exposes its action in a visible
+  hover/focus tooltip as well as an accessible name.
 
 The default state is 100% zoom with zero offset. Export and PNG extraction use
 the renderer canvas directly, so viewport navigation cannot alter exported
@@ -24,4 +25,6 @@ canvas edge. The toolbar remains available while the hierarchy/inspector dock
 scrolls and while no entity is selected; its buttons expose the same `W`, `E`,
 `R`, and `T` shortcuts documented in [Keyboard shortcuts](keyboard-shortcuts-v1.md).
 Selecting a tool changes the active transform tool but does not add a
-project-history entry or change viewport navigation state.
+project-history entry or change viewport navigation state. The toolbar is a
+vertical ARIA toolbar with directional focus movement and visible action/
+shortcut tooltips.

@@ -98,7 +98,7 @@ test('characterizes Auto Key and explicit current-frame property keying', async 
 	await expect(page.getByRole('button', { name: 'Remove X key at frame 1', exact: true })).toBeVisible();
 });
 
-test('characterizes key and event detail surfaces with focus return', async ({ page }) => {
+test('characterizes key and event detail contexts in Properties', async ({ page }) => {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Create root bone' }).click();
 	await page.getByRole('button', { name: 'root', exact: true }).click();
@@ -112,17 +112,17 @@ test('characterizes key and event detail surfaces with focus return', async ({ p
 	const key = page.getByRole('button', { name: 'Key frame 1' });
 	await key.click();
 	await page.getByRole('button', { name: 'Key details' }).click();
-	await expect(page.getByRole('dialog', { name: 'Key details' })).toBeVisible();
-	await page.getByRole('button', { name: 'Close Key details' }).click();
-	await expect(page.getByRole('button', { name: 'Key details' })).toBeFocused();
+	await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: 'Key details' })).toHaveCount(0);
+	await expect(page.getByRole('tab', { name: 'Properties', exact: true })).toHaveAttribute('aria-selected', 'true');
 
 	await page.getByRole('button', { name: 'Add event', exact: true }).click();
 	const event = page.getByRole('button', { name: 'Event event at frame 1', exact: true });
 	await event.click();
 	await page.getByRole('button', { name: 'Event details' }).click();
-	await expect(page.getByRole('dialog', { name: 'Event details' })).toBeVisible();
-	await page.getByRole('button', { name: 'Close Event details' }).click();
-	await expect(page.getByRole('button', { name: 'Event details' })).toBeFocused();
+	await expect(page.getByRole('region', { name: 'Event properties' })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: 'Event details' })).toHaveCount(0);
+	await expect(page.getByLabel('Event name')).toHaveValue('event');
 });
 
 test('characterizes timeline resizing through keyboard and pointer controls', async ({ page }) => {
@@ -195,6 +195,6 @@ test('keeps the actual export overlay and panel contained at supported viewports
 
 		expect(documentBounds.width).toBeLessThanOrEqual(viewport.width);
 		expect(documentBounds.height).toBeLessThanOrEqual(viewport.height);
-		await page.getByRole('button', { name: 'Close export controls' }).click();
+		await page.getByRole('button', { name: 'Close Export animation' }).click();
 	}, Promise.resolve());
 });

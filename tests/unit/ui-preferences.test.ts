@@ -86,6 +86,7 @@ describe('versioned UI preferences', () => {
 			layout: defaults.layout
 		});
 		expect(parseUiPreferences({ version: 999, projects: {} })).toEqual(defaultUiPreferences());
+		expect(parseUiPreferences({ version: 1, globalDensity: 'thumbnail', projects: {} })).toEqual(defaultUiPreferences());
 		expect(loadUiPreferences(mapStorage('{not-json'))).toEqual(defaultUiPreferences());
 	});
 
@@ -116,7 +117,10 @@ describe('versioned UI preferences', () => {
 				...current,
 				rigExpandedIds: [fixtureIds.root, fixtureIds.root, staleId],
 				hiddenEntityIds: [fixtureIds.image, staleId],
-				selectionHistory: [fixtureIds.asset, staleId],
+				selectionHistory: [
+					[{ kind: 'asset', id: fixtureIds.asset }],
+					[{ kind: 'bone', id: staleId }]
+				],
 				timelineExpandedIds: [`entity:${fixtureIds.root}`, `entity:${staleId}`, 'invalid'],
 				pinnedTimelineEntityIds: [fixtureIds.slot, fixtureIds.asset, staleId]
 			}));
@@ -125,12 +129,59 @@ describe('versioned UI preferences', () => {
 
 		expect(matching.rigExpandedIds).toEqual([fixtureIds.root]);
 		expect(matching.hiddenEntityIds).toEqual([fixtureIds.image]);
-		expect(matching.selectionHistory).toEqual([fixtureIds.asset]);
+		expect(matching.selectionHistory).toEqual([[{ kind: 'asset', id: fixtureIds.asset }]]);
 		expect(matching.timelineExpandedIds).toEqual([`entity:${fixtureIds.root}`]);
 		expect(matching.pinnedTimelineEntityIds).toEqual([fixtureIds.slot]);
 		expect(other.assetDensity).toBe('list');
 		expect(other.hiddenEntityIds).toEqual([]);
 		expect(other.rigExpandedIds).toEqual(project.bones.map((bone) => bone.id));
+	});
+
+	test('round-trips additive snapshots and bounds structured history without flattening', () => {
+		const project = createRigProject();
+		const snapshots = Array.from({ length: 23 }, (_, index) => index % 2 === 0
+			? [{ kind: 'bone' as const, id: fixtureIds.root }]
+			: [
+				{ kind: 'bone' as const, id: fixtureIds.root },
+				{ kind: 'asset' as const, id: fixtureIds.asset }
+			]);
+		const preferences = updateProjectUiPreferences(defaultUiPreferences(), project.id, (current) => ({
+			...current,
+			selectionHistory: snapshots
+		}));
+		const storage = mapStorage();
+
+		expect(saveUiPreferences(preferences, storage)).toBe(true);
+		const loaded = loadUiPreferences(storage);
+		expect(loaded.projects[project.id]?.selectionHistory).toEqual(snapshots.slice(-20));
+		const bounded = projectUiPreferencesFor(preferences, project).selectionHistory;
+
+		expect(bounded).toHaveLength(20);
+		expect(bounded[0]).toEqual(snapshots[3]);
+		expect(bounded.at(-1)).toEqual(snapshots[22]);
+		expect(bounded.some((selection) => selection.length === 2)).toBe(true);
+	});
+
+	test('drops malformed structured snapshots while retaining valid snapshots', () => {
+		const parsed = parseUiPreferences({
+			version: UI_PREFERENCES_VERSION,
+			globalDensity: 'list',
+			projects: {
+				[fixtureIds.project]: {
+					selectionHistory: [
+						[{ kind: 'bone', id: fixtureIds.root }],
+						[{ kind: 'unknown', id: fixtureIds.root }],
+						[{ kind: 'attachment', id: 'not-an-entity-id' }],
+						[{ kind: 'bone', id: fixtureIds.root }, { kind: 'bone', id: fixtureIds.root }]
+					]
+				}
+			}
+		});
+
+		expect(parsed.projects[fixtureIds.project]?.selectionHistory).toEqual([
+			[{ kind: 'bone', id: fixtureIds.root }],
+			[{ kind: 'bone', id: fixtureIds.root }]
+		]);
 	});
 
 	test('keeps UI preferences outside history and archive/export project data', async () => {

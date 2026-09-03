@@ -47,6 +47,7 @@ import { nextAvailableName } from './entity-names.ts';
 import { SETUP_TIMELINE_HEIGHT, clampTimelineHeight } from './timeline-layout.ts';
 import type { AssetImportSummary } from './asset-browser.tsx';
 import { ProjectMenu } from './project-menu.tsx';
+import { Dialog, Tooltip } from './ui-primitives.tsx';
 import { buildRigTreeViewModel, revealAncestors, selectableEntityForRigNode, type RigTreeNode } from './rig-tree.ts';
 import { CanvasToolbar } from './canvas-toolbar.tsx';
 import { loadUiPreferences, projectUiPreferencesFor, saveUiPreferences, updateProjectUiPreferences, type ProjectUiPreferences, type UiPreferences } from './ui-preferences.ts';
@@ -54,12 +55,14 @@ import { clampWorkspaceLayout } from './workspace-layout.ts';
 import { numericPropertySpecs, type NumericProperty } from './property-drafts.ts';
 import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty, type PropertyKeyState } from './keying.ts';
 import { planKeyDrag, planPasteTimelineClipboard, type TimelineClipboard } from './timeline-model.ts';
-import type { NumberKeyChange } from './shared-inspector.tsx';
+import { canNavigateSelectionHistory as canNavigateHistoryState, createSelectionHistory, navigateSelectionHistory as navigateHistoryState, recordSelectionHistory, type SelectionHistoryState } from './selection-history.ts';
+import type { KeyTimeChange, NumberKeyChange } from './shared-inspector.tsx';
 import type { InspectorContext } from './inspector-context.ts';
 import { AnimateTimeline, TimelineSplitter, type AnimationKeyInput, type ClipPlaybackSettings } from './animate-timeline.tsx';
 import { WorkspaceDocks, type WorkspaceDocksProps } from './workspace-docks.tsx';
 
 type EditorMode = 'setup' | 'animate';
+type SelectionOrigin = 'rig' | 'draw-order' | 'canvas' | 'timeline' | 'asset' | 'command' | 'history';
 
 const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
 const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
@@ -165,6 +168,7 @@ type SelectedTransformEntry = Readonly<{
 
 type DirectPropertyTarget = Readonly<{
 	entity: SelectableEntity;
+	setupValue: number;
 	currentValue: number;
 	command: ProjectCommand;
 }>;
@@ -288,15 +292,8 @@ const ExportControls = function ExportControls({
 	});
 
 	return (
-		<div className="export-panel-overlay">
-			<section className="export-panel" aria-label="Export controls">
-				<div className="panel-heading">
-					<div>
-						<p className="eyebrow">Output</p>
-						<h2>Export animation</h2>
-					</div>
-					<button className="quiet-button" type="button" aria-label="Close export controls" onClick={onClose}>Close</button>
-				</div>
+		<Dialog className="export-panel" id="export-animation-dialog" label="Export animation" onClose={onClose} overlayClassName="export-panel-overlay">
+				<p className="eyebrow">Output</p>
 				<p className="muted-copy export-description">Choose the clips and file grouping for the next export.</p>
 				<fieldset className="export-mode-fieldset">
 					<legend>File grouping</legend>
@@ -364,22 +361,14 @@ const ExportControls = function ExportControls({
 						<p className="muted-copy">Estimated peak memory: {formatByteCount(preflight.memory.totalBytes)}.</p>
 					</section>
 					<p className="muted-copy export-status">Rendering and download controls will appear after the export pipeline is connected.</p>
-			</section>
-		</div>
+		</Dialog>
 	);
 };
 
 const ShortcutReference = function ShortcutReference({ onClose }: Readonly<{ onClose: () => void }>): ReactElement {
 	return (
-		<div className="shortcut-panel-overlay">
-			<section className="shortcut-panel" aria-label="Keyboard shortcuts">
-				<div className="panel-heading">
-					<div>
-						<p className="eyebrow">Reference</p>
-						<h2>Keyboard shortcuts</h2>
-					</div>
-					<button className="quiet-button" type="button" aria-label="Close keyboard shortcuts" onClick={onClose}>Close</button>
-				</div>
+		<Dialog className="shortcut-panel" id="keyboard-shortcuts-dialog" label="Keyboard shortcuts" onClose={onClose} overlayClassName="shortcut-panel-overlay">
+				<p className="eyebrow">Reference</p>
 				<dl className="shortcut-list">
 					{shortcutReference.map((shortcut) => (
 						<div data-shortcut-scope={shortcut.scope} key={shortcut.id}>
@@ -389,8 +378,7 @@ const ShortcutReference = function ShortcutReference({ onClose }: Readonly<{ onC
 					))}
 				</dl>
 				<p className="muted-copy shortcut-note">Shortcuts are inactive while typing in a form field.</p>
-			</section>
-		</div>
+		</Dialog>
 	);
 };
 
@@ -466,13 +454,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [assetError, setAssetError] = useState<string | undefined>(undefined);
 	const [selection, setSelectionState] = useState<Selection>(createSelection);
 	const [inspectorContext, setInspectorContext] = useState<InspectorContext>({ kind: 'none' });
-	const initialSelectionHistory = presentation.selectionHistory.flatMap((id) => {
-		const entity = selectableEntityForId(startup.project, id);
-
-		return entity ? [[entity]] : [];
-	});
-	const [selectionHistory, setSelectionHistory] = useState<readonly Selection[]>(initialSelectionHistory);
-	const selectionHistoryCursorRef = useRef(initialSelectionHistory.length - 1);
+	const initialSelectionHistory = createSelectionHistory(presentation.selectionHistory);
+	const [selectionHistory, setSelectionHistory] = useState<SelectionHistoryState>(initialSelectionHistory);
+	const selectionHistoryRef = useRef(initialSelectionHistory);
+	selectionHistoryRef.current = selectionHistory;
 	const [transformTool, setTransformTool] = useState<TransformTool>('translate');
 	const [gridSettings, setGridSettings] = useState<GridSettings>(() => ({ ...DEFAULT_GRID_SETTINGS }));
 	const [gridSpacingInput, setGridSpacingInput] = useState(String(DEFAULT_GRID_SETTINGS.spacing));
@@ -524,6 +509,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const activePlayback = activeClip && playback?.clipId === activeClip.id
 		? playback.state
 		: createPlaybackState();
+	const activeClipRef = useRef(activeClip);
+	activeClipRef.current = activeClip;
+	const activePlaybackRef = useRef(activePlayback);
+	activePlaybackRef.current = activePlayback;
 	const boundedTimelineHeight = clampTimelineHeight(presentation.layout.timelineHeight, viewportHeight);
 	const shellStyle = {
 		'--timeline-height': `${mode === 'animate' ? boundedTimelineHeight : SETUP_TIMELINE_HEIGHT}px`,
@@ -555,23 +544,60 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				: [...current.collapsedInspectorSections, sectionId]
 		}));
 	};
-	const setSelection = function setSelection(nextSelection: Selection): void {
+	const setSelection = function setSelection(
+		nextSelection: Selection,
+		origin: SelectionOrigin = 'command'
+	): void {
 		setSelectionState(nextSelection);
 		setInspectorContext(nextSelection.length > 0 ? { kind: 'entity', selection: nextSelection } : { kind: 'none' });
 		const target = nextSelection.at(-1);
 
-		if (!target || target.kind === 'asset') {
+		if (!target) {
 			return;
 		}
 
-		const model = buildRigTreeViewModel(project, nextSelection, new Set(presentation.rigExpandedIds));
-		const expanded = new Set(revealAncestors(model, target.id, new Set(presentation.rigExpandedIds)));
+		const shouldRevealRig = origin === 'canvas' || origin === 'timeline' || origin === 'history';
+		const currentPresentation = presentationRef.current;
+		const rigTarget = nextSelection.filter((entity) => entity.kind !== 'asset').at(-1);
+		const model = rigTarget
+			? buildRigTreeViewModel(project, nextSelection, new Set(currentPresentation.rigExpandedIds))
+			: undefined;
+		const expanded = model
+			? nextSelection.reduce((current, entity) => {
+				if (entity.kind === 'asset') {
+					return current;
+				}
 
-		if (target.kind === 'bone') {
-			expanded.add(target.id);
+				const revealed = new Set(revealAncestors(model, entity.id, current));
+
+				if (entity.kind === 'bone') {
+					revealed.add(entity.id);
+				}
+
+				return revealed;
+			}, new Set(currentPresentation.rigExpandedIds))
+			: new Set(currentPresentation.rigExpandedIds);
+		const revealLeftDock = shouldRevealRig && rigTarget !== undefined;
+		const revealRightDock = shouldRevealRig && target.kind === 'asset';
+
+		if (revealLeftDock) {
+			setRigSearch('');
 		}
-
-		updatePresentation((current) => ({ ...current, rigExpandedIds: [...expanded] }));
+		updatePresentation((current) => ({
+			...current,
+			...(rigTarget ? { rigExpandedIds: [...expanded] } : {}),
+			...(revealLeftDock || revealRightDock
+				? {
+					...(revealLeftDock ? { leftDockTab: 'rig' as const } : {}),
+					...(revealRightDock ? { rightDockTab: 'assets' as const } : {}),
+					layout: {
+						...current.layout,
+						...(revealLeftDock ? { leftDockCollapsed: false } : {}),
+						...(revealRightDock ? { rightDockCollapsed: false } : {})
+					}
+				}
+				: {})
+		}));
 	};
 	const projectHasContent = project.assets.length > 0
 		|| project.bones.length > 0
@@ -605,7 +631,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		};
 	}, [presentation, project.id]);
 	const replaceProject = function replaceProject(nextProject: Project, nextAssets: ProjectAssetBlobs): void {
-		const nextPresentation = projectUiPreferencesFor(uiPreferencesRef.current, nextProject);
+		const projectPreferences = projectUiPreferencesFor(uiPreferencesRef.current, nextProject);
+		const nextPresentation = {
+			...projectPreferences,
+			layout: clampWorkspaceLayout(projectPreferences.layout, { width: viewportWidth, height: viewportHeight })
+		};
 
 		setHistory(createHistory(nextProject));
 		setAssetBlobs(nextAssets);
@@ -613,8 +643,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setPresentation(nextPresentation);
 		setSelection(createSelection());
 		setInspectorContext({ kind: 'none' });
-		setSelectionHistory([]);
-		selectionHistoryCursorRef.current = -1;
+		const emptySelectionHistory = createSelectionHistory();
+		selectionHistoryRef.current = emptySelectionHistory;
+		setSelectionHistory(emptySelectionHistory);
 		setInlineRenameId(undefined);
 		setActiveClipId(nextProject.clips[0]?.id);
 		setPlayback(undefined);
@@ -879,7 +910,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			'tool-shear': () => setTransformTool('shear')
 		};
 		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
-			if (isFormTarget(event.target)) {
+			if (event.defaultPrevented || isFormTarget(event.target)) {
 				return;
 			}
 
@@ -926,6 +957,15 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		commitHistory(result.value);
 		return true;
 	};
+	const selectActiveClip = function selectActiveClip(clipId: EntityId | undefined): void {
+		if (activeClipId === clipId) {
+			return;
+		}
+
+		setActiveClipId(clipId);
+		setInspectorContext(clipId ? { kind: 'clip', clipId } : { kind: 'none' });
+		setPendingAnimationEdits([]);
+	};
 
 	const createAnimationClip = function createAnimationClip(): void {
 		const id = createEntityId();
@@ -936,20 +976,28 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		});
 
 		if (created) {
-			setActiveClipId(id);
+			selectActiveClip(id);
+		}
+	};
+
+	const duplicateClipById = function duplicateClipById(clipId: EntityId): void {
+		const clip = project.clips.find((candidate) => candidate.id === clipId);
+
+		if (!clip) {
+			return;
+		}
+
+		const ids = duplicateIdsForClip(clip);
+		const duplicated = applyCommand({ kind: 'duplicate-clip', clipId, ids });
+
+		if (duplicated) {
+			selectActiveClip(ids.id);
 		}
 	};
 
 	const duplicateActiveClip = function duplicateActiveClip(): void {
-		if (!activeClip) {
-			return;
-		}
-
-		const ids = duplicateIdsForClip(activeClip);
-		const duplicated = applyCommand({ kind: 'duplicate-clip', clipId: activeClip.id, ids });
-
-		if (duplicated) {
-			setActiveClipId(ids.id);
+		if (activeClip) {
+			duplicateClipById(activeClip.id);
 		}
 	};
 
@@ -959,20 +1007,52 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	};
 
-	const deleteActiveClip = function deleteActiveClip(): void {
-		if (!activeClip || !window.confirm(`Delete animation clip “${activeClip.name}” and all of its keys?`)) {
+	const deleteClipById = function deleteClipById(clipId: EntityId): void {
+		const clip = project.clips.find((candidate) => candidate.id === clipId);
+
+		if (!clip || !window.confirm(`Delete animation clip “${clip.name}” and all of its keys?`)) {
 			return;
 		}
-		if (!applyCommand({ kind: 'delete-clip', clipId: activeClip.id })) {
+		if (!applyCommand({ kind: 'delete-clip', clipId })) {
 			return;
 		}
 
-		setActiveClipId(project.clips.find((clip) => clip.id !== activeClip.id)?.id);
+		selectActiveClip(project.clips.find((candidate) => candidate.id !== clipId)?.id);
+	};
+
+	const deleteActiveClip = function deleteActiveClip(): void {
+		if (activeClip) {
+			deleteClipById(activeClip.id);
+		}
 	};
 
 	const updateActiveClipPlayback = function updateActiveClipPlayback(settings: ClipPlaybackSettings): void {
 		if (activeClip) {
 			applyCommand({ kind: 'update-clip-playback', clipId: activeClip.id, settings });
+		}
+	};
+	const saveSharedClip = function saveSharedClip(
+		clipId: EntityId,
+		name: string,
+		settings: ClipPlaybackSettings
+	): void {
+		const clip = project.clips.find((candidate) => candidate.id === clipId);
+
+		if (!clip) {
+			return;
+		}
+
+		const commands: readonly ProjectCommand[] = [
+			...(name !== clip.name ? [{ kind: 'rename-clip' as const, clipId, name }] : []),
+			...(settings.durationSeconds !== undefined && settings.durationSeconds !== clip.durationSeconds
+				|| settings.fps !== undefined && settings.fps !== clip.fps
+				|| settings.loop !== undefined && settings.loop !== clip.loop
+				? [{ kind: 'update-clip-playback' as const, clipId, settings }]
+				: [])
+		];
+
+		if (commands.length > 0) {
+			applyCommandSequence(commands);
 		}
 	};
 
@@ -1145,6 +1225,72 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		applyCommandSequence(commands);
 	};
+	const updateSharedKeys = function updateSharedKeys(
+		clipId: EntityId,
+		changes: readonly NumberKeyChange[]
+	): void {
+		const clip = project.clips.find((candidate) => candidate.id === clipId);
+
+		if (!clip || changes.length === 0) {
+			return;
+		}
+
+		const entries = changes.flatMap((change) => {
+			const track = clip.tracks.find((candidate) => candidate.id === change.trackId);
+			const key = track?.keys.find((candidate) => candidate.id === change.keyId);
+
+			return track && key ? [{ change, track, key }] : [];
+		});
+
+		if (entries.length !== changes.length) {
+			setCommandError('Every selected animation key must remain available before applying a shared edit.');
+			return;
+		}
+
+		const retimeChanges = entries.flatMap(({ change, key }) => change.timeSeconds !== undefined && change.timeSeconds !== key.timeSeconds
+			? [{ trackId: change.trackId, keyId: change.keyId, timeSeconds: change.timeSeconds }]
+			: []);
+		const valueCommands = entries.flatMap(({ change, track, key }) => {
+			if (!isNumericTrack(track) || change.value === undefined) {
+				return [];
+			}
+			const numericKey = track.keys.find((candidate) => candidate.id === key.id);
+
+			if (!numericKey) {
+				return [];
+			}
+
+			const timeSeconds = change.timeSeconds ?? key.timeSeconds;
+
+			return Object.is(timeSeconds, numericKey.timeSeconds) && Object.is(change.value, numericKey.value)
+				? []
+				: [{
+					kind: 'set-number-key' as const,
+					id: key.id,
+					clipId,
+					trackId: change.trackId,
+					input: { timeSeconds, value: change.value, interpolation: numericKey.interpolation, curve: numericKey.curve }
+				}];
+		});
+
+		const commands: readonly ProjectCommand[] = [
+			...(retimeChanges.length > 0 ? [{ kind: 'retime-keys' as const, clipId, changes: retimeChanges }] : []),
+			...valueCommands
+		];
+
+		if (commands.length > 0) {
+			applyCommandSequence(commands);
+		}
+	};
+
+	const moveSharedKeys = function moveSharedKeys(
+		clipId: EntityId,
+		changes: readonly KeyTimeChange[]
+	): void {
+		if (changes.length > 0) {
+			applyCommandSequence([{ kind: 'retime-keys', clipId, changes }]);
+		}
+	};
 
 	const updateSharedInterpolation = function updateSharedInterpolation(
 		clipId: EntityId,
@@ -1197,6 +1343,35 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		value: EntityId | null
 	): void {
 		applyCommand({ kind: 'set-attachment-key', clipId, trackId, keyId, value });
+	};
+
+	const keyCurrentAttachment = function keyCurrentAttachment(
+		clipId: EntityId,
+		trackId: EntityId,
+		slotId: EntityId,
+		value: EntityId | null
+	): void {
+		if (mode !== 'animate' || !activeClip || activeClip.id !== clipId) {
+			return;
+		}
+
+		const clip = project.clips.find((candidate) => candidate.id === clipId);
+		const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+		const timeSeconds = activePlayback.frameIndex / activeClip.fps;
+		const currentKey = track?.kind === 'slot-attachment'
+			? track.keys.find((key) => frameIndexForTime(activeClip, key.timeSeconds) === activePlayback.frameIndex)
+			: undefined;
+
+		if (track?.kind === 'slot-attachment' && currentKey) {
+			applyCommandSequence([{ kind: 'set-attachment-key', clipId, trackId, keyId: currentKey.id, value }]);
+			return;
+		}
+
+		const nextTrackId = track?.kind === 'slot-attachment' ? track.id : createEntityId();
+		applyCommandSequence([
+			...(track?.kind === 'slot-attachment' ? [] : [{ kind: 'create-track' as const, id: nextTrackId, clipId, definition: { kind: 'slot-attachment' as const, targetId: slotId } }]),
+			{ kind: 'add-attachment-key' as const, id: createEntityId(), clipId, trackId: nextTrackId, input: { timeSeconds, value } }
+		]);
 	};
 
 	const updateSharedDrawOrderKey = function updateSharedDrawOrderKey(
@@ -1258,27 +1433,42 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 
 	const toggleActivePlayback = function toggleActivePlayback(): void {
-		if (!activeClip) {
+		const clip = activeClipRef.current;
+
+		if (!clip) {
 			return;
 		}
 
-		setPlayback({ clipId: activeClip.id, state: togglePlayback(activePlayback, activeClip) });
+		const next = togglePlayback(activePlaybackRef.current, clip);
+
+		activePlaybackRef.current = next;
+		setPlayback({ clipId: clip.id, state: next });
 	};
 
 	const stepActivePlayback = function stepActivePlayback(direction: PlaybackDirection): void {
-		if (!activeClip) {
+		const clip = activeClipRef.current;
+
+		if (!clip) {
 			return;
 		}
 
-		setPlayback({ clipId: activeClip.id, state: stepPlayback(activePlayback, activeClip, direction) });
+		const next = stepPlayback(activePlaybackRef.current, clip, direction);
+
+		activePlaybackRef.current = next;
+		setPlayback({ clipId: clip.id, state: next });
 	};
 
 	const seekActivePlayback = function seekActivePlayback(frameIndex: number): void {
-		if (!activeClip) {
+		const clip = activeClipRef.current;
+
+		if (!clip) {
 			return;
 		}
 
-		setPlayback({ clipId: activeClip.id, state: seekPlayback(activePlayback, activeClip, frameIndex) });
+		const next = seekPlayback(activePlaybackRef.current, clip, frameIndex);
+
+		activePlaybackRef.current = next;
+		setPlayback({ clipId: clip.id, state: next });
 	};
 
 	const addImportedImages = function addImportedImages(result: AssetImportResult): void {
@@ -1573,57 +1763,54 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		applyCommand({ kind: 'assign-slot-attachment', slotId, attachmentId });
 	};
 
-	const recordSelection = function recordSelection(nextSelection: Selection): void {
-		setSelection(nextSelection);
-		const latest = nextSelection.at(-1);
+	const recordSelection = function recordSelection(
+		nextSelection: Selection,
+		origin: SelectionOrigin
+	): void {
+		setSelection(nextSelection, origin);
+		const currentHistory = selectionHistoryRef.current;
+		const nextHistory = recordSelectionHistory(currentHistory, nextSelection);
 
-		if (!latest) {
+		if (nextHistory === currentHistory) {
 			return;
 		}
 
-		const current = selectionHistory;
-		const cursor = selectionHistoryCursorRef.current;
-		const previous = current[cursor]?.at(-1);
-
-		if (previous?.kind === latest.kind && previous.id === latest.id) {
-			return;
-		}
-
-		const nextHistory = [...(cursor >= 0 ? current.slice(0, cursor + 1) : current), nextSelection].slice(-20);
-
-		selectionHistoryCursorRef.current = nextHistory.length - 1;
+		selectionHistoryRef.current = nextHistory;
 		setSelectionHistory(nextHistory);
 		updatePresentation((currentPresentation) => ({
 			...currentPresentation,
-			selectionHistory: nextHistory.flatMap((entry) => {
-				const last = entry.at(-1);
-
-				return last ? [last.id] : [];
-			})
+			selectionHistory: nextHistory.entries
 		}));
 	};
-	const setSelectionFromSurface = function setSelectionFromSurface(nextSelection: Selection): void {
-		recordSelection(nextSelection);
+	const setSelectionFromSurface = function setSelectionFromSurface(
+		nextSelection: Selection,
+		origin: SelectionOrigin = 'rig'
+	): void {
+		recordSelection(nextSelection, origin);
 	};
-	const updateSelection = function updateSelection(entity: SelectableEntity, additive: boolean): void {
-		setSelectionFromSurface(selectEntity(selection, entity, additive));
+	const updateSelection = function updateSelection(
+		entity: SelectableEntity,
+		additive: boolean,
+		origin: SelectionOrigin = 'rig'
+	): void {
+		setSelectionFromSurface(selectEntity(selection, entity, additive), origin);
 	};
 
 	const selectCanvasPoint = function selectCanvasPoint(point: ViewportPoint, additive: boolean): void {
 		const hit = hitTestProject(project, point, hiddenEntityIds);
 
 		if (hit) {
-			updateSelection(hit, additive);
+			updateSelection(hit, additive, 'canvas');
 			return;
 		}
 
 		if (!additive) {
-			setSelectionFromSurface(createSelection());
+			setSelectionFromSurface(createSelection(), 'canvas');
 		}
 	};
 
 	const selectCanvasMarquee = function selectCanvasMarquee(bounds: Readonly<{ x: number; y: number; w: number; h: number }>, additive: boolean): void {
-		setSelectionFromSurface(selectEntities(selection, entitiesInBounds(project, bounds, hiddenEntityIds), additive));
+		setSelectionFromSurface(selectEntities(selection, entitiesInBounds(project, bounds, hiddenEntityIds), additive), 'canvas');
 	};
 
 	const dragBone = function dragBone(event: DragEvent<HTMLElement>, boneId: EntityId): void {
@@ -1683,17 +1870,32 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const selectedAttachment = selectedEntity?.kind === 'attachment'
 		? project.attachments.find((attachment) => attachment.id === selectedEntity.id)
 		: undefined;
-	const selectedTransform = selectedBone?.transform ?? selectedAttachment?.transform;
-	const selectedTransformEntities = selection.flatMap((entity): readonly SelectedTransformEntry[] => {
-		if (entity.kind === 'bone') {
-			const bone = project.bones.find((candidate) => candidate.id === entity.id);
+	const selectedSetupTransform = selectedBone?.transform ?? selectedAttachment?.transform;
+	const evaluatedTransformFor = function evaluatedTransformFor(entity: SelectableEntity): LocalTransform | undefined {
+		const setupTransform = entity.kind === 'bone'
+			? project.bones.find((bone) => bone.id === entity.id)?.transform
+			: entity.kind === 'attachment'
+				? project.attachments.find((attachment) => attachment.id === entity.id)?.transform
+				: undefined;
 
-			return bone ? [{ entity, transform: bone.transform }] : [];
+		if (mode !== 'animate' || !activePose) {
+			return setupTransform;
+		}
+		if (entity.kind === 'bone') {
+			return activePose.bones.find((bone) => bone.id === entity.id)?.localTransform ?? setupTransform;
 		}
 		if (entity.kind === 'attachment') {
-			const attachment = project.attachments.find((candidate) => candidate.id === entity.id);
+			return activePose.attachments.find((attachment) => attachment.id === entity.id)?.localTransform ?? setupTransform;
+		}
 
-			return attachment ? [{ entity, transform: attachment.transform }] : [];
+		return setupTransform;
+	};
+	const selectedTransform = selectedEntity ? evaluatedTransformFor(selectedEntity) : selectedSetupTransform;
+	const selectedTransformEntities = selection.flatMap((entity): readonly SelectedTransformEntry[] => {
+		const transform = evaluatedTransformFor(entity);
+
+		if (transform && (entity.kind === 'bone' || entity.kind === 'attachment')) {
+			return [{ entity, transform }];
 		}
 
 		return [];
@@ -1714,32 +1916,39 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const allSelectedRectangles = selection.length > 0
 		&& selectedAttachments.length === selection.length
 		&& selectedAttachments.every((attachment) => attachment.kind === 'rectangle');
-	const selectedTransformValue = function selectedTransformValue(property: BoneTransformProperty): number | undefined {
-		return selectedTransformEntities.at(-1)?.transform[property] ?? selectedTransform?.[property];
+	const selectedTransformValues = function selectedTransformValues(property: BoneTransformProperty): readonly number[] {
+		return allSelectedTransformable ? selectedTransformEntities.map((entry) => entry.transform[property]) : [];
 	};
 	const selectedTransformIsMixed = function selectedTransformIsMixed(property: BoneTransformProperty): boolean {
-		const values = allSelectedTransformable ? selectedTransformEntities.map((entry) => entry.transform[property]) : [];
+		const values = selectedTransformValues(property);
 
 		return values.length > 1 && values.some((value) => !Object.is(value, values[0]));
 	};
+	const selectedTransformValue = function selectedTransformValue(property: BoneTransformProperty): number | undefined {
+		return selectedTransformIsMixed(property) ? undefined : selectedTransformEntities.at(-1)?.transform[property] ?? selectedTransform?.[property];
+	};
+	const selectedAttachmentValues = function selectedAttachmentValues(property: 'opacity' | 'pivotX' | 'pivotY' | 'width' | 'height'): readonly number[] {
+		return selectedAttachments.flatMap((attachment) => {
+			const evaluated = mode === 'animate' ? activePose?.attachments.find((candidate) => candidate.id === attachment.id) : undefined;
+
+			if (attachment.kind === 'image' && (property === 'opacity' || property === 'pivotX' || property === 'pivotY')) {
+				return [property === 'opacity' && evaluated?.kind === 'image' ? evaluated.opacity : attachment[property]];
+			}
+			if (attachment.kind === 'rectangle' && (property === 'width' || property === 'height')) {
+				return [evaluated?.kind === 'rectangle' ? evaluated[property] : attachment[property]];
+			}
+
+			return [];
+		});
+	};
 	const selectedAttachmentValue = function selectedAttachmentValue(property: 'opacity' | 'pivotX' | 'pivotY' | 'width' | 'height'): number | undefined {
-		const attachment = selectedAttachments.at(-1);
+		const values = selectedAttachmentValues(property);
+		const first = values[0];
 
-		if (attachment?.kind === 'image' && (property === 'opacity' || property === 'pivotX' || property === 'pivotY')) {
-			return attachment[property];
-		}
-		if (attachment?.kind === 'rectangle' && (property === 'width' || property === 'height')) {
-			return attachment[property];
-		}
-
-		return undefined;
+		return first !== undefined && values.every((value) => Object.is(value, first)) ? values.at(-1) : undefined;
 	};
 	const selectedAttachmentIsMixed = function selectedAttachmentIsMixed(property: 'opacity' | 'pivotX' | 'pivotY' | 'width' | 'height'): boolean {
-		const values = allSelectedImages && (property === 'opacity' || property === 'pivotX' || property === 'pivotY')
-			? selectedAttachments.flatMap((attachment) => attachment.kind === 'image' ? [attachment[property]] : [])
-			: allSelectedRectangles && (property === 'width' || property === 'height')
-				? selectedAttachments.flatMap((attachment) => attachment.kind === 'rectangle' ? [attachment[property]] : [])
-				: [];
+		const values = selectedAttachmentValues(property);
 
 		return values.length > 1 && values.some((value) => !Object.is(value, values[0]));
 	};
@@ -1751,44 +1960,85 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				? 'Select a bone before dropping on the canvas. Drop on a slot to add an attachment.'
 				: 'Drop on the canvas to create a root bone, slot, and attachment.';
 	const renameInputRef = useRef<HTMLInputElement>(null);
-	const keyStateForProperty = function keyStateForProperty(
-		entityId: EntityId,
-		property: KeyableProperty
-	): 'unkeyed' | 'pending' | 'keyed' | undefined {
-		return mode === 'animate' && activeClip
-			? propertyKeyState({
+	const keyStatesForProperty = function keyStatesForProperty(property: KeyableProperty): readonly PropertyKeyState[] {
+		if (mode !== 'animate' || !activeClip) {
+			return [];
+		}
+
+		return selection.flatMap((entity) => {
+			const state = propertyKeyState({
 				project,
 				clip: activeClip,
-				targetId: entityId,
+				targetId: entity.id,
 				property,
 				frameIndex: activePlayback.frameIndex,
 				autoKey,
 				pendingEdits: pendingAnimationEdits
-			})
-			: undefined;
+			});
+
+			return [state];
+		});
+	};
+	const keyStateForProperty = function keyStateForProperty(
+		entityId: EntityId,
+		property: KeyableProperty
+	): 'unkeyed' | 'pending' | 'keyed' | undefined {
+		if (!selection.some((entity) => entity.id === entityId)) {
+			return undefined;
+		}
+
+		const states = keyStatesForProperty(property);
+		const first = states[0];
+
+		return first !== undefined && states.every((state) => state === first) ? first : undefined;
+	};
+	const keyStateMixedForProperty = function keyStateMixedForProperty(property: KeyableProperty): boolean {
+		const states = keyStatesForProperty(property);
+		const first = states[0];
+
+		return first !== undefined && states.length > 1 && states.some((state) => state !== first);
 	};
 	const togglePropertyKey = function togglePropertyKey(property: KeyableProperty): void {
 		if (!selectedEntity || (selectedEntity.kind !== 'bone' && selectedEntity.kind !== 'attachment') || !activeClip || mode !== 'animate') {
 			return;
 		}
 
-		const plan = planPropertyKeyToggle({
-			project,
-			clip: activeClip,
-			targetId: selectedEntity.id,
-			property,
-			frameIndex: activePlayback.frameIndex,
-			autoKey,
-			pendingEdits: pendingAnimationEdits
-		});
+		const state = keyStateForProperty(selectedEntity.id, property);
 
-		if (plan.commands.length > 0 && applyCommandSequence(plan.commands)) {
-			setPendingAnimationEdits((current) => current.filter((pending) => pending.targetId !== selectedEntity.id || pending.property !== property));
-			setKeyingAnnouncement(keyingAnnouncementFor(property, plan.state === 'keyed' ? 'unkeyed' : 'keyed', activePlayback.frameIndex));
+		if (!state) {
+			setCommandError('Key diamonds are disabled while selected entities have mixed key states.');
 			return;
 		}
-		if (plan.reason) {
-			setCommandError(plan.reason);
+
+		const plans = selection.flatMap((entity) => {
+			if (entity.kind !== 'bone' && entity.kind !== 'attachment') {
+				return [];
+			}
+
+			return [planPropertyKeyToggle({
+				project,
+				clip: activeClip,
+				targetId: entity.id,
+				property,
+				frameIndex: activePlayback.frameIndex,
+				autoKey,
+				pendingEdits: pendingAnimationEdits
+			})];
+		});
+		const reason = plans.find((plan) => plan.reason)?.reason;
+
+		if (reason) {
+			setCommandError(reason);
+			return;
+		}
+
+		const commands = plans.flatMap((plan) => plan.commands);
+
+		if (commands.length > 0 && applyCommandSequence(commands)) {
+			const targetIds = new Set(selection.map((entity) => entity.id));
+			setPendingAnimationEdits((current) => current.filter((pending) => !targetIds.has(pending.targetId) || pending.property !== property));
+			setKeyingAnnouncement(keyingAnnouncementFor(property, state === 'keyed' ? 'unkeyed' : 'keyed', activePlayback.frameIndex));
+			return;
 		}
 	};
 	const commitDirectProperty = function commitDirectProperty(property: NumericProperty, value: number): string | undefined {
@@ -1812,7 +2062,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					? { kind: 'update-bone-transform', boneId: entity.id, transform: nextTransform }
 					: { kind: 'update-attachment-transform', attachmentId: entity.id, transform: nextTransform };
 
-				return [{ entity, currentValue: transform[transformProperty], command }];
+				const evaluatedTransform = evaluatedTransformFor(entity) ?? transform;
+
+				return [{ entity, setupValue: transform[transformProperty], currentValue: evaluatedTransform[transformProperty], command }];
 			}
 
 			const attachment = entity.kind === 'attachment'
@@ -1821,21 +2073,30 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 			if (attachment?.kind === 'image') {
 				if (property === 'opacity') {
-					return [{ entity, currentValue: attachment.opacity, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { opacity: value } } }];
+					const evaluated = mode === 'animate' ? activePose?.attachments.find((candidate) => candidate.id === attachment.id) : undefined;
+					const currentValue = evaluated?.kind === 'image' ? evaluated.opacity : attachment.opacity;
+
+					return [{ entity, setupValue: attachment.opacity, currentValue, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { opacity: value } } }];
 				}
 				if (property === 'pivotX') {
-					return [{ entity, currentValue: attachment.pivotX, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotX: value } } }];
+					return [{ entity, setupValue: attachment.pivotX, currentValue: attachment.pivotX, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotX: value } } }];
 				}
 				if (property === 'pivotY') {
-					return [{ entity, currentValue: attachment.pivotY, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotY: value } } }];
+					return [{ entity, setupValue: attachment.pivotY, currentValue: attachment.pivotY, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotY: value } } }];
 				}
 			}
 			if (attachment?.kind === 'rectangle') {
 				if (property === 'width') {
-					return [{ entity, currentValue: attachment.width, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: value, height: attachment.height } }];
+					const evaluated = mode === 'animate' ? activePose?.attachments.find((candidate) => candidate.id === attachment.id) : undefined;
+					const currentValue = evaluated?.kind === 'rectangle' ? evaluated.width : attachment.width;
+
+					return [{ entity, setupValue: attachment.width, currentValue, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: value, height: attachment.height } }];
 				}
 				if (property === 'height') {
-					return [{ entity, currentValue: attachment.height, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: attachment.width, height: value } }];
+					const evaluated = mode === 'animate' ? activePose?.attachments.find((candidate) => candidate.id === attachment.id) : undefined;
+					const currentValue = evaluated?.kind === 'rectangle' ? evaluated.height : attachment.height;
+
+					return [{ entity, setupValue: attachment.height, currentValue, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: attachment.width, height: value } }];
 				}
 			}
 
@@ -1856,7 +2117,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const autoKeys = animationClip && autoKey && keyableProperty
 			? changedTargets.flatMap((target) => autoKeyCommandsForProperty(project, animationClip, target.entity.id, keyableProperty, activePlayback.frameIndex, createEntityId, value))
 			: [];
-		const committed = applyCommandSequence([...changedTargets.map((target) => target.command), ...autoKeys]);
+		const setupCommands = changedTargets.flatMap((target) => Object.is(target.setupValue, value) ? [] : [target.command]);
+		const committed = applyCommandSequence([...setupCommands, ...autoKeys]);
 
 		if (!committed) {
 			return 'The property could not be committed.';
@@ -1873,6 +2135,87 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 
 		return undefined;
+	};
+	const booleanKeyCommandsFor = function booleanKeyCommandsFor(
+		clip: Clip,
+		attachment: Extract<Attachment, { kind: 'point' | 'rectangle' }>,
+		value: boolean,
+		frameIndex: number
+	): readonly ProjectCommand[] {
+		const definition: TrackDefinition = attachment.kind === 'point'
+			? { kind: 'point-enabled', targetId: attachment.id }
+			: { kind: 'rectangle-enabled', targetId: attachment.id };
+		const track = clip.tracks.find((candidate) => trackMatchesDefinition(candidate, definition));
+		const trackId = track?.id ?? createEntityId();
+		const key = track?.keys.find((candidate) => frameIndexForTime(clip, candidate.timeSeconds) === frameIndex);
+
+		return [
+			...(track ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: clip.id, definition }]),
+			key
+				? { kind: 'set-boolean-key' as const, clipId: clip.id, trackId, keyId: key.id, value }
+				: { kind: 'add-boolean-key' as const, id: createEntityId(), clipId: clip.id, trackId, input: { timeSeconds: frameIndex / clip.fps, value } }
+		];
+	};
+	const commitEnabled = function commitEnabled(value: boolean): string | undefined {
+		if (selection.length === 0) {
+			return 'Select a point or rectangle before editing enabled state.';
+		}
+
+		const targets = selection.flatMap((entity): readonly Extract<Attachment, { kind: 'point' | 'rectangle' }>[] => {
+			if (entity.kind !== 'attachment') {
+				return [];
+			}
+
+			const attachment = project.attachments.find((candidate) => candidate.id === entity.id);
+
+			return attachment?.kind === 'point' || attachment?.kind === 'rectangle' ? [attachment] : [];
+		});
+
+		if (targets.length !== selection.length) {
+			return 'Enabled is supported only when every selected attachment is a point or rectangle.';
+		}
+
+		const changed = targets.filter((attachment) => attachment.enabled !== value);
+
+		if (changed.length === 0) {
+			return undefined;
+		}
+
+		const setupCommands = changed.map((attachment): ProjectCommand => attachment.kind === 'point'
+			? { kind: 'update-point-enabled', attachmentId: attachment.id, enabled: value }
+			: { kind: 'update-rectangle-enabled', attachmentId: attachment.id, enabled: value });
+		const animationCommands = mode === 'animate' && activeClip && autoKey
+			? changed.flatMap((attachment) => booleanKeyCommandsFor(activeClip, attachment, value, activePlayback.frameIndex))
+			: [];
+
+		if (!applyCommandSequence([...setupCommands, ...animationCommands])) {
+			return 'Enabled state could not be committed.';
+		}
+
+		return undefined;
+	};
+	const keyCurrentEnabled = function keyCurrentEnabled(value: boolean): void {
+		if (mode !== 'animate' || !activeClip) {
+			return;
+		}
+
+		const attachments = selection.flatMap((entity): readonly Extract<Attachment, { kind: 'point' | 'rectangle' }>[] => {
+			if (entity.kind !== 'attachment') {
+				return [];
+			}
+
+			const attachment = project.attachments.find((candidate) => candidate.id === entity.id);
+
+			return attachment?.kind === 'point' || attachment?.kind === 'rectangle' ? [attachment] : [];
+		});
+
+		if (attachments.length !== selection.length) {
+			return;
+		}
+
+		applyCommandSequence(attachments.flatMap((attachment) => (
+			booleanKeyCommandsFor(activeClip, attachment, value, activePlayback.frameIndex)
+		)));
 	};
 	const toggleEditorVisibility = function toggleEditorVisibility(node: RigTreeNode): void {
 		if (node.kind === 'slot') {
@@ -1900,44 +2243,23 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			setInlineRenameId(undefined);
 		}
 	};
+	const selectionIsValid = function selectionIsValid(entity: SelectableEntity): boolean {
+		return selectableEntityForId(project, entity.id)?.kind === entity.kind;
+	};
 	const navigateSelectionHistory = function navigateSelectionHistory(direction: -1 | 1): void {
-		const nextIndex = selectionHistoryCursorRef.current + direction;
-		const nextEntry = selectionHistory[nextIndex];
+		const currentHistory = selectionHistoryRef.current;
+		const navigation = navigateHistoryState(currentHistory, direction, selectionIsValid);
 
-		if (!nextEntry) {
+		if (!navigation.selection) {
 			return;
 		}
 
-		const validSelection = nextEntry.filter((entity) => entity.kind === 'asset'
-			? project.assets.some((asset) => asset.id === entity.id)
-			: entity.kind === 'bone'
-				? project.bones.some((bone) => bone.id === entity.id)
-				: entity.kind === 'slot'
-					? project.slots.some((slot) => slot.id === entity.id)
-					: project.attachments.some((attachment) => attachment.id === entity.id));
-
-		if (validSelection.length === 0) {
-			selectionHistoryCursorRef.current = nextIndex;
-			navigateSelectionHistory(direction);
-			return;
-		}
-
-		selectionHistoryCursorRef.current = nextIndex;
-		setSelection(validSelection);
-		const model = buildRigTreeViewModel(project, validSelection, new Set(presentation.rigExpandedIds));
-		const target = validSelection.at(-1);
-
-		if (target && target.kind !== 'asset') {
-			const expanded = revealAncestors(model, target.id, new Set(presentation.rigExpandedIds));
-
-			updatePresentation((current) => ({ ...current, rigExpandedIds: [...expanded] }));
-			window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-row-id="${target.id}"]`)?.scrollIntoView({ block: 'nearest' }));
-		}
+		selectionHistoryRef.current = navigation.state;
+		setSelectionHistory(navigation.state);
+		setSelection(navigation.selection, 'history');
 	};
 	const canNavigateSelectionHistory = function canNavigateSelectionHistory(direction: -1 | 1): boolean {
-		const nextIndex = selectionHistoryCursorRef.current + direction;
-
-		return nextIndex >= 0 && nextIndex < selectionHistory.length;
+		return canNavigateHistoryState(selectionHistory, direction, selectionIsValid);
 	};
 	const currentDrawOrder = function currentDrawOrder(): readonly EntityId[] {
 		const track = activeClip?.tracks.find((candidate) => candidate.kind === 'slot-draw-order');
@@ -2229,6 +2551,25 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			setKeyingAnnouncement(`Keyed ${count} pending propert${count === 1 ? 'y' : 'ies'} at frame ${activePlayback.frameIndex + 1}.`);
 		}
 	};
+	const navigateInspectorEntity = function navigateInspectorEntity(entity: SelectableEntity): void {
+		const retainedContext = inspectorContext;
+
+		recordSelection([entity], 'rig');
+		setInspectorContext(retainedContext);
+	};
+	const updateInspectorContext = function updateInspectorContext(context: InspectorContext): void {
+		setInspectorContext(context);
+
+		if (context.kind === 'none' || context.kind === 'entity') {
+			return;
+		}
+
+		updatePresentation((current) => ({
+			...current,
+			rightDockTab: 'properties',
+			layout: { ...current.layout, rightDockCollapsed: false }
+		}));
+	};
 	const workspaceViewport = { width: viewportWidth, height: viewportHeight };
 	const rigTreeProps: WorkspaceDocksProps['rigTreeProps'] = {
 		assetSlotDropPreview,
@@ -2266,7 +2607,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		},
 		onRenameCancel: () => setInlineRenameId(undefined),
 		onRenameCommit: renameRigNode,
-		onSelectionChange: setSelectionFromSurface,
+		onSelectionChange: (nextSelection) => setSelectionFromSurface(nextSelection, 'rig'),
 		onToggleVisibility: toggleEditorVisibility
 	};
 	const drawOrderProps: WorkspaceDocksProps['drawOrderProps'] = {
@@ -2276,7 +2617,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		selection,
 		onKeyCurrentFrame: mode === 'animate' ? keyCurrentDrawOrder : undefined,
 		onReorder: reorderDrawOrder,
-		onSelectionChange: (slotId, additive) => updateSelection({ kind: 'slot', id: slotId }, additive)
+		onSelectionChange: (slotId, additive) => updateSelection({ kind: 'slot', id: slotId }, additive, 'draw-order')
 	};
 	const assetBrowserProps: WorkspaceDocksProps['assetBrowserProps'] = {
 		assets: assetBlobs,
@@ -2295,17 +2636,24 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		onDrop: dropOnLibrary,
 		onImport: () => void importDirectory(),
 		onQueryChange: setAssetQuery,
-		onSelectionChange: (assetId, additive) => updateSelection({ kind: 'asset', id: assetId }, additive)
+		onSelectionChange: (assetId, additive) => updateSelection({ kind: 'asset', id: assetId }, additive, 'asset')
 	};
 	const propertiesProps: WorkspaceDocksProps['propertiesProps'] = {
+		activeClip,
 		activeFrameIndex: activePlayback.frameIndex,
+		activePose,
 		allSelectedImages,
 		allSelectedRectangles,
+		allSelectedTransformable,
 		collapsedSections: collapsedInspectorSections,
-		keyingAnnouncement,
-		keyStateForProperty,
+			keyingAnnouncement,
+			keyStateForProperty,
+			keyStateMixedForProperty,
+		mode,
 		onCommitDirectProperty: commitDirectProperty,
+		onCommitEnabled: commitEnabled,
 		onDeleteSelected: deleteSelected,
+		onKeyEnabled: keyCurrentEnabled,
 		onRenameSelected: renameSelected,
 		onTogglePropertyKey: togglePropertyKey,
 		onUpdateSlotAttachment: updateSlotAttachment,
@@ -2324,16 +2672,28 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			context: inspectorContext,
 			collapsedSections: collapsedInspectorSections,
 			onDeleteEvent: deleteSharedEvent,
-			onDeleteTrack: deleteSharedTrack,
+			 onDeleteTrack: deleteSharedTrack,
 			onMoveEvent: moveSharedEvent,
+			onMoveKeys: moveSharedKeys,
+			 onNavigateEntity: navigateInspectorEntity,
 			onRenameClip: renameSharedClip,
+			onSaveClip: saveSharedClip,
+			onDuplicateClip: duplicateClipById,
+			onDeleteClip: deleteClipById,
 			onToggleSection: toggleInspectorSection,
 			onUpdateAttachmentKey: updateSharedAttachmentKey,
+			onKeyCurrentAttachment: keyCurrentAttachment,
 			onUpdateClipPlayback: updateSharedClipPlayback,
 			onUpdateDrawOrderKey: updateSharedDrawOrderKey,
+			onKeyCurrentDrawOrder: mode === 'animate' ? (clipId, value): void => { if (activeClip?.id === clipId) { keyCurrentDrawOrder(value); } } : undefined,
 			onUpdateEvent: updateSharedEvent,
 			onUpdateInterpolation: updateSharedInterpolation,
 			onUpdateNumberKeys: updateSharedNumberKeys,
+			onUpdateKeys: updateSharedKeys,
+			activeClip,
+			activeFrameIndex: activePlayback.frameIndex,
+			activePose,
+			mode,
 			project
 		},
 		showSharedInspector: presentation.rightDockTab === 'properties'
@@ -2381,8 +2741,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					<button className="quiet-button" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" disabled={!canRedo(history)} onClick={() => stepHistory(redo(history))} title="Redo · Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y">Redo</button>
 					<button className="quiet-button" type="button" aria-label="Previous selection" aria-keyshortcuts="PageUp" disabled={!canNavigateSelectionHistory(-1)} onClick={() => navigateSelectionHistory(-1)} title="Previous selection · Page Up">Previous</button>
 					<button className="quiet-button" type="button" aria-label="Next selection" aria-keyshortcuts="PageDown" disabled={!canNavigateSelectionHistory(1)} onClick={() => navigateSelectionHistory(1)} title="Next selection · Page Down">Next</button>
-					<button className="quiet-button" type="button" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={() => setShortcutPanelOpen(true)} title="Keyboard shortcuts · ?">?</button>
-					<button className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel} title="Export sprite sheet">Export</button>
+					<Tooltip label="Keyboard shortcuts" shortcut="?">
+						<button aria-controls="keyboard-shortcuts-dialog" aria-expanded={shortcutPanelOpen} aria-haspopup="dialog" className="quiet-button" type="button" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={() => setShortcutPanelOpen(true)}>?</button>
+					</Tooltip>
+					<button aria-controls="export-animation-dialog" aria-expanded={exportPanelOpen} aria-haspopup="dialog" className="primary-button" type="button" disabled={project.clips.length === 0} onClick={openExportPanel} title="Export sprite sheet">Export</button>
 				</div>
 			</header>
 			{exportPanelOpen && (
@@ -2498,7 +2860,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								pinnedEntityIds={new Set(presentation.pinnedTimelineEntityIds)}
 								autoKey={autoKey}
 								pendingEditCount={pendingAnimationEdits.length}
-								onSelectClip={setActiveClipId}
+								onSelectClip={selectActiveClip}
 								onCreateClip={createAnimationClip}
 								onDuplicateClip={duplicateActiveClip}
 								onRenameClip={renameActiveClip}
@@ -2522,7 +2884,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								onDeleteKeys={deleteAnimationKeys}
 								onRetimeKeys={retimeAnimationKeys}
 								onPasteKeys={pasteAnimationKeys}
-								onSelectEntity={(entity, additive) => updateSelection(entity, additive)}
+								onSelectEntity={(entity, additive) => updateSelection(entity, additive, 'timeline')}
 								onSelectTransformTool={setTransformTool}
 								onRowModeChange={(nextMode) => updatePresentation((current) => ({ ...current, timelineRowMode: nextMode }))}
 								onExpandedRowIdsChange={(ids) => updatePresentation((current) => ({ ...current, timelineExpandedIds: [...ids] }))}
@@ -2533,7 +2895,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										: [...current.pinnedTimelineEntityIds, entityId]
 								}))}
 								onClearPinnedEntities={() => updatePresentation((current) => ({ ...current, pinnedTimelineEntityIds: [] }))}
-								onContextChange={setInspectorContext}
+							onContextChange={updateInspectorContext}
 								onAutoKeyChange={setAutoKey}
 								onKeyPendingEdits={keyPendingAnimationEdits}
 							/>

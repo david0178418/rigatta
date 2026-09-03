@@ -25,6 +25,13 @@ Rectangle animation exposes all local transform properties, including rotation,
 plus independent positive width and height numeric tracks and a discrete
 enabled track. The current setup dimensions and enabled state seed new keys.
 
+In Animate mode, the right-dock Properties inspector groups gameplay name,
+transform, dimensions, and enabled state and labels setup, current evaluated,
+and keyed values separately. A selected event, key, draw-order key, or
+attachment-swap likewise uses the Properties context rather than a timeline
+modal; timeline controls remain for selection, seeking, and small creation
+menus.
+
 `evaluateGameplayFrame` samples a validated clip time through the same pure pose
 evaluator used by the editor. It returns point origins and rectangle corners in
 world-space logical-canvas coordinates, along with evaluated rectangle width,

@@ -76,7 +76,7 @@ test('restores matching-project presentation, isolates a new project, and falls 
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.addInitScript(({ key, projectId, rootBoneId }) => {
 		localStorage.setItem(key, JSON.stringify({
-			version: 1,
+			version: 2,
 			globalDensity: 'list',
 			projects: {
 				[projectId]: {

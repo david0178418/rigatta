@@ -10,6 +10,7 @@ import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from './grid.ts';
 import type { Selection } from './selection.ts';
 import { canvasGestureModeFor, type CanvasGestureMode, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { isShortcutTypingTarget } from './shortcuts.ts';
+import { Tooltip } from './ui-primitives.tsx';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -152,6 +153,8 @@ export const ViewportCanvas = function ViewportCanvas({
 						gridVisible,
 						gridSpacing,
 						hiddenIds,
+						selectedIds: selection?.map((entity) => entity.id),
+						transformTool,
 						showBones: true,
 						showGameplay: true
 					})
@@ -345,7 +348,6 @@ export const ViewportCanvas = function ViewportCanvas({
 				return;
 			}
 			if (event.key === ' ') {
-				event.preventDefault();
 				spacePressedRef.current = true;
 			}
 		};
@@ -491,10 +493,18 @@ export const ViewportCanvas = function ViewportCanvas({
 			<div className="viewport-overlay">
 				<div className="viewport-coordinate-readout" aria-label="Canvas coordinate readout" role="status">{formatViewportCoordinate(pointerPoint)}</div>
 				<div className="viewport-controls" aria-label="Viewport controls">
-					<button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoomAtCenter(1)}>−</button>
-					<button type="button" aria-label="Reset viewport" title="Reset viewport" onClick={() => setViewport(resetViewport())}>{formatViewportZoom(viewport.zoom)}</button>
-					<button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoomAtCenter(-1)}>+</button>
-					<button type="button" aria-label="Center viewport" title="Center viewport" onClick={() => setViewport(resetViewport())}>Center</button>
+					<Tooltip label="Zoom out">
+						<button type="button" aria-label="Zoom out" onClick={() => zoomAtCenter(1)}>−</button>
+					</Tooltip>
+					<Tooltip label="Reset viewport">
+						<button type="button" aria-label="Reset viewport" onClick={() => setViewport(resetViewport())}>{formatViewportZoom(viewport.zoom)}</button>
+					</Tooltip>
+					<Tooltip label="Zoom in">
+						<button type="button" aria-label="Zoom in" onClick={() => zoomAtCenter(-1)}>+</button>
+					</Tooltip>
+					<Tooltip label="Center viewport">
+						<button type="button" aria-label="Center viewport" onClick={() => setViewport(resetViewport())}>Center</button>
+					</Tooltip>
 				</div>
 			</div>
 			{error && <div className="renderer-error" role="alert">{error}</div>}

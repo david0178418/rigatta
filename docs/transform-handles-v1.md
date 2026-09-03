@@ -25,6 +25,9 @@ middle-drag or Space+primary-drag for that navigation gesture.
 For a multi-selection, translation, rotation, scale, and shear deltas are
 applied to every transformable selection member from the shared gesture
 pointer. The handle center is the average of the selected entity origins.
+Timeline property-row selection keeps the corresponding entity selected in the
+Rig tree and chooses the matching toolbar tool; the resulting pose remains
+visible in the Properties inspector without opening a timeline editor.
 
 Transform guides and handles are editor overlays rendered after the setup pose.
 Export callers can omit the selection and tool render options so these overlays

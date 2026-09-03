@@ -15,3 +15,9 @@ payloads.
 Metadata generation validates the project and all sample/key/page arrays before
 creating any clip records. Duplicate clip names, frame keys, stale clip inputs,
 and incomplete arrays are rejected.
+
+Point and rectangle setup fields are edited in the Properties inspector. Their
+current Animate values are evaluated at the active frame, while keyed enabled
+state and rectangle size remain distinct from setup data. Rectangle width and
+height are positive pixel units; exported metadata continues to use evaluated
+world-space corners rather than editor-local coordinates.

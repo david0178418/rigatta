@@ -26,19 +26,20 @@ The plan assumes the completed P0 implementation:
 
 P1 and P2 must preserve those guarantees.
 
-## Implementation checkpoint — 2026-09-02
+## Implementation checkpoint — 2026-09-02 (259 unit / 78 Chromium tests)
 
 This document records the 2026-09-02 implementation checkpoint and the
 subsequent verified P1/P2 increments. The checkpoint commits are listed below;
 the current working tree also contains uncommitted follow-up implementation and
-tests. This is not yet a completed P1/P2 release; the task checkboxes below
-remain the source of truth for final acceptance.
+tests. The clean checkpoint gate passed 259 unit tests and 78 Chromium tests.
+This is not yet a completed P1/P2 release; the task checkboxes below remain the
+source of truth for final acceptance.
 
 ### Repository state
 
 - Branch: `master`.
-- Implementation checkpoint commits through `HEAD` (`33d1435 Extract P1 editor
-  presentation boundaries`): `5514d62 Add P1 structure characterization`,
+- Implementation checkpoint commits through `HEAD` (`73717d1 Complete P1
+  Project menu`) include `5514d62 Add P1 structure characterization`,
   `8beefbe Complete P1 keying contracts`, `e91c175 Complete P2 layout and
   presentation persistence integration`, `cb5cf67 Complete persistent
   inspector disclosures`, `ed71f08 Complete P1 semantic Rig tree
@@ -47,7 +48,10 @@ remain the source of truth for final acceptance.
   gestures and constraints`, `98a2404 Implement UX P1-14 key diamonds`,
   `3940596 Complete UX P1-04 UI primitives`, `88f34bc Implement UX P2 asset
   density and preview`, `cd4c4df Complete UX P2-09 editor visibility proof`,
-  and `33d1435 Extract P1 editor presentation boundaries`.
+  `33d1435 Extract P1 editor presentation boundaries`, `a7456ec Complete
+  workspace and Rig efficiency`, `f7fd908 Complete timeline direct editing
+  and shortcuts`, `4a1defe Complete P1 Draw Order workflow`, `8cf1d7f
+  Complete P2 pinned timeline rows`, and `73717d1 Complete P1 Project menu`.
 - Remaining unchecked tasks are still in progress. Preserve unrelated working
   tree changes when resuming; do not reset or discard them.
 - Browser checks use `http://localhost:3000/`; reuse an occupied local Bun
@@ -99,24 +103,26 @@ remain the source of truth for final acceptance.
 
 ### Validation already recorded
 
-- `bun test src tests/unit`: 248 tests passed, including semantic Rig-tree,
+- `bun test src tests/unit`: 259 tests passed, including semantic Rig-tree,
   contextual workspace Add actions, linked tabpanels, grouped timeline/key-drag,
-  preference migration, storage failure, layout matrix, and stale-ID coverage.
-- `bun run lint`: passed with three pre-existing missing-return-type warnings in
-  `src/app/project-menu.tsx` and `tests/unit/ux-models.test.ts`.
+  typed clipboard commands, preference migration, storage failure, layout
+  matrix, and stale-ID coverage.
+- `bun run lint`: passed with the three explicit-return annotations in the
+  Animate timeline follow-up and one pre-existing missing-return-type warning
+  in `tests/unit/ux-models.test.ts`.
 - `bun run typecheck`, `bun run build`, and `git diff --check` pass.
 - Focused Chromium workflows cover direct field commits and validation, mixed
-  multi-selection display, current-frame key diamonds and undo, import
-  conflicts/drop hints, coordinate/origin overlays, grid popover dismissal,
-  supported layouts, dock resizing and collapse, linked dock tabpanels,
-  contextual Add actions and image-attachment workflow, project-scoped
+  multi-selection display, current-frame key diamonds and undo, grouped timeline
+  seeking, key dragging, marquee selection, typed clipboard commands, precision
+  detail surfaces, import conflicts/drop hints, coordinate/origin overlays, grid
+  popover dismissal, supported layouts, dock resizing and collapse, linked dock
+  tabpanels, contextual Add actions and image-attachment workflow, project-scoped
   presentation restoration, inspector disclosure persistence/isolation, canvas
   gesture precedence, and transform constraints. The workspace/Add-menu suite
   passes all 3 tests, and the affected existing suites pass all 16 tests.
-- The latest full `bun run test:e2e` run passes 67 of 72 Chromium tests. Five
-  failures remain in the uncommitted sibling Rig-rename/shortcut work and its
-  dependent smoke multi-selection workflow; the full P1/P2 gate is therefore
-  still open.
+- The latest full `bun run test:e2e` run passes all 78 Chromium tests. The P1/P2
+  release gate remains open because the final accessibility, regression, and
+  documentation tasks are still unchecked.
 
 ### Resume from here
 
@@ -285,7 +291,7 @@ type assertions to bypass validation.
   Unavailable items explain their required context. Preserve unique naming and
   existing commands/history.
 
-- [ ] **UX-P1-09** Build the separate Draw Order tab. Depends on UX-P1-03. Show
+- [x] **UX-P1-09** Build the separate Draw Order tab. Depends on UX-P1-03. Show
   every slot in clearly labelled back-to-front order with direct drag reordering
   in Setup mode. In Animate mode, show whether the displayed order comes from
   setup or a current keyed override and provide an explicit current-frame key
@@ -335,12 +341,12 @@ type assertions to bypass validation.
   entity references. Support `Selection` and `All keyed` modes and existing text
   filtering. Add comprehensive row-model tests.
 
-- [ ] **UX-P1-17** Render the grouped dopesheet. Depends on UX-P1-16. Keep the
+- [x] **UX-P1-17** Render the grouped dopesheet. Depends on UX-P1-16. Keep the
   ruler and row-label column sticky, make entity/property groups collapsible,
   show aggregate keys in overview/group rows, and retain clear shapes/line styles
   for continuous, stepped, attachment, draw-order, enabled, and event data.
 
-- [ ] **UX-P1-18** Add direct ruler/lane seeking and cross-surface selection.
+- [x] **UX-P1-18** Add direct ruler/lane seeking and cross-surface selection.
   Depends on UX-P1-10 and UX-P1-17. Clicking ruler or empty lane sets the
   playhead; clicking a key selects and seeks; clicking a property label selects
   the related entity and appropriate transform tool where applicable. Preserve
@@ -352,23 +358,23 @@ type assertions to bypass validation.
   inputs. Add tests for single/multi-track selections, negative movement, bounds,
   collisions, and no-op drags.
 
-- [ ] **UX-P1-20** Implement direct key dragging. Depends on UX-P1-18 and
+- [x] **UX-P1-20** Implement direct key dragging. Depends on UX-P1-18 and
   UX-P1-19. Use pointer capture and a movement threshold so click remains select.
   Preview movement without mutating project state, then commit all keys as one
   history transaction. Escape/pointer cancellation restores the original state.
 
-- [ ] **UX-P1-21** Add timeline marquee and range selection. Depends on
+- [x] **UX-P1-21** Add timeline marquee and range selection. Depends on
   UX-P1-18. Dragging empty key-lane space selects intersecting visible keys;
   Ctrl/Cmd adds to selection. Ensure the marquee coexists with seeking, key
   dragging, vertical scrolling, and timeline resizing.
 
-- [ ] **UX-P1-22** Add typed key clipboard and standard key commands. Depends on
+- [x] **UX-P1-22** Add typed key clipboard and standard key commands. Depends on
   UX-P1-19. Implement Ctrl/Cmd+C, Ctrl/Cmd+V, Delete, and Arrow Left/Right only
   while timeline context is active and not while typing. Validate multi-key paste
   atomically, allocate fresh IDs, preserve relative timing, and commit paste,
   delete, or nudge as one history entry.
 
-- [ ] **UX-P1-23** Reduce timeline detail surfaces to precision/advanced editing.
+- [x] **UX-P1-23** Reduce timeline detail surfaces to precision/advanced editing.
   Depends on UX-P1-14 and UX-P1-20 through UX-P1-22. Keep numeric frame/value,
   interpolation, Bezier, attachment, draw-order, enabled, and event details, but
   remove duplicate Move/Copy/Delete form actions now covered directly. Detail
@@ -382,7 +388,7 @@ type assertions to bypass validation.
   adding project history or layout movement. A later successful save clears the
   failure state.
 
-- [ ] **UX-P1-25** Add the Project menu. Depends on UX-P1-04 and UX-P1-24.
+- [x] **UX-P1-25** Add the Project menu. Depends on UX-P1-04 and UX-P1-24.
   Provide New, Open recent, Import `.boneanim`, Export project archive, Load
   example, and Project settings. Reuse existing repository/archive services,
   validate imports before replacing the active project, distinguish archive
@@ -488,7 +494,7 @@ or `Move key`, and without document scrolling.
 
 ### Rig efficiency and editor-only visibility
 
-- [ ] **UX-P2-08** Add inline Rig rename. Depends on UX-P1-06 and UX-P2-04.
+- [x] **UX-P2-08** Add inline Rig rename. Depends on UX-P1-06 and UX-P2-04.
   Double-click or F2 enters an inline field; Enter/blur commits, Escape cancels,
   and focus returns to the row. Preserve unique-name validation and one history
   entry. Inspector naming remains synchronized.
@@ -505,7 +511,7 @@ or `Move key`, and without document scrolling.
   the row into view. Ignore removed entities and do not add history entries while
   replaying selection history.
 
-- [ ] **UX-P2-11** Add Rig search/filter for larger projects. Depends on
+- [x] **UX-P2-11** Add Rig search/filter for larger projects. Depends on
   UX-P1-06. Match names and types while preserving enough ancestors to show
   context. Clearly distinguish a filtered-out branch from a collapsed branch and
   restore the prior expansion/focus state when the filter clears.
@@ -528,7 +534,7 @@ or `Move key`, and without document scrolling.
   constraint in a status line; keep one history transaction per gesture; and add
   pure transform-gesture tests for constrained values.
 
-- [ ] **UX-P2-15** Add transform and selection shortcuts. Depends on UX-P2-08,
+- [x] **UX-P2-15** Add transform and selection shortcuts. Depends on UX-P2-08,
   UX-P2-10, and UX-P2-12. Adopt one documented tool mapping, F2 rename, Escape,
   Delete, and K keying semantics. Keep shortcuts inactive while typing, expose
   every action by mouse, update tooltips/reference, and add shortcut routing
@@ -536,39 +542,39 @@ or `Move key`, and without document scrolling.
 
 ### Shared inspector and advanced animation workflows
 
-- [ ] **UX-P2-16** Introduce a typed shared inspector context. Depends on
+- [x] **UX-P2-16** Introduce a typed shared inspector context. Depends on
   UX-P1-10 and UX-P1-23. Represent entity, clip, key selection, event, draw order,
   and attachment-swap contexts without merging them into project entity
   selection. Move contextual editing from timeline dialogs into right-dock
   Properties while preserving focus, selection, and existing commands.
 
-- [ ] **UX-P2-17** Refine clip/key/interpolation inspection. Depends on
+- [x] **UX-P2-17** Refine clip/key/interpolation inspection. Depends on
   UX-P2-16. Show clip FPS/duration/loop when clip context is active; show frame,
   value, interpolation, and Bezier controls for selected keys; support mixed
   multi-key state; and retain timeline popovers only for small creation menus.
 
-- [ ] **UX-P2-18** Refine event inspection. Depends on UX-P2-16. Selecting an
+- [x] **UX-P2-18** Refine event inspection. Depends on UX-P2-16. Selecting an
   event opens name, frame, and payload in Properties with inline JSON validation.
   Add/move/delete remain one command each, timeline marker selection stays
   synchronized, and errors do not discard the last valid payload.
 
-- [ ] **UX-P2-19** Refine draw-order and attachment-swap inspection. Depends on
+- [x] **UX-P2-19** Refine draw-order and attachment-swap inspection. Depends on
   UX-P2-16. Edit the evaluated current order and keyed slot attachment from
   Properties, clearly distinguish setup/current/keyed values, and provide direct
   navigation to the related slot/attachment without losing timeline context.
 
-- [ ] **UX-P2-20** Refine point and rectangle inspection. Depends on UX-P2-16.
+- [x] **UX-P2-20** Refine point and rectangle inspection. Depends on UX-P2-16.
   Group gameplay name, transform, enabled state, and rectangle size; display
   setup/current/keyed distinctions; keep valid ranges/units visible; and preserve
   world-space export behavior.
 
-- [ ] **UX-P2-21** Add useful multi-entity property editing. Depends on
+- [x] **UX-P2-21** Add useful multi-entity property editing. Depends on
   UX-P2-16. Derive shared/mixed transform and opacity values for compatible
   selections. Committing a field applies an immutable delta or common value to
   every supported entity in one history transaction. Hide or disable properties
   unsupported by the full selection with an explanation.
 
-- [ ] **UX-P2-22** Add individually pinned timeline rows. Depends on UX-P1-16 and
+- [x] **UX-P2-22** Add individually pinned timeline rows. Depends on UX-P1-16 and
   UX-P2-04. Pin/unpin entity groups while in Selection mode, keep pins when
   project selection changes, ignore removed targets, expose a clear-all action,
   and persist pins per project. Pinned rows retain selection synchronization.

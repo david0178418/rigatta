@@ -20,7 +20,9 @@ import {
 	reparentBone,
 	updateAttachmentSetupTransform,
 	updateImageAttachmentProperties,
-	updateRectangleAttachmentSize
+	updateRectangleAttachmentSize,
+	updatePointAttachmentEnabled,
+	updateRectangleAttachmentEnabled
 } from '../../src/domain/operations.ts';
 import type { OperationResult } from '../../src/domain/operations.ts';
 import { createEmptyProject } from '../../src/domain/model.ts';
@@ -168,6 +170,21 @@ describe('immutable project operations', () => {
 		expect(renameSlot(renamed.value, fixtureIds.slot, 'body slot').ok).toBe(true);
 		expect(renameAttachment(renamed.value, fixtureIds.image, 'hero image').ok).toBe(true);
 		expect(renameBone(renamed.value, fixtureIds.root, '   ').ok).toBe(false);
+	});
+
+	test('updates gameplay enabled state without mutating setup attachments', () => {
+		const project = createRigProject();
+		const point = updatePointAttachmentEnabled(project, fixtureIds.point, false);
+		const rectangle = updateRectangleAttachmentEnabled(project, fixtureIds.rectangle, false);
+
+		expect(point.ok).toBe(true);
+		expect(rectangle.ok).toBe(true);
+		expect(project.attachments.find((attachment) => attachment.id === fixtureIds.point)).toMatchObject({ enabled: true });
+		expect(project.attachments.find((attachment) => attachment.id === fixtureIds.rectangle)).toMatchObject({ enabled: true });
+		if (point.ok && rectangle.ok) {
+			expect(point.value.attachments.find((attachment) => attachment.id === fixtureIds.point)).toMatchObject({ enabled: false });
+			expect(rectangle.value.attachments.find((attachment) => attachment.id === fixtureIds.rectangle)).toMatchObject({ enabled: false });
+		}
 	});
 
 	test('rejects destructive deletes while references remain', () => {

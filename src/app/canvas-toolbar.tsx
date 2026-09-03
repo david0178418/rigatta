@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { GridSettings } from './grid.ts';
-import { Popover, Tooltip } from './ui-primitives.tsx';
+import { Popover, Tooltip, Toolbar } from './ui-primitives.tsx';
 import { shortcutLabelFor, type ShortcutAction } from './shortcuts.ts';
 import type { TransformTool } from './transform-gesture.ts';
 
@@ -40,7 +40,7 @@ export const CanvasToolbar = function CanvasToolbar({
 	onGridSnapChange
 }: CanvasToolbarProps): ReactElement {
 	return (
-			<div className="canvas-tool-toolbar" data-testid="canvas-toolbar" aria-label="Transform tools">
+			<Toolbar className="canvas-tool-toolbar" label="Transform tools" orientation="vertical" testId="canvas-toolbar">
 				{(['translate', 'rotate', 'scale', 'shear'] as const).map((tool) => (
 					<Tooltip key={tool} label={transformToolLabels[tool]} shortcut={shortcutLabelFor(transformToolShortcutActions[tool])}>
 						<button
@@ -94,6 +94,6 @@ export const CanvasToolbar = function CanvasToolbar({
 						</label>
 					</div>
 				</Popover>
-			</div>
+			</Toolbar>
 	);
 };

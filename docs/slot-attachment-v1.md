@@ -11,6 +11,13 @@ one history transaction. Existing attachments remain available for later
 swapping.
 
 The domain validates that assigned attachments are images belonging to the
-target slot. Browser coverage imports two images, creates the first slot
-attachment, swaps in the second image through a slot drop, and verifies the
-replacement can still be transformed.
+target slot. In Animate mode, selecting a slot-attachment key opens an
+attachment-swap context in Properties. It labels the setup assignment, current
+evaluated attachment, and keyed value separately; `Key current attachment`
+creates or updates a key at the playhead, while keyed edits preserve the key's
+time and identity. Links navigate to the related slot or attachment without
+losing timeline selection.
+
+Browser coverage imports two images, creates the first slot attachment, swaps
+in the second image through a slot drop, and verifies the replacement can still
+be transformed.

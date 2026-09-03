@@ -37,13 +37,13 @@ test('routes the single W/E/R/T transform mapping and ignores typing targets', a
 	await expect(toolbar.getByRole('button', { name: 'Scale', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
 	await page.keyboard.press('?');
-	const reference = page.getByRole('region', { name: 'Keyboard shortcuts' });
+	const reference = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
 
 	await expect(reference).toBeVisible();
 	await expect(reference).toContainText('Move / translate tool');
 	await expect(reference).toContainText('Key edited properties');
 	await expect(reference).toContainText('Page Down');
-	await page.getByRole('button', { name: 'Close keyboard shortcuts' }).click();
+	await page.getByRole('button', { name: 'Close Keyboard shortcuts' }).click();
 });
 
 test('routes F2 rename, K edited-property keying, Escape clear, and selection history', async ({ page }) => {

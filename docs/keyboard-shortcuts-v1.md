@@ -31,7 +31,9 @@ The Properties rename, Delete, and key-diamond/`Key edited properties` buttons
 provide mouse access to the corresponding editing actions. Playback, frame-step,
 and selection-history buttons remain available wherever those actions apply. Click
 an empty canvas area to clear selection; contextual surfaces also provide their
-own mouse close/cancel controls.
+own mouse close/cancel controls. Compact icon actions retain an accessible name
+outside their tooltip and show a visible hover/focus tooltip; when a shortcut
+exists, the same tooltip includes it.
 
 ## Timeline-local shortcuts
 

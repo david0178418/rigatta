@@ -5,7 +5,7 @@ import { DockSplitter } from './dock-splitter.tsx';
 import { DrawOrderPanel } from './draw-order-panel.tsx';
 import type { RigTreeViewProps } from './rig-tree-view.tsx';
 import { RigTreeView } from './rig-tree-view.tsx';
-import { MenuButton, Tabs } from './ui-primitives.tsx';
+import { MenuButton, Tabs, Tooltip } from './ui-primitives.tsx';
 import type { ProjectUiPreferences } from './ui-preferences.ts';
 import type { WorkspaceLayout, WorkspaceViewport } from './workspace-layout.ts';
 import { PropertiesInspector, type PropertiesInspectorProps } from './properties-inspector.tsx';
@@ -94,7 +94,9 @@ export const WorkspaceDocks = function WorkspaceDocks({
 						{ id: 'point', label: 'Point attachment', description: selectedBone ? 'Gameplay point under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: onAddPointAttachment },
 						{ id: 'rectangle', label: 'Rectangle attachment', description: selectedBone ? 'Gameplay rectangle under the selected bone' : 'Select a bone first', disabled: !selectedBone, onSelect: onAddRectangleAttachment }
 					]} />}
-					<button className="icon-button" type="button" aria-controls="left-dock" aria-expanded={!layout.leftDockCollapsed} aria-label={layout.leftDockCollapsed ? 'Expand left dock' : 'Collapse left dock'} onClick={onToggleLeftDock}>{layout.leftDockCollapsed ? '»' : '«'}</button>
+					<Tooltip label={layout.leftDockCollapsed ? 'Expand left dock' : 'Collapse left dock'}>
+						<button className="icon-button" type="button" aria-controls="left-dock" aria-expanded={!layout.leftDockCollapsed} aria-label={layout.leftDockCollapsed ? 'Expand left dock' : 'Collapse left dock'} onClick={onToggleLeftDock}>{layout.leftDockCollapsed ? '»' : '«'}</button>
+					</Tooltip>
 				</div>
 			</div>
 			{!layout.leftDockCollapsed && <>
@@ -138,7 +140,9 @@ export const WorkspaceDocks = function WorkspaceDocks({
 					value={rightDockTab}
 					onChange={onRightDockTabChange}
 				/>}
-				<button className="icon-button" type="button" aria-controls="right-dock" aria-expanded={!layout.rightDockCollapsed} aria-label={layout.rightDockCollapsed ? 'Expand right dock' : 'Collapse right dock'} onClick={onToggleRightDock}>{layout.rightDockCollapsed ? '«' : '»'}</button>
+				<Tooltip label={layout.rightDockCollapsed ? 'Expand right dock' : 'Collapse right dock'}>
+					<button className="icon-button" type="button" aria-controls="right-dock" aria-expanded={!layout.rightDockCollapsed} aria-label={layout.rightDockCollapsed ? 'Expand right dock' : 'Collapse right dock'} onClick={onToggleRightDock}>{layout.rightDockCollapsed ? '«' : '»'}</button>
+				</Tooltip>
 			</div>
 			{!layout.rightDockCollapsed && <>
 				<div aria-labelledby="right-dock-properties-tab" className="dock-tabpanel" hidden={rightDockTab !== 'properties'} id="right-dock-properties-panel" role="tabpanel" tabIndex={0}>

@@ -15,6 +15,17 @@ describe('UI accessibility primitives', () => {
 		expect(markup).toContain('Rotate · R');
 	});
 
+	test('preserves a placement class on tooltip wrappers', () => {
+		const markup = renderToStaticMarkup(
+			<Tooltip className="tree-control-tooltip" label="Hide bone">
+				<button type="button" aria-label="Hide">Hide</button>
+			</Tooltip>
+		);
+
+		expect(markup).toContain('class="tooltip-wrap tree-control-tooltip"');
+		expect(markup).toContain('aria-label="Hide"');
+	});
+
 	test('renders a labelled toolbar with its orientation', () => {
 		const markup = renderToStaticMarkup(
 			<Toolbar label="Transform tools" orientation="vertical">
@@ -46,13 +57,16 @@ describe('UI accessibility primitives', () => {
 
 	test('labels modal dialogs by their visible heading', () => {
 		const markup = renderToStaticMarkup(
-			<Dialog label="Project settings" onClose={() => undefined}>
+			<Dialog className="custom-dialog" id="custom-dialog" label="Project settings" onClose={() => undefined} overlayClassName="custom-overlay">
 				<p>Settings content</p>
 			</Dialog>
 		);
 
 		expect(markup).toContain('role="dialog"');
 		expect(markup).toContain('aria-modal="true"');
+		expect(markup).toContain('class="dialog-overlay custom-overlay"');
+		expect(markup).toContain('class="dialog-surface custom-dialog"');
+		expect(markup).toContain('id="custom-dialog"');
 		expect(markup).toContain('aria-labelledby="dialog-title-');
 		expect(markup).toContain('>Project settings</h2>');
 	});

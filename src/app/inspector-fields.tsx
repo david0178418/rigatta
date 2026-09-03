@@ -9,6 +9,7 @@ import {
 	type PropertyDraft
 } from './property-drafts.ts';
 import type { PropertyKeyState } from './keying.ts';
+import { Tooltip } from './ui-primitives.tsx';
 
 export type KeyDiamondPresentation = Readonly<{
 	action: 'Add' | 'Remove';
@@ -51,17 +52,18 @@ export const KeyDiamond = function KeyDiamond({
 	const label = keyDiamondLabelFor(property, frameIndex, state);
 
 	return (
-		<button
-			aria-label={label}
-			aria-pressed={state === 'keyed'}
-			data-key-state={state}
-			className={`key-diamond key-diamond-${state}`}
-			title={`${label} · ${presentation.stateLabel}`}
-			type="button"
-			onClick={onToggle}
-		>
-			<span aria-hidden="true">{presentation.glyph}</span>
-		</button>
+		<Tooltip label={`${label} · ${presentation.stateLabel}`}>
+			<button
+				aria-label={label}
+				aria-pressed={state === 'keyed'}
+				data-key-state={state}
+				className={`key-diamond key-diamond-${state}`}
+				type="button"
+				onClick={onToggle}
+			>
+				<span aria-hidden="true">{presentation.glyph}</span>
+			</button>
+		</Tooltip>
 	);
 };
 
@@ -71,6 +73,7 @@ export const DirectNumericField = function DirectNumericField({
 	name,
 	ariaLabel,
 	keyState,
+	keyStateMixed = false,
 	frameIndex,
 	mixed = false,
 	onCommit,
@@ -81,17 +84,20 @@ export const DirectNumericField = function DirectNumericField({
 	name?: string;
 	ariaLabel?: string;
 	keyState?: PropertyKeyState;
+	keyStateMixed?: boolean;
 	frameIndex?: number;
 	mixed?: boolean;
 	onCommit: (property: NumericProperty, value: number) => string | undefined;
 	onToggleKey?: () => void;
 }>): ReactElement {
 	const spec = numericPropertySpecs[property];
-	const initialDraft = draftForProperty(property, value);
+	const initialDraft = mixed ? { ...draftForProperty(property, value), draftText: '' } : draftForProperty(property, value);
 	const [draft, setDraft] = useState<PropertyDraft>(initialDraft);
 	const committedTextRef = useRef(initialDraft.draftText);
+	const errorId = `${property}-property-error`;
+	const unitSuffix = spec.unit === 'number' ? '' : ` (${spec.unit})`;
 	const commit = function commit(): void {
-		if (committedTextRef.current === draft.draftText && draft.error === undefined && !mixed) {
+		if (committedTextRef.current === draft.draftText && draft.error === undefined) {
 			return;
 		}
 
@@ -127,14 +133,19 @@ export const DirectNumericField = function DirectNumericField({
 
 	return (
 		<label className="direct-property-field">
-			<span className={mixed ? 'field-label mixed-field-label' : 'field-label'}>
-				<span>{spec.label}{spec.unit === 'deg' ? ' (deg)' : ''}</span>
+			<span className={mixed || keyStateMixed ? 'field-label mixed-field-label' : 'field-label'}>
+				<span>{spec.label}{unitSuffix}</span>
 				{mixed && <small>Mixed</small>}
+				{keyStateMixed && <small>Mixed key state</small>}
 			</span>
 			<span className="direct-property-control">
 				<input
 					aria-label={ariaLabel ?? spec.label}
+					aria-describedby={draft.error ? errorId : undefined}
+					aria-invalid={draft.error ? 'true' : undefined}
 					name={name ?? property}
+					min={spec.minimum}
+					max={spec.maximum}
 					step={spec.step}
 					type="number"
 					value={draft.draftText}
@@ -144,7 +155,7 @@ export const DirectNumericField = function DirectNumericField({
 				/>
 				{keyState && frameIndex !== undefined && onToggleKey && <KeyDiamond frameIndex={frameIndex} property={spec.label} state={keyState} onToggle={onToggleKey} />}
 			</span>
-			{draft.error && <small className="field-error" role="alert">{draft.error}</small>}
+			{draft.error && <small className="field-error" id={errorId} role="alert">{draft.error}</small>}
 		</label>
 	);
 };
@@ -163,6 +174,7 @@ export const DirectNameField = function DirectNameField({
 	const [draft, setDraft] = useState(value);
 	const committedRef = useRef(value);
 	const [error, setError] = useState<string | undefined>(undefined);
+	const errorId = 'selected-name-error';
 	const commit = function commit(): void {
 		if (draft === committedRef.current && !error) {
 			return;
@@ -193,11 +205,11 @@ export const DirectNameField = function DirectNameField({
 	return (
 		<label className="direct-name-field">
 			<span className="field-label">Name</span>
-			<input ref={inputRef} aria-label={name} value={draft} onBlur={commit} onChange={(event) => {
+			<input ref={inputRef} aria-describedby={error ? errorId : undefined} aria-invalid={error ? 'true' : undefined} aria-label={name} value={draft} onBlur={commit} onChange={(event) => {
 				setDraft(event.currentTarget.value);
 				setError(undefined);
 			}} onKeyDown={onKeyDown} />
-			{error && <small className="field-error" role="alert">{error}</small>}
+			{error && <small className="field-error" id={errorId} role="alert">{error}</small>}
 		</label>
 	);
 };

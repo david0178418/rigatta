@@ -15,6 +15,7 @@ import {
 import type { BoneDropZone } from './hierarchy-dnd.ts';
 import type { SlotDropZone } from './slot-dnd.ts';
 import { isSelected, type Selection } from './selection.ts';
+import { Tooltip } from './ui-primitives.tsx';
 
 const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
 const SLOT_DRAG_MIME = 'application/x-bone-animation-slot';
@@ -339,6 +340,7 @@ export const RigTreeView = function RigTreeView({
 		focusedId: EntityId | undefined;
 	}> | undefined>(undefined);
 	const filterFocusRestoreIdRef = useRef<EntityId | undefined>(undefined);
+	const previousSelectedRigIdRef = useRef<EntityId | undefined>(selection.filter((entity) => entity.kind !== 'asset').at(-1)?.id);
 	const baseModel = buildRigTreeViewModel(project, selection, expandedIds);
 	const filter = rigTreeFilterForQuery(baseModel, searchQuery);
 	const filterExpandedIds = filter
@@ -353,6 +355,9 @@ export const RigTreeView = function RigTreeView({
 		: visibleNodes[0]?.id;
 	const filterActive = filter !== undefined;
 	const visibleNodeIds = visibleNodes.map((node) => node.id).join('|');
+	const modelNodeIds = model.nodes.map((node) => node.id).join('|');
+	const expandedIdKey = [...expandedIds].join('|');
+	const selectedRigId = selection.filter((entity) => entity.kind !== 'asset').at(-1)?.id;
 
 	useEffect(() => {
 		if (filterActive) {
@@ -401,6 +406,42 @@ export const RigTreeView = function RigTreeView({
 		filterFocusRestoreIdRef.current = undefined;
 		window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-rig-treeitem-id="${focusId}"]`)?.focus());
 	}, [filterActive, model.nodes, visibleNodeIds]);
+
+	useEffect(() => {
+		const selectionChanged = previousSelectedRigIdRef.current !== selectedRigId;
+
+		previousSelectedRigIdRef.current = selectedRigId;
+
+		if (!selectedRigId || filterActive) {
+			return;
+		}
+
+		const selectedNode = model.nodes.find((node) => node.id === selectedRigId);
+
+		if (!selectedNode) {
+			return;
+		}
+		if (!visibleNodes.some((node) => node.id === selectedRigId)) {
+			if (!selectionChanged) {
+				return;
+			}
+
+			const revealed = new Set(revealAncestors(model, selectedRigId, expandedIds));
+
+			if (selectedNode.kind === 'bone') {
+				revealed.add(selectedNode.id);
+			}
+			if (!setsMatch(revealed, expandedIds)) {
+				onExpandedChange(revealed);
+			}
+
+			return;
+		}
+
+		window.requestAnimationFrame(() => {
+			document.querySelector<HTMLElement>(`[data-rig-treeitem-id="${selectedRigId}"]`)?.scrollIntoView?.({ block: 'nearest' });
+		});
+	}, [expandedIdKey, filterActive, modelNodeIds, onExpandedChange, selectedRigId, visibleNodeIds]);
 
 	const siblingNodesFor = function siblingNodesFor(node: RigTreeNode): readonly RigTreeNode[] {
 		return model.nodes.filter((candidate) => candidate.parentId === node.parentId
@@ -616,23 +657,25 @@ export const RigTreeView = function RigTreeView({
 						onKeyDown={(event) => onRowKeyDown(event, node)}
 					>
 						{node.expandable && (
-							<button
-								aria-describedby={rowDescriptionIds}
-								aria-label={expanded ? 'Collapse' : 'Expand'}
-								className="tree-disclosure"
-								data-expanded-by-filter={expandedByFilter ? 'true' : 'false'}
-								tabIndex={-1}
-								type="button"
-								title={disclosureTitle}
-								onClick={(event) => {
-									event.stopPropagation();
-									toggleExpanded(node);
-									focusNode(node);
-								}}
-								onKeyDown={(event) => event.stopPropagation()}
-							>
-								<DisclosureIcon expanded={expanded} />
-							</button>
+							<Tooltip className="tree-disclosure-tooltip" label={disclosureTitle}>
+								<button
+									aria-describedby={rowDescriptionIds}
+									aria-expanded={expanded}
+									aria-label={expanded ? 'Collapse' : 'Expand'}
+									className="tree-disclosure"
+									data-expanded-by-filter={expandedByFilter ? 'true' : 'false'}
+									tabIndex={-1}
+									type="button"
+									onClick={(event) => {
+										event.stopPropagation();
+										toggleExpanded(node);
+										focusNode(node);
+									}}
+									onKeyDown={(event) => event.stopPropagation()}
+								>
+									<DisclosureIcon expanded={expanded} />
+								</button>
+							</Tooltip>
 						)}
 						{!node.expandable && <span className="tree-disclosure-placeholder" aria-hidden="true" />}
 						{renamingId === node.id ? (
@@ -707,22 +750,24 @@ export const RigTreeView = function RigTreeView({
 								{filterState === 'match' && <span className="rig-row-filter-state is-match" aria-hidden="true">match</span>}
 							</button>}
 						{onToggleVisibility && node.kind !== 'slot' && (
-							<button
-								aria-describedby={rowDescriptionIds}
-								aria-label={isHidden ? 'Show' : 'Hide'}
-								className={isHidden ? 'tree-visibility is-hidden' : 'tree-visibility'}
-								tabIndex={-1}
-								type="button"
-								title={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}
-								onClick={(event) => {
-									event.stopPropagation();
-									onToggleVisibility(node);
-									focusNode(node);
-								}}
-								onKeyDown={(event) => event.stopPropagation()}
-							>
-								<VisibilityIcon hidden={isHidden} />
-							</button>
+							<Tooltip className="tree-visibility-tooltip" label={`${isHidden ? 'Show' : 'Hide'} ${node.typeLabel.toLowerCase()} ${node.name}`}>
+								<button
+									aria-describedby={rowDescriptionIds}
+									aria-label={isHidden ? 'Show' : 'Hide'}
+									aria-pressed={!isHidden}
+									className={isHidden ? 'tree-visibility is-hidden' : 'tree-visibility'}
+									tabIndex={-1}
+									type="button"
+									onClick={(event) => {
+										event.stopPropagation();
+										onToggleVisibility(node);
+										focusNode(node);
+									}}
+									onKeyDown={(event) => event.stopPropagation()}
+								>
+									<VisibilityIcon hidden={isHidden} />
+								</button>
+							</Tooltip>
 						)}
 						<span className="sr-only" id={nodeDescriptionId}>{nodeDescription}</span>
 						{filterDescription && <span className="sr-only" id={filterDescriptionId}>{`${filterDescription} ${expansionDescription}`}</span>}

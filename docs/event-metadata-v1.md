@@ -16,6 +16,8 @@ overly deep or large payload structures are rejected before the project is
 accepted.
 
 The Animate timeline exposes events as a dedicated stepped lane. New events
-are created at the playhead, then selected events can be renamed, edited with
-JSON payload text, moved to another frame, or deleted. Event markers use their
-stable IDs and remain sorted by time after each operation.
+are created at the playhead, then the selected event is edited in the right-dock
+Properties inspector. Name and frame fields are inline, and the payload editor
+accepts formatted JSON while preserving the last valid project payload whenever
+the draft is invalid. Move, update, and delete dispatch one typed command each;
+event markers use stable IDs and remain sorted by time after every operation.

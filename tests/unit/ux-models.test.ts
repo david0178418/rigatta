@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createClip, createTrack, addNumberKey } from '../../src/domain/animation.ts';
+import type { Clip, Project } from '../../src/domain/model.ts';
 import { fixtureIds, createRigProject } from '../fixtures.ts';
 import {
 	buildRigTreeViewModel,
@@ -54,7 +55,7 @@ const firstKeyId = '123e4567-e89b-42d3-a456-426614174012';
 const secondKeyId = '123e4567-e89b-42d3-a456-426614174013';
 const pastedKeyId = '123e4567-e89b-42d3-a456-426614174014';
 
-const animatedProject = function animatedProject() {
+const animatedProject = function animatedProject(): Readonly<{ project: Project; clip: Clip }> {
 	const withClip = createClip(createRigProject(), {
 		name: 'walk',
 		durationSeconds: 2,
@@ -283,7 +284,7 @@ describe('UX workspace and preference models', () => {
 		expect(workspaceLayoutFromKeyboard(DEFAULT_WORKSPACE_LAYOUT, 'left', 'PageUp', viewport)).toBeUndefined();
 	});
 
-	test('round-trips only validated versioned preferences and drops stale entity IDs', () => {
+	test('round-trips only validated versioned preferences and drops stale entity IDs', (): void => {
 		const stored = new Map<string, string>();
 		const storage: PreferencesStorage = {
 			getItem: (key) => stored.get(key) ?? null,

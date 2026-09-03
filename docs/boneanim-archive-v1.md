@@ -59,7 +59,8 @@ checking.
 - A failed import returns diagnostics and leaves the current project and its
   asset blobs untouched.
 - The archive does not contain IndexedDB records, thumbnails, browser session
-  state, or generated sprite sheets.
+  state, project-scoped UI preferences (including dock sizes, timeline height,
+  pins, selection history, or visibility), or generated sprite sheets.
 
 ## Size and encoding limits
 

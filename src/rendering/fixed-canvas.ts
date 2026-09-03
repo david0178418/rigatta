@@ -568,6 +568,11 @@ export const createFixedCanvasRenderer = async function createFixedCanvasRendere
 				drawBones(bones, project, matrices, hiddenIds);
 				content.addChild(bones);
 			}
+
+			const selection = new Container();
+			addSelectionGuides(selection, project, matrices, options.selectedIds ?? [], hiddenIds);
+			addTransformHandles(selection, project, matrices, options.selectedIds ?? [], options.transformTool, hiddenIds);
+			content.addChild(selection);
 			state.resources = prepared.value;
 			application.render();
 

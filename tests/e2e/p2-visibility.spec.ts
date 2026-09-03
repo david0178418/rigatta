@@ -88,7 +88,7 @@ test('keeps evaluated Animate state and export controls independent of hidden au
 	await root.locator('.tree-visibility').click();
 	await expect(page.getByText('Frame 1 / 12', { exact: false })).toBeVisible();
 	await page.getByRole('button', { name: 'Export', exact: true }).click();
-	await expect(page.getByRole('region', { name: 'Export controls' })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: 'Export animation' })).toBeVisible();
 	await expect(page.getByRole('checkbox', { name: 'Export clip pulse', exact: true })).toBeChecked();
-	await expect(page.getByRole('button', { name: 'Close export controls' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Close Export animation' })).toBeVisible();
 });

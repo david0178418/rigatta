@@ -7,10 +7,10 @@ and event payloads while allocating fresh IDs for the clip and every nested
 track, key, and event.
 
 The timeline keeps clip selection, creation, transport, frame/time readout,
-Auto Key, and navigation controls in its sticky toolbar. Clip rename,
-duplicate, delete, duration, FPS, and loop editing are available from the
-contextual Clip settings surface. These settings are project data, so committed
-changes participate in bounded history and autosave.
+Auto Key, and navigation controls in its sticky toolbar. Selecting Clip
+settings routes the clip context to the right-dock Properties inspector, where
+rename, duration, FPS, and loop editing are available. These settings are
+project data, so committed changes participate in bounded history and autosave.
 
 Playback is represented as an integer frame index with a retained sub-frame
 remainder. The controls can play, pause, and step by one frame. Looping wraps
@@ -26,7 +26,10 @@ uses the active frame as its anchor, pan moves by visible pixel distance, and
 the track filter is case-insensitive and matches the typed track label. The
 ruler and dopesheet live in an independently scrollable timeline pane, while
 the event row and playhead remain in that pane below the track rows. The ruler
-and empty property lanes seek directly to the clicked frame.
+and empty property lanes seek directly to the clicked frame. Every timeline
+lane has a keyboard-accessible group equivalent with Arrow/Home/End and
+Enter/Space seeking; property labels are keyboard-selectable buttons with the
+same selection behavior as a pointer click.
 
 Typed tracks are represented in a grouped dopesheet with an overview row,
 collapsible entity rows, and property rows. Each row includes the target and
@@ -45,39 +48,58 @@ project-scoped UI preference, so it survives reloads and does not enter project 
 discarded when preferences are applied, and pin controls are available only in Selection
 mode; All keyed mode shows every keyed track independently.
 
-Available typed properties can be added from the contextual Track details
-surface. The selected track accepts keys at the current playhead frame. Numeric,
-boolean, slot-attachment, and draw-order key inputs use the corresponding typed
-domain command.
+Available typed properties can be added from the small Track creation menu in
+the timeline. The selected track accepts keys at the current playhead frame.
+Numeric, boolean, slot-attachment, and draw-order key inputs use the
+corresponding typed domain command. Track, key, event, draw-order, and
+attachment-swap details are edited in the right-dock Properties inspector; the
+timeline retains only creation controls and timeline selection.
+Track details is a labelled dialog surface with automatic focus entry,
+`aria-controls`/`aria-expanded` trigger state, Escape dismissal, and focus
+return. Icon-only timeline navigation, transport, marker, disclosure, and pin
+actions expose visible hover/focus tooltips with contextual accessible names.
+The Clip context exposes one Save clip action plus direct Duplicate clip and Delete
+clip actions, so rename, playback settings, and lifecycle commands remain reachable
+without reopening a timeline dialog.
 
 Clicking a key selects it and seeks to its frame; Ctrl/Cmd-click toggles it.
 Selected keys can be dragged by whole frames, selected with a two-dimensional
 marquee, copied and pasted at the playhead, deleted, or nudged one frame with
 the arrow keys. Every multi-key operation is validated before dispatch and is
 one recoverable history transaction; collisions, duplicate target frames, and
-out-of-range results are rejected atomically. The timeline handles these
-operations directly, so Key details is reserved for the exact frame,
-interpolation, Bezier, attachment, draw-order, enabled, and event editors.
+out-of-range results are rejected atomically. The Properties inspector shows
+exact frame/value/interpolation state. A multi-key selection displays mixed
+values explicitly; entering a common value applies it to every compatible
+selected key in one history transaction.
 
 Numeric key interpolation is stored on the key as the outgoing mode for the
-segment leading to the next key. The selected-key editor can choose Stepped,
-Linear, or Cubic Bezier interpolation; selecting Bezier creates normalized
-default control points that the graph editor can refine later.
+segment leading to the next key. Properties can choose Stepped, Linear, or
+Cubic Bezier interpolation; selecting Bezier creates normalized default control
+points that the graph editor can refine later. A mixed selection keeps its
+mixed frame/value/interpolation state visible; when selected Bezier curves
+differ, the editor labels the mixed curve and applying one curve synchronizes
+all selected keys atomically.
 
 Bezier keys expose a graph with draggable control points and P1/P2 coordinate
-inputs. X coordinates are constrained to the normalized segment range, while
-Y coordinates can represent overshoot. Curve edits are drafted locally and
-committed as a single key update when the drag or Apply curve action ends.
+inputs in Properties. X coordinates are constrained to the normalized segment
+range, while Y coordinates can represent overshoot. Curve edits are drafted
+locally and committed as a single key update when the drag or Apply curve action
+ends.
 
 Slot attachment tracks use discrete keys that can select None or any image
-owned by the tracked slot. The selected-key editor updates that value without
-changing the key time or identity, so attachment swaps remain independent of
-setup attachment assignment.
+owned by the tracked slot. The attachment-swap context in Properties shows
+setup, current evaluated, and keyed values independently. It can key the
+current value at the active frame or update the selected key without changing
+its identity, so attachment swaps remain independent of setup attachment
+assignment. Related slot and attachment links navigate the rig without
+changing the active clip or timeline context.
 
 Draw-order tracks use a complete slot-order key at each keyed frame. The
-selected-key editor lists the keyed slots and moves a slot earlier or later by
-one position, preserving the key identity and validating that every project
-slot remains present exactly once.
+draw-order context in Properties lists the current evaluated order and keyed
+override separately, and moves a slot earlier or later by one position while
+preserving key identity and validating that every project slot remains present
+exactly once. Slot links navigate to the related rig item without losing the
+timeline context.
 
 Animation actions that update several keys, such as multi-key deletion, reduce
 through one history transaction. Undo therefore restores the complete prior
@@ -99,17 +121,25 @@ Each animatable inspector property exposes one current-frame key diamond. A
 hollow diamond adds a key, a filled diamond removes the key at that frame, and
 an amber patterned diamond identifies a pending edit while Auto Key is off.
 Every diamond has an accessible property/frame/action label and remains a
-keyboard-operable button. Keying and removing use one recoverable history
+keyboard-operable button. In a compatible multi-selection, a common key state
+toggles every selected entity in one transaction; mixed key states hide the
+diamond and identify the mixed state instead of silently changing only the
+last-selected entity. Keying and removing use one recoverable history
 transaction, and a polite inspector announcement reports pending and keyed
 state changes without moving focus.
 
 Event creation remains available from the Events row. Selecting an event opens
-Event details for name, validated JSON payload, frame, and delete operations.
+the Event context in Properties for name, frame, validated inline JSON payload,
+and deletion. Invalid payload text stays in the editor with an error and does
+not replace the last valid project payload; add, move, and delete each remain a
+single typed command.
 
 The Animate timeline height starts at 260 px and can be resized with its
 accessible horizontal separator between 190 px and 55% of the viewport height.
-The height is local UI state and is not persisted. Browser coverage exercises
+The height is a project-scoped UI preference keyed by `Project.id`, so it is
+restored for that project after reload while remaining outside project history,
+archives, sprite-sheet exports, and pose evaluation. Browser coverage exercises
 clip lifecycle, playback, timeline navigation, typed-key editing,
 interpolation and Bezier controls, multi-key retiming and deletion, Auto Key,
-pending edits, slot attachment swaps, keyed draw order, and the contextual
-detail surfaces.
+pending edits, Properties contexts, slot attachment swaps, keyed draw order,
+and gameplay attachment state.

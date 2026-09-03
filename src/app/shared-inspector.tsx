@@ -1,40 +1,75 @@
 import { useState, type FormEvent, type ReactElement, type ReactNode } from 'react';
 import { isEventPayload } from '../domain/events.ts';
-import type { EntityId } from '../domain/ids.ts';
 import type { EventKeyUpdate, NumberKeyInterpolationInput } from '../domain/animation.ts';
-import type { Clip, CubicBezier, DiscreteKey, EventKey, NumberKey, Project, Track } from '../domain/model.ts';
+import { frameCountForClip } from '../domain/playback.ts';
+import type { EntityId as Id } from '../domain/ids.ts';
+import type {
+	Clip,
+	CubicBezier,
+	EventKey,
+	NumberKey,
+	Project,
+	Track
+} from '../domain/model.ts';
+import { DEFAULT_BEZIER_CURVE } from '../domain/animation.ts';
+import type { EvaluatedPose } from '../domain/pose.ts';
+import { drawOrderViewForFrame, reorderDrawOrder } from './draw-order-model.ts';
 import { frameIndexForTime } from './timeline.ts';
 import type { InspectorContext } from './inspector-context.ts';
 import type { TimelineKeyReference } from './timeline-model.ts';
+import type { SelectableEntity } from './selection.ts';
+import { Tooltip } from './ui-primitives.tsx';
 
-type ClipPlaybackSettings = Readonly<Partial<{
+type EditorMode = 'setup' | 'animate';
+
+export type ClipPlaybackSettings = Readonly<Partial<{
 	durationSeconds: number;
 	fps: number;
 	loop: boolean;
 }>>;
 
 export type NumberKeyChange = Readonly<{
-	trackId: EntityId;
-	keyId: EntityId;
+	trackId: Id;
+	keyId: Id;
 	value?: number;
 	timeSeconds?: number;
-	}>;
+}>;
+
+export type KeyTimeChange = Readonly<{
+	trackId: Id;
+	keyId: Id;
+	timeSeconds: number;
+}>;
 
 export type SharedInspectorProps = Readonly<{
 	project: Project;
 	context: InspectorContext;
 	collapsedSections: ReadonlySet<string>;
 	onToggleSection: (sectionId: string) => void;
-	onRenameClip: (clipId: EntityId, name: string) => void;
-	onUpdateClipPlayback: (clipId: EntityId, settings: ClipPlaybackSettings) => void;
-	onDeleteTrack: (clipId: EntityId, trackId: EntityId) => void;
-	onUpdateNumberKeys: (clipId: EntityId, changes: readonly NumberKeyChange[]) => void;
-	onUpdateInterpolation: (clipId: EntityId, changes: readonly NumberKeyChange[], input: NumberKeyInterpolationInput) => void;
-	onUpdateEvent: (clipId: EntityId, eventId: EntityId, input: EventKeyUpdate) => void;
-	onMoveEvent: (clipId: EntityId, eventId: EntityId, timeSeconds: number) => void;
-	onDeleteEvent: (clipId: EntityId, eventId: EntityId) => void;
-	onUpdateAttachmentKey: (clipId: EntityId, trackId: EntityId, keyId: EntityId, value: EntityId | null) => void;
-	onUpdateDrawOrderKey: (clipId: EntityId, trackId: EntityId, keyId: EntityId, value: readonly EntityId[]) => void;
+	onRenameClip: (clipId: Id, name: string) => void;
+	onUpdateClipPlayback: (clipId: Id, settings: ClipPlaybackSettings) => void;
+	onSaveClip?: (clipId: Id, name: string, settings: ClipPlaybackSettings) => void;
+	onDuplicateClip?: (clipId: Id) => void;
+	onDeleteClip?: (clipId: Id) => void;
+	onDeleteTrack: (clipId: Id, trackId: Id) => void;
+	onUpdateNumberKeys: (clipId: Id, changes: readonly NumberKeyChange[]) => void;
+	onUpdateKeys?: (clipId: Id, changes: readonly NumberKeyChange[]) => void;
+	onUpdateInterpolation: (clipId: Id, changes: readonly NumberKeyChange[], input: NumberKeyInterpolationInput) => void;
+	onMoveKeys?: (clipId: Id, changes: readonly KeyTimeChange[]) => void;
+	onUpdateEvent: (clipId: Id, eventId: Id, input: EventKeyUpdate) => void;
+	onMoveEvent: (clipId: Id, eventId: Id, timeSeconds: number) => void;
+	onDeleteEvent: (clipId: Id, eventId: Id) => void;
+	onUpdateAttachmentKey: (clipId: Id, trackId: Id, keyId: Id, value: Id | null) => void;
+	onKeyCurrentAttachment?: (clipId: Id, trackId: Id, slotId: Id, value: Id | null) => void;
+	onUpdateDrawOrderKey: (clipId: Id, trackId: Id, keyId: Id, value: readonly Id[]) => void;
+	onKeyCurrentDrawOrder?: (clipId: Id, value: readonly Id[]) => void;
+	activeClip?: Clip;
+	activeFrameIndex?: number;
+	activePose?: EvaluatedPose;
+	mode?: EditorMode;
+	onNavigateEntity?: (entity: SelectableEntity) => void;
+	onUpdateEnabled?: (attachmentId: Id, enabled: boolean) => string | undefined;
+	onKeyEnabled?: (attachmentId: Id, enabled: boolean) => void;
 }>;
 
 type NumberTrack = Extract<Track, {
@@ -47,6 +82,13 @@ type KeyEntry = Readonly<{
 	key: Track['keys'][number];
 }>;
 
+type NumericKeyEntry = KeyEntry & Readonly<{
+	track: NumberTrack;
+	key: NumberKey;
+}>;
+
+type BezierHandle = keyof CubicBezier;
+
 const numberTrack = function numberTrack(track: Track): track is NumberTrack {
 	return track.kind === 'bone-transform'
 		|| track.kind === 'attachment-transform'
@@ -54,11 +96,11 @@ const numberTrack = function numberTrack(track: Track): track is NumberTrack {
 		|| track.kind === 'rectangle-size';
 };
 
-const clipFor = function clipFor(project: Project, clipId: EntityId): Clip | undefined {
+const clipFor = function clipFor(project: Project, clipId: Id): Clip | undefined {
 	return project.clips.find((clip) => clip.id === clipId);
 };
 
-const trackFor = function trackFor(clip: Clip, trackId: EntityId): Track | undefined {
+const trackFor = function trackFor(clip: Clip, trackId: Id): Track | undefined {
 	return clip.tracks.find((track) => track.id === trackId);
 };
 
@@ -74,11 +116,33 @@ const keyEntriesFor = function keyEntriesFor(
 	});
 };
 
+const numericKeyEntry = function numericKeyEntry(entry: KeyEntry): entry is NumericKeyEntry {
+	return numberTrack(entry.track) && 'value' in entry.key && 'interpolation' in entry.key;
+};
+
+const sameValue = function sameValue<TValue>(values: readonly TValue[]): TValue | undefined {
+	const first = values[0];
+
+	return values.length > 0 && values.every((value) => Object.is(value, first)) ? first : undefined;
+};
+
+const frameForKey = function frameForKey(clip: Clip, timeSeconds: number): number {
+	return frameIndexForTime(clip, timeSeconds);
+};
+
+const timeForFrame = function timeForFrame(clip: Clip, frame: number): number {
+	return frame / clip.fps;
+};
+
+const validFrame = function validFrame(clip: Clip, frame: number): boolean {
+	return Number.isInteger(frame) && frame >= 1 && frame <= frameCountForClip(clip);
+};
+
 const eventPayloadText = function eventPayloadText(event: EventKey): string {
 	return JSON.stringify(event.payload, null, 2);
 };
 
-const parsedPayload = function parsedPayload(
+export const parseInspectorEventPayload = function parseInspectorEventPayload(
 	text: string
 ): Readonly<{ ok: true; value: EventKey['payload'] }> | Readonly<{ ok: false; error: string }> {
 	try {
@@ -90,6 +154,30 @@ const parsedPayload = function parsedPayload(
 	} catch {
 		return { ok: false, error: 'Payload must be valid JSON.' };
 	}
+};
+
+const valueLabel = function valueLabel(
+	project: Project,
+	attachmentId: Id | null | undefined
+): string {
+	if (!attachmentId) {
+		return 'None';
+	}
+
+	return project.attachments.find((attachment) => attachment.id === attachmentId)?.name ?? 'Missing attachment';
+};
+
+const attachmentEntity = function attachmentEntity(
+	project: Project,
+	attachmentId: Id | null | undefined
+): SelectableEntity | undefined {
+	return attachmentId && project.attachments.some((attachment) => attachment.id === attachmentId)
+		? { kind: 'attachment', id: attachmentId }
+		: undefined;
+};
+
+const slotEntity = function slotEntity(project: Project, slotId: Id): SelectableEntity | undefined {
+	return project.slots.some((slot) => slot.id === slotId) ? { kind: 'slot', id: slotId } : undefined;
 };
 
 export type CollapsibleInspectorSectionProps = Readonly<{
@@ -149,13 +237,19 @@ const ClipInspector = function ClipInspector({
 	collapsedSections,
 	onToggleSection,
 	onRenameClip,
-	onUpdateClipPlayback
+	onUpdateClipPlayback,
+	onSaveClip,
+	onDuplicateClip,
+	onDeleteClip
 }: Readonly<{
 	clip: Clip;
 	collapsedSections: ReadonlySet<string>;
 	onToggleSection: (sectionId: string) => void;
 	onRenameClip: (name: string) => void;
 	onUpdateClipPlayback: (settings: ClipPlaybackSettings) => void;
+	onSaveClip?: (name: string, settings: ClipPlaybackSettings) => void;
+	onDuplicateClip?: () => void;
+	onDeleteClip?: () => void;
 }>): ReactElement {
 	const [error, setError] = useState<string | undefined>(undefined);
 	const submit = function submit(event: FormEvent<HTMLFormElement>): void {
@@ -174,10 +268,17 @@ const ClipInspector = function ClipInspector({
 			return;
 		}
 
-		if (nameValue.trim() !== clip.name) {
-			onRenameClip(nameValue);
+		const name = nameValue.trim();
+		const settings = { durationSeconds: durationValue, fps: fpsValue, loop: data.get('clipLoop') === 'on' } as const;
+
+		if (onSaveClip) {
+			onSaveClip(name, settings);
+		} else {
+			if (name !== clip.name) {
+				onRenameClip(name);
+			}
+			onUpdateClipPlayback(settings);
 		}
-		onUpdateClipPlayback({ durationSeconds: durationValue, fps: fpsValue, loop: data.get('clipLoop') === 'on' });
 		setError(undefined);
 	};
 
@@ -192,15 +293,23 @@ const ClipInspector = function ClipInspector({
 			onToggle={() => onToggleSection('clip')}
 		>
 			<form className="shared-inspector-form" key={`${clip.id}:${clip.name}:${clip.durationSeconds}:${clip.fps}:${clip.loop}`} onSubmit={submit}>
-				<label><span className="field-label">Clip name</span><input name="clipName" defaultValue={clip.name} aria-label="Inspector clip field" /></label>
+				<label><span className="field-label">Clip name</span><input aria-describedby={error?.startsWith('Clip name') ? 'clip-editor-error' : undefined} aria-invalid={error?.startsWith('Clip name') ? 'true' : undefined} name="clipName" defaultValue={clip.name} aria-label="Clip name" /></label>
 				<div className="shared-inspector-grid">
-					<label><span className="field-label">Duration (s)</span><input name="clipDuration" type="number" min="0.001" step="0.001" defaultValue={clip.durationSeconds} aria-label="Clip duration" /></label>
-					<label><span className="field-label">FPS</span><input name="clipFps" type="number" min="0.001" step="0.001" defaultValue={clip.fps} aria-label="Inspector frame rate" /></label>
+					<label><span className="field-label">Duration (s)</span><input aria-describedby={error?.startsWith('Duration') ? 'clip-editor-error' : undefined} aria-invalid={error?.startsWith('Duration') ? 'true' : undefined} name="clipDuration" type="number" min="0.001" step="0.001" defaultValue={clip.durationSeconds} aria-label="Duration (sec)" /></label>
+					<label><span className="field-label">FPS</span><input aria-describedby={error?.startsWith('Duration') ? 'clip-editor-error' : undefined} aria-invalid={error?.startsWith('Duration') ? 'true' : undefined} name="clipFps" type="number" min="0.001" step="0.001" defaultValue={clip.fps} aria-label="FPS" /></label>
 				</div>
-				<label className="shared-checkbox"><input name="clipLoop" type="checkbox" aria-label="Inspector playback flag" defaultChecked={clip.loop} /> <span>Loop playback</span></label>
-				{error && <small className="field-error" role="alert">{error}</small>}
-				<button className="secondary-button" type="submit">Save clip</button>
+				<label className="shared-checkbox"><input name="clipLoop" type="checkbox" aria-label="Loop" defaultChecked={clip.loop} /> <span>Loop playback</span></label>
+				{error && <small className="field-error" id="clip-editor-error" role="alert">{error}</small>}
+				<div className="inspector-actions">
+					<button className="secondary-button" type="submit">Save clip</button>
+					{onDuplicateClip && <button className="secondary-button" type="button" onClick={onDuplicateClip}>Duplicate clip</button>}
+					{onDeleteClip && <button className="danger-button" type="button" onClick={onDeleteClip}>Delete clip</button>}
+				</div>
 			</form>
+			<dl className="context-details">
+				<div><dt>Tracks</dt><dd>{clip.tracks.length}</dd></div>
+				<div><dt>Events</dt><dd>{clip.events.length}</dd></div>
+			</dl>
 		</CollapsibleInspectorSection>
 	);
 };
@@ -240,22 +349,12 @@ const TrackInspector = function TrackInspector({
 	);
 };
 
-const curveForEntries = function curveForEntries(entries: readonly KeyEntry[]): CubicBezier | undefined {
-	const curves = entries.flatMap((entry) => {
-		if (!numberTrack(entry.track) || !('interpolation' in entry.key) || entry.key.interpolation !== 'bezier' || !entry.key.curve) {
-			return [];
-		}
+const clampedBezierValue = function clampedBezierValue(value: number, handle: BezierHandle): number {
+	if (handle === 'x1' || handle === 'x2') {
+		return Math.max(0, Math.min(1, value));
+	}
 
-		return [entry.key.curve];
-	});
-
-	return curves[0];
-};
-
-type BezierHandle = keyof CubicBezier;
-
-const clampedBezierValue = function clampedBezierValue(value: number): number {
-	return Math.max(0, Math.min(1, value));
+	return Math.max(-0.5, Math.min(1.5, value));
 };
 
 const updateBezierHandle = function updateBezierHandle(
@@ -263,38 +362,38 @@ const updateBezierHandle = function updateBezierHandle(
 	handle: BezierHandle,
 	value: number
 ): CubicBezier {
-	const nextValue = clampedBezierValue(value);
+	const nextValue = clampedBezierValue(value, handle);
 
-	if (handle === 'x1') {
-		return { ...curve, x1: nextValue };
-	}
-	if (handle === 'y1') {
-		return { ...curve, y1: nextValue };
-	}
-	if (handle === 'x2') {
-		return { ...curve, x2: nextValue };
-	}
-
-	return { ...curve, y2: nextValue };
+	return { ...curve, [handle]: nextValue };
 };
 
 const SharedBezierEditor = function SharedBezierEditor({
 	curve,
+	curvesMixed,
 	onChange
 }: Readonly<{
 	curve: CubicBezier;
+	curvesMixed?: boolean;
 	onChange: (curve: CubicBezier) => void;
 }>): ReactElement {
+	const [draftCurve, setDraftCurve] = useState<CubicBezier>(() => curve);
 	const handles: readonly BezierHandle[] = ['x1', 'y1', 'x2', 'y2'];
+	const updateHandle = function updateHandle(handle: BezierHandle, value: string): void {
+		const number = Number(value);
+
+		if (Number.isFinite(number)) {
+			setDraftCurve((current) => updateBezierHandle(current, handle, number));
+		}
+	};
 
 	return (
 		<fieldset className="shared-bezier-editor">
-			<legend>Bezier curve editor</legend>
+			<legend>Bezier curve editor {curvesMixed && <small className="mixed-field-label">Mixed curves</small>}</legend>
 			<svg className="bezier-preview" viewBox="0 0 100 100" role="img" aria-label="Bezier curve preview">
 				<path className="bezier-grid-line" d="M 0 100 L 100 0" />
-				<path className="shared-bezier-curve" d={'M 0 100 C ' + curve.x1 * 100 + ' ' + (100 - curve.y1 * 100) + ', ' + curve.x2 * 100 + ' ' + (100 - curve.y2 * 100) + ', 100 0'} />
-				<circle className="bezier-handle" cx={curve.x1 * 100} cy={100 - curve.y1 * 100} r="3" />
-				<circle className="bezier-handle" cx={curve.x2 * 100} cy={100 - curve.y2 * 100} r="3" />
+				<path className="shared-bezier-curve" d={'M 0 100 C ' + draftCurve.x1 * 100 + ' ' + (100 - draftCurve.y1 * 100) + ', ' + draftCurve.x2 * 100 + ' ' + (100 - draftCurve.y2 * 100) + ', 100 0'} />
+				<circle className="bezier-handle" cx={draftCurve.x1 * 100} cy={100 - draftCurve.y1 * 100} r="3" />
+				<circle className="bezier-handle" cx={draftCurve.x2 * 100} cy={100 - draftCurve.y2 * 100} r="3" />
 			</svg>
 			<div className="shared-inspector-grid">
 				{handles.map((handle) => (
@@ -302,24 +401,38 @@ const SharedBezierEditor = function SharedBezierEditor({
 						<span className="field-label">{handle.toUpperCase()}</span>
 						<input
 							aria-label={'Bezier ' + handle}
-							type="number"
-							min="0"
-							max="1"
+							max={handle === 'x1' || handle === 'x2' ? 1 : 1.5}
+							min={handle === 'x1' || handle === 'x2' ? 0 : -0.5}
 							step="0.01"
-							value={curve[handle]}
-							onChange={(event) => {
-								const value = Number(event.currentTarget.value);
-
-								if (Number.isFinite(value)) {
-									onChange(updateBezierHandle(curve, handle, value));
-								}
-							}}
+							type="number"
+							value={draftCurve[handle]}
+							onChange={(event) => updateHandle(handle, event.currentTarget.value)}
 						/>
 					</label>
 				))}
 			</div>
+			<button className="quiet-button" type="button" onClick={() => onChange(draftCurve)}>Apply curve</button>
 		</fieldset>
 	);
+};
+
+const curveForEntries = function curveForEntries(entries: readonly NumericKeyEntry[]): CubicBezier | undefined {
+	if (entries.length === 0 || entries.some((entry) => entry.key.interpolation !== 'bezier')) {
+		return undefined;
+	}
+
+	return entries.map((entry) => entry.key.curve).find((curve): curve is CubicBezier => curve !== null) ?? DEFAULT_BEZIER_CURVE;
+};
+
+const curvesMixedForEntries = function curvesMixedForEntries(entries: readonly NumericKeyEntry[]): boolean {
+	const curves = entries
+		.map((entry) => entry.key.curve)
+		.filter((curve): curve is CubicBezier => curve !== null);
+	const first = curves[0];
+
+	return curves.length > 1
+		&& first !== undefined
+		&& curves.some((curve) => curve.x1 !== first.x1 || curve.y1 !== first.y1 || curve.x2 !== first.x2 || curve.y2 !== first.y2);
 };
 
 const KeyInspector = function KeyInspector({
@@ -328,41 +441,76 @@ const KeyInspector = function KeyInspector({
 	collapsedSections,
 	onToggleSection,
 	onUpdateNumberKeys,
-	onUpdateInterpolation
+	onUpdateKeys,
+	onUpdateInterpolation,
+	onMoveKeys
 }: Readonly<{
 	clip: Clip;
 	entries: readonly KeyEntry[];
 	collapsedSections: ReadonlySet<string>;
 	onToggleSection: (sectionId: string) => void;
 	onUpdateNumberKeys: (changes: readonly NumberKeyChange[]) => void;
+	onUpdateKeys?: (changes: readonly NumberKeyChange[]) => void;
 	onUpdateInterpolation: (changes: readonly NumberKeyChange[], input: NumberKeyInterpolationInput) => void;
+	onMoveKeys?: (changes: readonly KeyTimeChange[]) => void;
 }>): ReactElement {
-	const numericEntries = entries.filter((entry): entry is KeyEntry & Readonly<{ key: NumberKey; track: NumberTrack }> => numberTrack(entry.track) && 'value' in entry.key && 'interpolation' in entry.key);
-	const interpolationValues = numericEntries.map((entry) => entry.key.interpolation);
-	const interpolation = interpolationValues.length > 0 && interpolationValues.every((value) => value === interpolationValues[0]) ? interpolationValues[0] : 'mixed';
-	const values = numericEntries.map((entry) => entry.key.value);
-	const sharedValue = values.length > 0 && values.every((value) => value === values[0]) ? values[0] : undefined;
-	const firstNumber = numericEntries[0]?.key;
-	const firstFrame = entries[0] ? frameIndexForTime(clip, entries[0].key.timeSeconds) + 1 : 1;
+	const numericEntries = entries.filter(numericKeyEntry);
 	const [error, setError] = useState<string | undefined>(undefined);
+	const interpolation = sameValue(numericEntries.map((entry) => entry.key.interpolation));
+	const sharedValue = sameValue(numericEntries.map((entry) => entry.key.value));
+	const sharedFrame = sameValue(entries.map((entry) => frameForKey(clip, entry.key.timeSeconds)));
 	const curve = curveForEntries(numericEntries);
-	const submitNumberChanges = function submitNumberChanges(event: FormEvent<HTMLFormElement>): void {
+	const curvesMixed = curvesMixedForEntries(numericEntries);
+	const frameCount = frameCountForClip(clip);
+	const submitKey = function submitKey(event: FormEvent<HTMLFormElement>): void {
 		event.preventDefault();
 		const data = new FormData(event.currentTarget);
-		const frame = Number(data.get('keyFrame'));
-		const value = Number(data.get('keyValue'));
+		const frameText = data.get('keyFrame');
+		const valueText = data.get('keyValue');
+		const frame = typeof frameText === 'string' && frameText.trim().length > 0 ? Number(frameText) : undefined;
 
-		if (!Number.isInteger(frame) || frame < 1 || frame > Math.round(clip.durationSeconds * clip.fps) + 1) {
-			setError('Frame must be an integer inside the clip.');
+		if (frame !== undefined && !validFrame(clip, frame)) {
+			setError(`Key frame must be an integer between 1 and ${frameCount}.`);
 			return;
 		}
-		if (!Number.isFinite(value)) {
-			setError('Key value must be finite.');
+		const timeSeconds = frame === undefined ? undefined : timeForFrame(clip, frame - 1);
+		const frameChanges: readonly KeyTimeChange[] = entries.map((entry) => ({ trackId: entry.reference.trackId, keyId: entry.reference.keyId, timeSeconds: timeSeconds ?? entry.key.timeSeconds }));
+		const numericValue = typeof valueText === 'string' && valueText.trim().length > 0 ? Number(valueText) : undefined;
+		const mixedKeyTypes = numericEntries.length > 0 && numericEntries.length < entries.length;
+
+		if (timeSeconds !== undefined && mixedKeyTypes && !onUpdateKeys) {
+			setError('Frame edits across numeric and discrete keys require atomic shared-key support.');
 			return;
 		}
 
+		if (numericEntries.length > 0 && numericValue !== undefined && !Number.isFinite(numericValue)) {
+			setError('Numeric key values must be finite.');
+			return;
+		}
 		if (numericEntries.length > 0) {
-			onUpdateNumberKeys(numericEntries.map((entry) => ({ trackId: entry.reference.trackId, keyId: entry.reference.keyId, value, timeSeconds: (frame - 1) / clip.fps })));
+			const changes: readonly NumberKeyChange[] = entries.map((entry) => ({
+				trackId: entry.reference.trackId,
+				keyId: entry.reference.keyId,
+				...(timeSeconds === undefined ? {} : { timeSeconds }),
+				...(numericValue !== undefined && numericEntries.some((numericEntry) => numericEntry.reference.trackId === entry.reference.trackId && numericEntry.reference.keyId === entry.reference.keyId) ? { value: numericValue } : {})
+			}));
+			const numericChanges = numericEntries.map((entry) => ({
+				trackId: entry.reference.trackId,
+				keyId: entry.reference.keyId,
+				...(timeSeconds === undefined ? {} : { timeSeconds }),
+				...(numericValue === undefined ? {} : { value: numericValue })
+			}));
+
+			if (onUpdateKeys && changes.some((change) => change.timeSeconds !== undefined || change.value !== undefined)) {
+				onUpdateKeys(changes);
+			} else if (numericChanges.some((change) => change.timeSeconds !== undefined || change.value !== undefined)) {
+				onUpdateNumberKeys(numericChanges);
+			}
+			setError(undefined);
+			return;
+		}
+		if (timeSeconds !== undefined) {
+			onMoveKeys?.(frameChanges);
 		}
 		setError(undefined);
 	};
@@ -371,12 +519,11 @@ const KeyInspector = function KeyInspector({
 			return;
 		}
 
-		const input: NumberKeyInterpolationInput = value === 'bezier'
-			? { interpolation: value, curve: curve ?? { x1: 0.25, y1: 0.25, x2: 0.75, y2: 0.75 } }
-			: { interpolation: value, curve: null };
-
-		onUpdateInterpolation(numericEntries.map((entry) => ({ trackId: entry.reference.trackId, keyId: entry.reference.keyId })), input);
+		onUpdateInterpolation(numericEntries.map((entry) => ({ trackId: entry.reference.trackId, keyId: entry.reference.keyId })), value === 'bezier'
+			? { interpolation: value, curve: curve ?? DEFAULT_BEZIER_CURVE }
+			: { interpolation: value, curve: null });
 	};
+	const keySignature = entries.map((entry) => `${entry.reference.trackId}:${entry.reference.keyId}:${entry.key.timeSeconds}:${'value' in entry.key ? entry.key.value : ''}`).join('|');
 
 	return (
 		<CollapsibleInspectorSection
@@ -388,21 +535,32 @@ const KeyInspector = function KeyInspector({
 			label="Key"
 			onToggle={() => onToggleSection('key')}
 		>
-			<p className="muted-copy">Frame {firstFrame}{entries.length > 1 ? ' · mixed selection' : ''}</p>
-			{numericEntries.length > 0 && (
-				<form className="shared-inspector-form" key={`${entries.map((entry) => entry.reference.keyId).join('|')}:${firstNumber?.value}:${firstNumber?.timeSeconds}`} onSubmit={submitNumberChanges}>
-					<div className="shared-inspector-grid">
-						<label><span className="field-label">Frame</span><input name="keyFrame" type="number" min="1" step="1" defaultValue={firstFrame} aria-label="Key frame" /></label>
-					<label><span className="field-label">Value</span><input name="keyValue" type="number" step="any" defaultValue={sharedValue} placeholder={sharedValue === undefined ? 'Mixed values' : undefined} aria-label="Inspector value" /></label>
+			<form className="shared-inspector-form" key={keySignature} onSubmit={submitKey}>
+				<div className="shared-inspector-grid">
+					<label>
+						<span className="field-label">Frame {sharedFrame === undefined && <small className="mixed-field-label">Mixed</small>}</span>
+						<input aria-describedby={error ? 'key-editor-error' : undefined} aria-invalid={error ? 'true' : undefined} aria-label="Key frame" defaultValue={sharedFrame === undefined ? '' : sharedFrame + 1} max={frameCount} min="1" name="keyFrame" placeholder={sharedFrame === undefined ? 'Mixed frames' : undefined} step="1" type="number" />
+					</label>
+					{numericEntries.length > 0 && <label>
+						<span className="field-label">Value {sharedValue === undefined && <small className="mixed-field-label">Mixed</small>}</span>
+						<input aria-describedby={error ? 'key-editor-error' : undefined} aria-invalid={error ? 'true' : undefined} aria-label="Inspector value" defaultValue={sharedValue} name="keyValue" placeholder={sharedValue === undefined ? 'Mixed values' : undefined} step="any" type="number" />
+					</label>}
 				</div>
-				<label><span className="field-label">Interpolation</span><select aria-label="Inspector easing mode" value={interpolation} onChange={(event) => updateInterpolation(event.currentTarget.value)}><option value="mixed">Mixed</option><option value="stepped">Stepped</option><option value="linear">Linear</option><option value="bezier">Bezier</option></select></label>
-					{sharedValue === undefined && <small className="muted-copy">Selected keys have mixed values.</small>}
-					{interpolation === 'bezier' && curve && <SharedBezierEditor curve={curve} onChange={(nextCurve) => onUpdateInterpolation(numericEntries.map((entry) => ({ trackId: entry.reference.trackId, keyId: entry.reference.keyId })), { interpolation: 'bezier', curve: nextCurve })} />}
-					{error && <small className="field-error" role="alert">{error}</small>}
-					<button className="secondary-button" type="submit">Apply key values</button>
-				</form>
-			)}
-			{numericEntries.length === 0 && <p className="muted-copy">This is a discrete key. Edit its value from the control below.</p>}
+				{numericEntries.length > 0 && <label>
+					<span className="field-label">Interpolation {interpolation === undefined && <small className="mixed-field-label">Mixed</small>}</span>
+					<select aria-label="Inspector easing mode" value={interpolation ?? 'mixed'} onChange={(event) => updateInterpolation(event.currentTarget.value)}>
+						<option value="mixed">Mixed</option>
+						<option value="stepped">Stepped</option>
+						<option value="linear">Linear</option>
+						<option value="bezier">Bezier</option>
+					</select>
+				</label>}
+				{interpolation === 'bezier' && curve && <SharedBezierEditor key={`${keySignature}:bezier:${curve.x1}:${curve.y1}:${curve.x2}:${curve.y2}`} curve={curve} curvesMixed={curvesMixed} onChange={(nextCurve) => onUpdateInterpolation(numericEntries.map((entry) => ({ trackId: entry.reference.trackId, keyId: entry.reference.keyId })), { interpolation: 'bezier', curve: nextCurve })} />}
+				{numericEntries.length === 0 && <p className="muted-copy">This selection contains discrete keys. Frame can be changed together; value editing is available for the specific key context.</p>}
+				{entries.length > 1 && <p className="muted-copy" data-testid="mixed-key-state">{entries.length} keys selected. Blank mixed fields are unchanged until a common value is entered.</p>}
+				{error && <small className="field-error" id="key-editor-error" role="alert">{error}</small>}
+				<button className="secondary-button" type="submit">Apply key values</button>
+			</form>
 		</CollapsibleInspectorSection>
 	);
 };
@@ -425,29 +583,44 @@ const EventInspector = function EventInspector({
 	onDelete: () => void;
 }>): ReactElement {
 	const [name, setName] = useState(event.name);
-	const [frame, setFrame] = useState(String(frameIndexForTime(clip, event.timeSeconds) + 1));
+	const [frame, setFrame] = useState(String(frameForKey(clip, event.timeSeconds) + 1));
 	const [payload, setPayload] = useState(eventPayloadText(event));
 	const [error, setError] = useState<string | undefined>(undefined);
 	const submit = function submit(eventSubmit: FormEvent<HTMLFormElement>): void {
 		eventSubmit.preventDefault();
 		const frameValue = Number(frame);
-		const parsed = parsedPayload(payload);
+		const parsed = parseInspectorEventPayload(payload);
+		const submitter = eventSubmit.nativeEvent instanceof SubmitEvent
+			? eventSubmit.nativeEvent.submitter
+			: null;
+		const action = submitter instanceof HTMLButtonElement ? submitter.value : 'apply';
+		const moveOnly = action === 'move';
 
-		if (name.trim().length === 0) {
+		if (!moveOnly && name.trim().length === 0) {
 			setError('Event name is required.');
 			return;
 		}
-		if (!Number.isInteger(frameValue) || frameValue < 1 || frameValue > Math.round(clip.durationSeconds * clip.fps) + 1) {
-			setError('Event frame must be an integer inside the clip.');
+		if (!validFrame(clip, frameValue)) {
+			setError(`Event frame must be an integer between 1 and ${frameCountForClip(clip)}.`);
 			return;
 		}
-		if (!parsed.ok) {
+		if (!moveOnly && !parsed.ok) {
 			setError(parsed.error);
 			return;
 		}
 
-		onUpdate({ name, payload: parsed.value });
-		onMove((frameValue - 1) / clip.fps);
+		const update: EventKeyUpdate = !moveOnly && parsed.ok
+			? {
+				...(name.trim() !== event.name ? { name: name.trim() } : {}),
+				...(eventPayloadText(event) !== payload ? { payload: parsed.value } : {})
+			}
+			: {};
+		if (!moveOnly && Object.keys(update).length > 0) {
+			onUpdate(update);
+		}
+		if (moveOnly && frameValue - 1 !== frameForKey(clip, event.timeSeconds)) {
+			onMove(timeForFrame(clip, frameValue - 1));
+		}
 		setError(undefined);
 	};
 
@@ -462,98 +635,238 @@ const EventInspector = function EventInspector({
 			onToggle={() => onToggleSection('event')}
 		>
 			<form className="shared-inspector-form" key={`${event.id}:${event.name}:${event.timeSeconds}:${eventPayloadText(event)}`} onSubmit={submit}>
-				<label><span className="field-label">Name</span><input aria-label="Inspector event field" value={name} onChange={(inputEvent) => setName(inputEvent.currentTarget.value)} /></label>
-				<label><span className="field-label">Frame</span><input aria-label="Inspector event position" type="number" min="1" step="1" value={frame} onChange={(inputEvent) => setFrame(inputEvent.currentTarget.value)} /></label>
-				<label><span className="field-label">Payload JSON</span><textarea aria-label="Inspector payload field" rows={5} value={payload} onChange={(inputEvent) => setPayload(inputEvent.currentTarget.value)} /></label>
-				{error && <small className="field-error" role="alert">{error}</small>}
-				<div className="inspector-actions"><button className="secondary-button" type="submit">Save event</button><button className="danger-button" type="button" onClick={onDelete}>Delete selected event</button></div>
+				<label><span className="field-label">Name</span><input aria-describedby={error?.startsWith('Event name') ? 'event-editor-error' : undefined} aria-invalid={error?.startsWith('Event name') ? 'true' : undefined} aria-label="Event name" value={name} onChange={(inputEvent) => setName(inputEvent.currentTarget.value)} /></label>
+				<label><span className="field-label">Frame</span><input aria-describedby={error?.startsWith('Event frame') ? 'event-editor-error' : undefined} aria-invalid={error?.startsWith('Event frame') ? 'true' : undefined} aria-label="Event frame" max={frameCountForClip(clip)} min="1" step="1" type="number" value={frame} onChange={(inputEvent) => setFrame(inputEvent.currentTarget.value)} /></label>
+				<label>
+					<span className="field-label">Payload JSON</span>
+					<textarea aria-describedby={error?.includes('Payload') ? 'event-editor-error' : undefined} aria-label="Payload JSON" aria-invalid={error?.includes('Payload') === true} rows={5} value={payload} onChange={(inputEvent) => {
+						setPayload(inputEvent.currentTarget.value);
+						setError(undefined);
+					}} />
+				</label>
+				<p className="muted-copy">JSON object · strings, numbers, booleans, null, arrays, and nested objects.</p>
+				{error && <small className="field-error" id="event-editor-error" role="alert">{error}</small>}
+				<div className="inspector-actions"><button className="secondary-button" name="eventAction" type="submit" value="apply">Apply event</button><button className="secondary-button" name="eventAction" type="submit" value="move">Move event</button><button className="danger-button" type="button" onClick={onDelete}>Delete event</button></div>
 			</form>
 		</CollapsibleInspectorSection>
 	);
 };
 
 const moveOrderSlot = function moveOrderSlot(
-	order: readonly EntityId[],
-	slotId: EntityId,
+	order: readonly Id[],
+	slotId: Id,
 	direction: -1 | 1
-): readonly EntityId[] {
+): readonly Id[] {
 	const index = order.indexOf(slotId);
-	const target = index + direction;
+	const targetIndex = index + direction;
 
-	return index < 0 || target < 0 || target >= order.length
+	return index < 0 || targetIndex < 0 || targetIndex >= order.length
 		? order
-		: order.map((id, currentIndex) => currentIndex === index
-			? order[target]
-			: currentIndex === target ? order[index] : id);
+		: reorderDrawOrder(order, slotId, targetIndex);
+};
+
+const DrawOrderList = function DrawOrderList({
+	project,
+	order,
+	label,
+	editable,
+	onChange,
+	onNavigate
+}: Readonly<{
+	project: Project;
+	order: readonly Id[];
+	label: string;
+	editable: boolean;
+	onChange?: (order: readonly Id[]) => void;
+	onNavigate?: (slotId: Id) => void;
+}>): ReactElement {
+	return (
+		<div className="inspector-order-group">
+			<div className="field-label">{label}</div>
+			<ol className="context-order-list" aria-label={label}>
+				{order.map((slotId, index) => {
+					const slot = project.slots.find((candidate) => candidate.id === slotId);
+					const slotName = slot?.name ?? slotId;
+
+					return (
+						<li data-slot-id={slotId} key={slotId}>
+							<button className="inspector-link-button" type="button" onClick={() => onNavigate?.(slotId)}>{index + 1}. {slotName}</button>
+							{editable && onChange && <span className="inspector-actions">
+								<Tooltip label={`Move ${slotName} earlier`}>
+									<button className="quiet-button" type="button" aria-label={`Move ${slotName} earlier`} disabled={index === 0} onClick={() => onChange(moveOrderSlot(order, slotId, -1))}>↑</button>
+								</Tooltip>
+								<Tooltip label={`Move ${slotName} later`}>
+									<button className="quiet-button" type="button" aria-label={`Move ${slotName} later`} disabled={index === order.length - 1} onClick={() => onChange(moveOrderSlot(order, slotId, 1))}>↓</button>
+								</Tooltip>
+							</span>}
+						</li>
+					);
+				})}
+			</ol>
+		</div>
+	);
 };
 
 const DrawOrderInspector = function DrawOrderInspector({
 	project,
-	track,
-	drawKey,
 	clip,
+	context,
 	collapsedSections,
 	onToggleSection,
-	onUpdate
+	onUpdate,
+	onKeyCurrent,
+	activeFrameIndex,
+	mode,
+	onNavigate
 }: Readonly<{
 	project: Project;
-	track: Extract<Track, { kind: 'slot-draw-order' }>;
-	drawKey: DiscreteKey<readonly EntityId[]>;
 	clip: Clip;
+	context: Extract<InspectorContext, { kind: 'draw-order' }>;
 	collapsedSections: ReadonlySet<string>;
 	onToggleSection: (sectionId: string) => void;
-	onUpdate: (value: readonly EntityId[]) => void;
+	onUpdate: (value: readonly Id[]) => void;
+	onKeyCurrent?: (value: readonly Id[]) => void;
+	activeFrameIndex: number;
+	mode: EditorMode;
+	onNavigate?: (entity: SelectableEntity) => void;
 }>): ReactElement {
-	const slots = new Map(project.slots.map((slot) => [slot.id, slot] as const));
+	const animateContext = mode === 'animate';
+	const frameIndex = animateContext ? activeFrameIndex : 0;
+	const setupView = drawOrderViewForFrame(project, undefined, 0);
+	const view = drawOrderViewForFrame(project, animateContext ? clip : undefined, frameIndex);
+	const track = trackFor(clip, context.trackId);
+	const selectedKey = track?.kind === 'slot-draw-order' ? track.keys.find((candidate) => candidate.id === context.keyId) : undefined;
+	const keyedOrder = selectedKey?.value;
+	const currentSource = view.source === 'keyed'
+		? `Keyed override from frame ${(view.keyFrameIndex ?? frameIndex) + 1}`
+		: 'Setup fallback';
+	const changeCurrent = function changeCurrent(order: readonly Id[]): void {
+		if (onKeyCurrent) {
+			onKeyCurrent(order);
+			return;
+		}
+
+		onUpdate(order);
+	};
 
 	return (
 		<CollapsibleInspectorSection
-			ariaLabel="Draw order key properties"
+			ariaLabel="Draw order properties"
 			collapsed={collapsedSections.has('draw-order')}
-			detail="Current keyed order"
+			detail={currentSource}
 			eyebrow="Context"
 			id="draw-order"
 			label="Draw Order"
 			onToggle={() => onToggleSection('draw-order')}
 		>
-			<ol className="context-order-list">
-				{drawKey.value.map((slotId, index) => <li key={slotId}><span>{index + 1}. {slots.get(slotId)?.name ?? slotId}</span><span className="inspector-actions"><button className="quiet-button" type="button" aria-label={`Move ${slots.get(slotId)?.name ?? slotId} up`} disabled={index === 0} onClick={() => onUpdate(moveOrderSlot(drawKey.value, slotId, -1))}>↑</button><button className="quiet-button" type="button" aria-label={`Move ${slots.get(slotId)?.name ?? slotId} down`} disabled={index === drawKey.value.length - 1} onClick={() => onUpdate(moveOrderSlot(drawKey.value, slotId, 1))}>↓</button></span></li>)}
-			</ol>
-			<p className="muted-copy">Track {track.id} · frame {frameIndexForTime(clip, drawKey.timeSeconds) + 1}</p>
+			<p className="muted-copy">Back to front · frame {frameIndex + 1}</p>
+			<DrawOrderList project={project} order={setupView.order} label="Setup value · back to front" editable={false} onNavigate={(slotId) => {
+				const entity = slotEntity(project, slotId);
+
+				if (entity) {
+					onNavigate?.(entity);
+				}
+			}} />
+			{animateContext && <DrawOrderList project={project} order={view.order} label={`Current evaluated order · ${currentSource}`} editable={onKeyCurrent !== undefined} onChange={changeCurrent} onNavigate={(slotId) => {
+				const entity = slotEntity(project, slotId);
+
+				if (entity) {
+					onNavigate?.(entity);
+				}
+			}} />}
+			{keyedOrder && <DrawOrderList project={project} order={keyedOrder} label={`Keyed value · frame ${frameForKey(clip, selectedKey?.timeSeconds ?? 0) + 1}`} editable onChange={onUpdate} onNavigate={(slotId) => {
+				const entity = slotEntity(project, slotId);
+
+				if (entity) {
+					onNavigate?.(entity);
+				}
+			}} />}
+			{keyedOrder === undefined && <p className="muted-copy">This context does not have a keyed order value.</p>}
 		</CollapsibleInspectorSection>
 	);
 };
 
 const AttachmentSwapInspector = function AttachmentSwapInspector({
-	project,
-	track,
-	attachmentKey,
-	collapsedSections,
-	onToggleSection,
-	onUpdate
+	project,	clip,	context,	collapsedSections,	onToggleSection,	onUpdate,	onKeyCurrent,	activeFrameIndex,	activePose,	mode,	onNavigate
 }: Readonly<{
 	project: Project;
-	track: Extract<Track, { kind: 'slot-attachment' }>;
-	attachmentKey: DiscreteKey<EntityId | null>;
+	clip: Clip;
+	context: Extract<InspectorContext, { kind: 'attachment-swap' }>;
 	collapsedSections: ReadonlySet<string>;
 	onToggleSection: (sectionId: string) => void;
-	onUpdate: (value: EntityId | null) => void;
+	onUpdate: (value: Id | null) => void;
+	onKeyCurrent?: (value: Id | null) => void;
+	activeFrameIndex: number;
+	activePose?: EvaluatedPose;
+	mode: EditorMode;
+	onNavigate?: (entity: SelectableEntity) => void;
 }>): ReactElement {
-	const slot = project.slots.find((candidate) => candidate.id === track.targetId);
-	const attachments = project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === track.targetId);
+	const slot = project.slots.find((candidate) => candidate.id === context.slotId);
+	const track = trackFor(clip, context.trackId);
+	const selectedKey = track?.kind === 'slot-attachment' ? track.keys.find((candidate) => candidate.id === context.keyId) : undefined;
+	const animateContext = mode === 'animate';
+	const currentFrameIndex = animateContext ? activeFrameIndex : 0;
+	const currentSlot = activePose?.slots.find((candidate) => candidate.id === context.slotId);
+	const setupValue = slot?.setupAttachmentId ?? null;
+	const currentKey = animateContext && track?.kind === 'slot-attachment'
+		? track.keys
+			.filter((key) => frameForKey(clip, key.timeSeconds) <= currentFrameIndex)
+			.toSorted((left, right) => frameForKey(clip, left.timeSeconds) - frameForKey(clip, right.timeSeconds))
+			.at(-1)
+		: undefined;
+	const currentValue = animateContext
+		? currentKey?.value ?? currentSlot?.activeAttachmentId ?? setupValue
+		: setupValue;
+	const currentSource = currentKey
+		? `Keyed at frame ${frameForKey(clip, currentKey.timeSeconds) + 1}`
+		: 'Setup fallback';
+	const attachments = project.attachments.filter((attachment) => attachment.kind === 'image' && attachment.slotId === context.slotId);
+	const keyedValue = selectedKey?.value;
+	const attachmentOptions = (label: string, value: Id | null, disabled: boolean, onChange?: (value: Id | null) => void): ReactElement => (
+		<label className="shared-inspector-form">
+			<span className="field-label">{label}</span>
+			<select aria-label={label} disabled={disabled} value={value ?? ''} onChange={(event) => onChange?.(event.currentTarget.value || null)}>
+				<option value="">None</option>
+				{attachments.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}
+			</select>
+		</label>
+	);
+	const navigateAttachment = function navigateAttachment(attachmentId: Id | null): void {
+		const entity = attachmentEntity(project, attachmentId);
+
+		if (entity) {
+			onNavigate?.(entity);
+		}
+	};
 
 	return (
 		<CollapsibleInspectorSection
 			ariaLabel="Attachment swap properties"
 			collapsed={collapsedSections.has('attachment-swap')}
-			detail={slot?.name ?? track.targetId}
+			detail={slot?.name ?? context.slotId}
 			eyebrow="Context"
 			id="attachment-swap"
 			label="Attachment swap"
 			onToggle={() => onToggleSection('attachment-swap')}
 		>
-			<label className="shared-inspector-form"><span className="field-label">Keyed attachment</span><select aria-label="Keyed attachment" value={attachmentKey.value ?? ''} onChange={(event) => onUpdate(event.currentTarget.value || null)}><option value="">None</option>{attachments.map((attachment) => <option key={attachment.id} value={attachment.id}>{attachment.name}</option>)}</select></label>
-			<p className="muted-copy">The slot keeps its setup attachment when no keyed value is selected.</p>
+			<div className="inspector-context-links">
+				<span>Slot: {slot?.name ?? context.slotId}</span>
+				{slot && <button className="inspector-link-button" type="button" onClick={() => {
+					const entity = slotEntity(project, slot.id);
+
+					if (entity) {
+						onNavigate?.(entity);
+					}
+				}}>Select slot</button>}
+			</div>
+			<div className="inspector-value-state"><span className="field-label">Setup value</span><button className="inspector-link-button" type="button" onClick={() => navigateAttachment(setupValue)}>{valueLabel(project, setupValue)}</button></div>
+			{animateContext && attachmentOptions(`Current value · frame ${currentFrameIndex + 1}`, currentValue, onKeyCurrent === undefined, (value) => onKeyCurrent?.(value))}
+			{animateContext && <div className="inspector-value-state"><span className="field-label">Current source</span><span>{currentSource}</span></div>}
+			{animateContext && <button className="inspector-link-button" type="button" onClick={() => navigateAttachment(currentValue)}>{`Select current ${valueLabel(project, currentValue)}`}</button>}
+			{keyedValue !== undefined && attachmentOptions(`Keyed value · frame ${frameForKey(clip, selectedKey?.timeSeconds ?? 0) + 1}`, keyedValue, false, onUpdate)}
+			{keyedValue !== undefined && <button className="inspector-link-button" type="button" onClick={() => navigateAttachment(keyedValue)}>{`Select ${valueLabel(project, keyedValue)}`}</button>}
+			{keyedValue === undefined && <p className="muted-copy">No keyed value is available for this context.</p>}
+			<p className="muted-copy">Current edits create or update the attachment key at the active frame. Setup assignment remains independent.</p>
 		</CollapsibleInspectorSection>
 	);
 };
@@ -565,14 +878,26 @@ export const SharedInspector = function SharedInspector({
 	onToggleSection,
 	onRenameClip,
 	onUpdateClipPlayback,
+	onSaveClip,
+	onDuplicateClip,
+	onDeleteClip,
 	onDeleteTrack,
 	onUpdateNumberKeys,
+	onUpdateKeys,
 	onUpdateInterpolation,
+	onMoveKeys,
 	onUpdateEvent,
 	onMoveEvent,
 	onDeleteEvent,
 	onUpdateAttachmentKey,
-	onUpdateDrawOrderKey
+	onKeyCurrentAttachment,
+	onUpdateDrawOrderKey,
+	onKeyCurrentDrawOrder,
+	activeClip,
+	activeFrameIndex = 0,
+	activePose,
+	mode,
+	onNavigateEntity
 }: SharedInspectorProps): ReactElement | null {
 	if (context.kind === 'none' || context.kind === 'entity') {
 		return null;
@@ -584,7 +909,7 @@ export const SharedInspector = function SharedInspector({
 		return <section className="shared-inspector-context" aria-label="Animation context"><p className="muted-copy">The selected animation context is no longer available.</p></section>;
 	}
 	if (context.kind === 'clip') {
-		return <ClipInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} onRenameClip={(name) => onRenameClip(clip.id, name)} onUpdateClipPlayback={(settings) => onUpdateClipPlayback(clip.id, settings)} />;
+		return <ClipInspector clip={clip} collapsedSections={collapsedSections} onDeleteClip={onDeleteClip ? (): void => onDeleteClip(clip.id) : undefined} onDuplicateClip={onDuplicateClip ? (): void => onDuplicateClip(clip.id) : undefined} onToggleSection={onToggleSection} onRenameClip={(name: string): void => onRenameClip(clip.id, name)} onSaveClip={onSaveClip ? (name: string, settings: ClipPlaybackSettings): void => onSaveClip(clip.id, name, settings) : undefined} onUpdateClipPlayback={(settings: ClipPlaybackSettings): void => onUpdateClipPlayback(clip.id, settings)} />;
 	}
 	if (context.kind === 'track') {
 		const track = trackFor(clip, context.trackId);
@@ -597,25 +922,15 @@ export const SharedInspector = function SharedInspector({
 		return event ? <EventInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} event={event} onUpdate={(input) => onUpdateEvent(clip.id, event.id, input)} onMove={(timeSeconds) => onMoveEvent(clip.id, event.id, timeSeconds)} onDelete={() => onDeleteEvent(clip.id, event.id)} /> : null;
 	}
 	if (context.kind === 'draw-order') {
-		const track = trackFor(clip, context.trackId);
-		const key = track?.kind === 'slot-draw-order' ? track.keys.find((candidate) => candidate.id === context.keyId) : undefined;
-
-		return track?.kind === 'slot-draw-order' && key
-			? <DrawOrderInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} project={project} track={track} drawKey={key} onUpdate={(value) => onUpdateDrawOrderKey(clip.id, track.id, key.id, value)} />
-			: null;
+		return <DrawOrderInspector activeFrameIndex={activeClip?.id === clip.id && mode === 'animate' ? activeFrameIndex : 0} clip={clip} collapsedSections={collapsedSections} context={context} mode={mode ?? 'setup'} onKeyCurrent={activeClip?.id === clip.id && mode === 'animate' ? (value: readonly Id[]): void => { onKeyCurrentDrawOrder?.(clip.id, value); } : undefined} onNavigate={onNavigateEntity} onToggleSection={onToggleSection} onUpdate={(value) => onUpdateDrawOrderKey(clip.id, context.trackId, context.keyId, value)} project={project} />;
 	}
 	if (context.kind === 'attachment-swap') {
-		const track = trackFor(clip, context.trackId);
-		const key = track?.kind === 'slot-attachment' ? track.keys.find((candidate) => candidate.id === context.keyId) : undefined;
-
-		return track?.kind === 'slot-attachment' && key
-			? <AttachmentSwapInspector collapsedSections={collapsedSections} onToggleSection={onToggleSection} project={project} track={track} attachmentKey={key} onUpdate={(value) => onUpdateAttachmentKey(clip.id, track.id, key.id, value)} />
-			: null;
+		return <AttachmentSwapInspector activeFrameIndex={activeClip?.id === clip.id && mode === 'animate' ? activeFrameIndex : 0} activePose={activeClip?.id === clip.id && mode === 'animate' ? activePose : undefined} clip={clip} collapsedSections={collapsedSections} context={context} mode={mode ?? 'setup'} onKeyCurrent={activeClip?.id === clip.id && mode === 'animate' ? (value: Id | null): void => { onKeyCurrentAttachment?.(clip.id, context.trackId, context.slotId, value); } : undefined} onNavigate={onNavigateEntity} onToggleSection={onToggleSection} onUpdate={(value) => onUpdateAttachmentKey(clip.id, context.trackId, context.keyId, value)} project={project} />;
 	}
 
 	const entries = keyEntriesFor(clip, context.keys);
 
 	return entries.length > 0
-		? <KeyInspector clip={clip} collapsedSections={collapsedSections} onToggleSection={onToggleSection} entries={entries} onUpdateNumberKeys={(changes) => onUpdateNumberKeys(clip.id, changes)} onUpdateInterpolation={(changes, input) => onUpdateInterpolation(clip.id, changes, input)} />
+		? <KeyInspector clip={clip} collapsedSections={collapsedSections} entries={entries} onMoveKeys={(changes) => onMoveKeys?.(clip.id, changes)} onToggleSection={onToggleSection} onUpdateInterpolation={(changes, input) => onUpdateInterpolation(clip.id, changes, input)} onUpdateKeys={onUpdateKeys ? (changes): void => onUpdateKeys(clip.id, changes) : undefined} onUpdateNumberKeys={(changes) => onUpdateNumberKeys(clip.id, changes)} />
 		: null;
 };

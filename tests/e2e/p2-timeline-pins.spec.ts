@@ -35,7 +35,7 @@ test('pins Selection rows, keeps them synchronized, ignores stale IDs, clears th
 		}
 
 		localStorage.setItem(key, JSON.stringify({
-			version: 1,
+			version: 2,
 			globalDensity: 'list',
 			projects: { [projectId]: preferences }
 		}));

@@ -1,7 +1,7 @@
 # Deferred-feature audit v1
 
 The deferred-feature list in `DesignDoc.md` was checked against the source,
-tests, and release workflows on 2026-09-01. None of these features is needed
+tests, and release workflows on 2026-09-02. None of these features is needed
 by a supported first-release workflow, and none has become a release blocker.
 
 | Deferred feature | Release status |
@@ -16,6 +16,12 @@ by a supported first-release workflow, and none has become a release blocker.
 | Skeletal runtime exports and runtime libraries | Not required; the first release exports sampled sprite sheets and metadata. |
 | Engine-specific exporters other than PixiJS | Not required; PixiJS is the sole first-release target. |
 | Firefox, Safari, touch, and mobile support | Not required; the supported environment is desktop Chrome with mouse and keyboard input. |
+
+The editor's pointer Shift constraints are interaction-time axis, angle, and
+aspect locks, not a domain constraint system or inverse-kinematics feature.
+They do not change this deferred-feature boundary. Project-scoped presentation
+state such as timeline height, pins, selection history, and editor visibility
+also remains outside project meaning and export contracts.
 
 The release evidence remains bounded to the documented scope: one rigid rig,
 local persistence, sampled clip export, PixiJS atlas output, and the desktop

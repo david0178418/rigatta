@@ -1223,7 +1223,37 @@ export const addBooleanKey = function addBooleanKey(
 
 	return updateTrack(project, clipId, trackId, (currentTrack) => (
 		(currentTrack.kind === 'point-enabled' || currentTrack.kind === 'rectangle-enabled')
-			? { ...currentTrack, keys }
+				? { ...currentTrack, keys }
+				: currentTrack
+		));
+};
+
+export const updateBooleanKey = function updateBooleanKey(
+	project: Project,
+	clipId: EntityId,
+	trackId: EntityId,
+	keyId: EntityId,
+	value: boolean
+): OperationResult<Project> {
+	const clip = findClip(project, clipId);
+	const track = clip?.tracks.find((candidate) => candidate.id === trackId);
+
+	if (!clip || !track) {
+		return failure('not-found', 'Animation track does not exist.');
+	}
+	if (track.kind !== 'point-enabled' && track.kind !== 'rectangle-enabled') {
+		return failure('invalid-value', 'This track does not accept boolean keys.');
+	}
+	if (typeof value !== 'boolean') {
+		return failure('invalid-value', 'Boolean keys require a boolean value.');
+	}
+	if (!track.keys.some((key) => key.id === keyId)) {
+		return failure('not-found', 'Animation key does not exist.');
+	}
+
+	return updateTrack(project, clipId, trackId, (currentTrack) => (
+		(currentTrack.kind === 'point-enabled' || currentTrack.kind === 'rectangle-enabled')
+			? { ...currentTrack, keys: currentTrack.keys.map((key) => key.id === keyId ? { ...key, value } : key) }
 			: currentTrack
 	));
 };

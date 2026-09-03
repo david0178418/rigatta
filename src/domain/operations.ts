@@ -836,3 +836,53 @@ export const updateRectangleAttachmentSize = function updateRectangleAttachmentS
 			: candidate)
 	});
 };
+
+export const updatePointAttachmentEnabled = function updatePointAttachmentEnabled(
+	project: Project,
+	attachmentId: EntityId,
+	enabled: boolean
+): OperationResult<Project> {
+	const attachment = findAttachment(project, attachmentId);
+
+	if (!attachment) {
+		return failure('not-found', 'Attachment does not exist.');
+	}
+	if (attachment.kind !== 'point') {
+		return failure('invalid-value', 'Only point attachments have point enabled state.');
+	}
+	if (typeof enabled !== 'boolean') {
+		return failure('invalid-value', 'Point enabled state must be boolean.');
+	}
+
+	return success({
+		...project,
+		attachments: project.attachments.map((candidate) => candidate.id === attachmentId
+			? { ...candidate, enabled }
+			: candidate)
+	});
+};
+
+export const updateRectangleAttachmentEnabled = function updateRectangleAttachmentEnabled(
+	project: Project,
+	attachmentId: EntityId,
+	enabled: boolean
+): OperationResult<Project> {
+	const attachment = findAttachment(project, attachmentId);
+
+	if (!attachment) {
+		return failure('not-found', 'Attachment does not exist.');
+	}
+	if (attachment.kind !== 'rectangle') {
+		return failure('invalid-value', 'Only rectangle attachments have rectangle enabled state.');
+	}
+	if (typeof enabled !== 'boolean') {
+		return failure('invalid-value', 'Rectangle enabled state must be boolean.');
+	}
+
+	return success({
+		...project,
+		attachments: project.attachments.map((candidate) => candidate.id === attachmentId
+			? { ...candidate, enabled }
+			: candidate)
+	});
+};

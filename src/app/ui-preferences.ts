@@ -2,9 +2,11 @@ import { isEntityId, type EntityId } from '../domain/ids.ts';
 import type { Project } from '../domain/model.ts';
 import { DEFAULT_WORKSPACE_LAYOUT, type WorkspaceLayout } from './workspace-layout.ts';
 import { timelineEntityIdsForProject, type TimelineRowMode } from './timeline-model.ts';
+import type { SelectableEntity, Selection } from './selection.ts';
+import { SELECTION_HISTORY_LIMIT } from './selection-history.ts';
 
-export const UI_PREFERENCES_STORAGE_KEY = 'bone-animation.ui-preferences.v1';
-export const UI_PREFERENCES_VERSION = 1 as const;
+export const UI_PREFERENCES_STORAGE_KEY = 'bone-animation.ui-preferences.v2';
+export const UI_PREFERENCES_VERSION = 2 as const;
 export const LEGACY_UI_PREFERENCES_VERSION = 0 as const;
 
 export type AssetDensity = 'list' | 'compact' | 'thumbnail';
@@ -18,7 +20,7 @@ export type ProjectUiPreferences = Readonly<{
 	assetDensity: AssetDensity;
 	rigExpandedIds: readonly EntityId[];
 	hiddenEntityIds: readonly EntityId[];
-	selectionHistory: readonly EntityId[];
+	selectionHistory: readonly Selection[];
 	timelineRowMode: TimelineRowMode;
 	timelineExpandedIds: readonly string[];
 	pinnedTimelineEntityIds: readonly EntityId[];
@@ -67,6 +69,46 @@ const isStringArray = function isStringArray(value: unknown): value is readonly 
 
 const isIdArray = function isIdArray(value: unknown): value is readonly EntityId[] {
 	return Array.isArray(value) && value.every((item) => isEntityId(item));
+};
+
+const selectableEntityForStoredValue = function selectableEntityForStoredValue(value: unknown): SelectableEntity | undefined {
+	if (!isRecord(value) || !isEntityId(value.id)) {
+		return undefined;
+	}
+	if (value.kind === 'asset' || value.kind === 'bone' || value.kind === 'slot' || value.kind === 'attachment') {
+		return { kind: value.kind, id: value.id };
+	}
+
+	return undefined;
+};
+
+const selectionForStoredValue = function selectionForStoredValue(value: unknown): Selection | undefined {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+
+	const entities = value.flatMap((item) => {
+		const entity = selectableEntityForStoredValue(item);
+
+		return entity ? [entity] : [];
+	});
+	const uniqueEntities = entities.filter((entity, index) => entities.findIndex((candidate) => (
+		candidate.kind === entity.kind && candidate.id === entity.id
+	)) === index);
+
+	return entities.length === value.length && uniqueEntities.length > 0 ? uniqueEntities : undefined;
+};
+
+const selectionHistoryForStoredValue = function selectionHistoryForStoredValue(value: unknown): readonly Selection[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	return value.flatMap((snapshot) => {
+		const selection = selectionForStoredValue(snapshot);
+
+		return selection ? [selection] : [];
+	}).slice(-SELECTION_HISTORY_LIMIT);
 };
 
 const isAssetDensity = function isAssetDensity(value: unknown): value is AssetDensity {
@@ -124,7 +166,7 @@ const parseProjectPreferences = function parseProjectPreferences(
 		assetDensity: density,
 		rigExpandedIds: isIdArray(value.rigExpandedIds) ? [...value.rigExpandedIds] : defaults.rigExpandedIds,
 		hiddenEntityIds: isIdArray(value.hiddenEntityIds) ? [...value.hiddenEntityIds] : defaults.hiddenEntityIds,
-		selectionHistory: isIdArray(value.selectionHistory) ? [...value.selectionHistory] : defaults.selectionHistory,
+		selectionHistory: selectionHistoryForStoredValue(value.selectionHistory),
 		timelineRowMode: isTimelineRowMode(value.timelineRowMode) ? value.timelineRowMode : defaults.timelineRowMode,
 		timelineExpandedIds: isStringArray(value.timelineExpandedIds) ? [...value.timelineExpandedIds] : defaults.timelineExpandedIds,
 		pinnedTimelineEntityIds: isIdArray(value.pinnedTimelineEntityIds) ? [...value.pinnedTimelineEntityIds] : defaults.pinnedTimelineEntityIds,
@@ -246,6 +288,31 @@ const validIdsOnly = function validIdsOnly(
 	return ids.filter((id, index) => validIds.has(id) && ids.indexOf(id) === index);
 };
 
+const entityExistsInProject = function entityExistsInProject(project: Project, entity: SelectableEntity): boolean {
+	if (entity.kind === 'asset') {
+		return project.assets.some((asset) => asset.id === entity.id);
+	}
+	if (entity.kind === 'bone') {
+		return project.bones.some((bone) => bone.id === entity.id);
+	}
+	if (entity.kind === 'slot') {
+		return project.slots.some((slot) => slot.id === entity.id);
+	}
+
+	return project.attachments.some((attachment) => attachment.id === entity.id);
+};
+
+const validSelectionHistoryFor = function validSelectionHistoryFor(
+	selectionHistory: readonly Selection[],
+	project: Project
+): readonly Selection[] {
+	return selectionHistory.flatMap((selection) => {
+		const validSelection = selection.filter((entity) => entityExistsInProject(project, entity));
+
+		return validSelection.length > 0 ? [validSelection] : [];
+	}).slice(-SELECTION_HISTORY_LIMIT);
+};
+
 const validTimelineExpandedIdsOnly = function validTimelineExpandedIdsOnly(
 	ids: readonly string[],
 	validIds: ReadonlySet<EntityId>
@@ -268,7 +335,7 @@ export const projectUiPreferencesFor = function projectUiPreferencesFor(
 	const stored = storedPreferences ?? defaultProjectUiPreferences();
 	const validIds = projectEntityIds(project);
 	const validTimelineEntityIds = timelineEntityIdsForProject(project);
-	const validSelectionHistory = validIdsOnly(stored.selectionHistory, validIds);
+	const validSelectionHistory = validSelectionHistoryFor(stored.selectionHistory, project);
 	const expandedIds = storedPreferences
 		? validIdsOnly(stored.rigExpandedIds, new Set(project.bones.map((bone) => bone.id)))
 		: project.bones.map((bone) => bone.id);

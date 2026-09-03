@@ -7,6 +7,7 @@ import { buildAssetLibraryEntries, type AssetLibraryEntry } from './asset-librar
 import { assetPreviewFor, assetUsageLabelFor } from './asset-browser-model.ts';
 import { isSelected, type Selection } from './selection.ts';
 import type { AssetDensity } from './ui-preferences.ts';
+import { Tooltip } from './ui-primitives.tsx';
 
 const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
 
@@ -120,7 +121,9 @@ export const AssetBrowser = function AssetBrowser({
 					<p className="eyebrow">Sources</p>
 					<h2>Image library</h2>
 				</div>
-				<button className="icon-button" type="button" aria-label="Import image directory" disabled={isImporting} onClick={onImport}>+</button>
+				<Tooltip label="Import image directory">
+					<button className="icon-button" type="button" aria-label="Import image directory" disabled={isImporting} onClick={onImport}>+</button>
+				</Tooltip>
 			</div>
 			<div className="asset-browser-controls">
 				<label className="search-field">

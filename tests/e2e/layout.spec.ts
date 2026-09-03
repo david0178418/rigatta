@@ -79,10 +79,8 @@ test('runs the P0 editor workflow at every supported viewport size', async ({ pa
 			await page.getByLabel('Playhead').fill('6');
 			await expect(page.getByText('Frame 7 / 12', { exact: false })).toBeVisible();
 			await page.getByRole('button', { name: 'Key frame 7' }).click();
-			await page.getByRole('button', { name: 'Key details' }).click();
-			await expect(page.getByRole('dialog', { name: 'Key details' })).toBeVisible();
-			await page.getByRole('button', { name: 'Close Key details' }).click();
-			await expect(page.getByRole('button', { name: 'Key details' })).toBeFocused();
+			await expect(page.getByRole('tab', { name: 'Properties', exact: true })).toHaveAttribute('aria-selected', 'true');
+			await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
 
 			await page.getByRole('button', { name: 'Play animation' }).click();
 			await expect(page.getByRole('button', { name: 'Pause animation' })).toBeVisible();
