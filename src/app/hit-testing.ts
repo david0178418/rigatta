@@ -1,6 +1,7 @@
 import { invertAffine, localTransformToMatrix, multiplyAffine, transformPoint, type AffineMatrix, type Point } from '../domain/coordinates.ts';
 import type { EntityId } from '../domain/ids.ts';
 import type { Attachment, ImageAttachment, Project } from '../domain/model.ts';
+import type { EvaluatedPose } from '../domain/pose.ts';
 import { evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { SelectableEntity } from './selection.ts';
 import type { LogicalBounds } from './viewport.ts';
@@ -13,8 +14,18 @@ const GAMEPLAY_HIT_RADIUS = 10;
 const worldMatrixForImage = function worldMatrixForImage(
 	project: Project,
 	attachment: ImageAttachment,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	pose: EvaluatedPose | undefined
 ): AffineMatrix | undefined {
+	const evaluated = pose?.attachments.find((candidate) => candidate.id === attachment.id);
+
+	if (evaluated?.kind === 'image') {
+		return evaluated.worldMatrix;
+	}
+	if (pose) {
+		return undefined;
+	}
+
 	const slot = project.slots.find((candidate) => candidate.id === attachment.slotId);
 	const boneMatrix = slot ? matrixByBone.get(slot.boneId) : undefined;
 
@@ -25,10 +36,11 @@ const pointInImage = function pointInImage(
 	project: Project,
 	attachment: ImageAttachment,
 	point: Point,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	pose: EvaluatedPose | undefined
 ): boolean {
 	const asset = project.assets.find((candidate) => candidate.id === attachment.assetId);
-	const worldMatrix = worldMatrixForImage(project, attachment, matrixByBone);
+	const worldMatrix = worldMatrixForImage(project, attachment, matrixByBone, pose);
 	const inverse = worldMatrix ? invertAffine(worldMatrix) : undefined;
 
 	if (!asset || !inverse) {
@@ -66,16 +78,25 @@ const pointInAttachment = function pointInAttachment(
 	project: Project,
 	attachment: Attachment,
 	point: Point,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	pose: EvaluatedPose | undefined
 ): boolean {
 	if (attachment.kind === 'image') {
-		return pointInImage(project, attachment, point, matrixByBone);
+		return pointInImage(project, attachment, point, matrixByBone, pose);
 	}
 
-	const worldMatrix = matrixByBone.get(attachment.boneId);
-	const inverse = worldMatrix
-		? invertAffine(multiplyAffine(worldMatrix, localTransformToMatrix(attachment.transform)))
-		: undefined;
+	const evaluated = pose?.attachments.find((candidate) => candidate.id === attachment.id);
+	const worldMatrix = evaluated?.kind === attachment.kind
+		? evaluated.worldMatrix
+		: pose
+			? undefined
+			: matrixByBone.get(attachment.boneId);
+	const attachmentMatrix = pose
+		? worldMatrix
+		: worldMatrix
+			? multiplyAffine(worldMatrix, localTransformToMatrix(attachment.transform))
+			: undefined;
+	const inverse = attachmentMatrix ? invertAffine(attachmentMatrix) : undefined;
 
 	if (!inverse) {
 		return false;
@@ -85,14 +106,25 @@ const pointInAttachment = function pointInAttachment(
 
 	return attachment.kind === 'point'
 		? Math.hypot(localPoint.x, localPoint.y) <= GAMEPLAY_HIT_RADIUS
-		: Math.abs(localPoint.x) <= attachment.width / 2 && Math.abs(localPoint.y) <= attachment.height / 2;
+		: Math.abs(localPoint.x) <= (evaluated?.kind === 'rectangle' ? evaluated.width : attachment.width) / 2
+			&& Math.abs(localPoint.y) <= (evaluated?.kind === 'rectangle' ? evaluated.height : attachment.height) / 2;
 };
 
 const worldMatrixForAttachment = function worldMatrixForAttachment(
 	project: Project,
 	attachment: Attachment,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	pose: EvaluatedPose | undefined
 ): AffineMatrix | undefined {
+	const evaluated = pose?.attachments.find((candidate) => candidate.id === attachment.id);
+
+	if (evaluated) {
+		return evaluated.worldMatrix;
+	}
+	if (pose) {
+		return undefined;
+	}
+
 	const boneId = attachment.kind === 'image'
 		? project.slots.find((slot) => slot.id === attachment.slotId)?.boneId
 		: attachment.boneId;
@@ -103,17 +135,22 @@ const worldMatrixForAttachment = function worldMatrixForAttachment(
 
 const localCornersForAttachment = function localCornersForAttachment(
 	project: Project,
-	attachment: Attachment
+	attachment: Attachment,
+	pose: EvaluatedPose | undefined
 ): readonly Point[] {
 	if (attachment.kind === 'point') {
 		return [{ x: 0, y: 0 }];
 	}
 	if (attachment.kind === 'rectangle') {
+		const evaluated = pose?.attachments.find((candidate) => candidate.id === attachment.id);
+		const width = evaluated?.kind === 'rectangle' ? evaluated.width : attachment.width;
+		const height = evaluated?.kind === 'rectangle' ? evaluated.height : attachment.height;
+
 		return [
-			{ x: -attachment.width / 2, y: -attachment.height / 2 },
-			{ x: attachment.width / 2, y: -attachment.height / 2 },
-			{ x: -attachment.width / 2, y: attachment.height / 2 },
-			{ x: attachment.width / 2, y: attachment.height / 2 }
+			{ x: -width / 2, y: -height / 2 },
+			{ x: width / 2, y: -height / 2 },
+			{ x: -width / 2, y: height / 2 },
+			{ x: width / 2, y: height / 2 }
 		];
 	}
 
@@ -150,12 +187,13 @@ const intersects = function intersects(left: LogicalBounds, right: LogicalBounds
 const attachmentBounds = function attachmentBounds(
 	project: Project,
 	attachment: Attachment,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	pose: EvaluatedPose | undefined
 ): LogicalBounds | undefined {
-	const matrix = worldMatrixForAttachment(project, attachment, matrixByBone);
+	const matrix = worldMatrixForAttachment(project, attachment, matrixByBone, pose);
 
 	return matrix
-		? boundsForPoints(localCornersForAttachment(project, attachment).map((point) => transformPoint(matrix, point)))
+		? boundsForPoints(localCornersForAttachment(project, attachment, pose).map((point) => transformPoint(matrix, point)))
 		: undefined;
 };
 
@@ -163,9 +201,12 @@ const hitAttachment = function hitAttachment(
 	project: Project,
 	point: Point,
 	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
-	hiddenIds: ReadonlySet<EntityId>
+	hiddenIds: ReadonlySet<EntityId>,
+	pose: EvaluatedPose | undefined
 ): SelectableEntity | undefined {
-	const activeImageIds = new Set(project.slots.flatMap((slot) => slot.setupAttachmentId ? [slot.setupAttachmentId] : []));
+	const activeImageIds = pose
+		? new Set(pose.slots.flatMap((slot) => slot.activeAttachmentId ? [slot.activeAttachmentId] : []))
+		: new Set(project.slots.flatMap((slot) => slot.setupAttachmentId ? [slot.setupAttachmentId] : []));
 	const attachments = [...project.attachments].reverse();
 
 	const hit = attachments.find((attachment) => {
@@ -176,7 +217,7 @@ const hitAttachment = function hitAttachment(
 			return false;
 		}
 
-		return pointInAttachment(project, attachment, point, matrixByBone);
+		return pointInAttachment(project, attachment, point, matrixByBone, pose);
 	});
 
 	return hit ? { kind: 'attachment', id: hit.id } : undefined;
@@ -208,29 +249,37 @@ const hitBone = function hitBone(
 export const hitTestProject = function hitTestProject(
 	project: Project,
 	point: Point,
-	hiddenIds: ReadonlySet<EntityId> = new Set<EntityId>()
+	hiddenIds: ReadonlySet<EntityId> = new Set<EntityId>(),
+	pose?: EvaluatedPose
 ): SelectableEntity | undefined {
-	const evaluation = evaluateBoneWorldMatrices(project);
-	const attachment = hitAttachment(project, point, evaluation.matrices, hiddenIds);
+	const matrices = pose
+		? new Map(pose.bones.map((bone) => [bone.id, bone.worldMatrix] as const))
+		: evaluateBoneWorldMatrices(project).matrices;
+	const attachment = hitAttachment(project, point, matrices, hiddenIds, pose);
 
 	if (attachment) {
 		return attachment;
 	}
 
-	return hitBone(project, point, evaluation.matrices, hiddenIds);
+	return hitBone(project, point, matrices, hiddenIds);
 };
 
 export const entitiesInBounds = function entitiesInBounds(
 	project: Project,
 	bounds: LogicalBounds,
-	hiddenIds: ReadonlySet<EntityId> = new Set<EntityId>()
+	hiddenIds: ReadonlySet<EntityId> = new Set<EntityId>(),
+	pose?: EvaluatedPose
 ): readonly SelectableEntity[] {
-	const evaluation = evaluateBoneWorldMatrices(project);
-	const activeImageIds = new Set(project.slots.flatMap((slot) => slot.setupAttachmentId ? [slot.setupAttachmentId] : []));
+	const matrices = pose
+		? new Map(pose.bones.map((bone) => [bone.id, bone.worldMatrix] as const))
+		: evaluateBoneWorldMatrices(project).matrices;
+	const activeImageIds = pose
+		? new Set(pose.slots.flatMap((slot) => slot.activeAttachmentId ? [slot.activeAttachmentId] : []))
+		: new Set(project.slots.flatMap((slot) => slot.setupAttachmentId ? [slot.setupAttachmentId] : []));
 	const attachmentEntities = project.attachments.flatMap((attachment) => {
 		const isVisible = isEditorEntityVisible(project, attachment.id, hiddenIds)
 			&& (attachment.kind === 'image' ? activeImageIds.has(attachment.id) : true);
-		const attachmentBoundsValue = isVisible ? attachmentBounds(project, attachment, evaluation.matrices) : undefined;
+		const attachmentBoundsValue = isVisible ? attachmentBounds(project, attachment, matrices, pose) : undefined;
 
 		return attachmentBoundsValue && intersects(bounds, attachmentBoundsValue)
 			? [{ kind: 'attachment' as const, id: attachment.id }]
@@ -241,7 +290,7 @@ const boneEntities = project.boneOrder.flatMap((boneId) => {
 			return [];
 		}
 
-		const matrix = evaluation.matrices.get(boneId);
+		const matrix = matrices.get(boneId);
 
 		if (!matrix) {
 			return [];

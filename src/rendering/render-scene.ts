@@ -198,7 +198,8 @@ const createSelectionGuides = function createSelectionGuides(
 	project: Project,
 	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
 	selectedIds: readonly EntityId[],
-	hiddenIds: ReadonlySet<EntityId>
+	hiddenIds: ReadonlySet<EntityId>,
+	pose?: EvaluatedPose
 ): readonly RenderSelectionGuide[] {
 	const selected = new Set(selectedIds);
 	const slotsById = new Map(project.slots.map((slot) => [slot.id, slot] as const));
@@ -227,7 +228,14 @@ const createSelectionGuides = function createSelectionGuides(
 				return [];
 			}
 
-			const worldMatrix = multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform));
+			const evaluated = pose?.attachments.find((candidate) => candidate.id === attachment.id);
+			const worldMatrix = pose
+				? evaluated?.worldMatrix
+				: multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform));
+
+			if (!worldMatrix) {
+				return [];
+			}
 
 			if (attachment.kind === 'image') {
 				const asset = project.assets.find((candidate) => candidate.id === attachment.assetId);
@@ -249,8 +257,8 @@ const createSelectionGuides = function createSelectionGuides(
 				: [{
 					kind: 'rectangle' as const,
 					worldMatrix,
-					width: attachment.width,
-					height: attachment.height
+					width: evaluated?.kind === 'rectangle' ? evaluated.width : attachment.width,
+					height: evaluated?.kind === 'rectangle' ? evaluated.height : attachment.height
 				}];
 		});
 
@@ -262,7 +270,8 @@ const createTransformHandles = function createTransformHandles(
 	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
 	selectedIds: readonly EntityId[],
 	tool: FixedCanvasRenderOptions['transformTool'],
-	hiddenIds: ReadonlySet<EntityId>
+	hiddenIds: ReadonlySet<EntityId>,
+	pose?: EvaluatedPose
 ): RenderTransformHandles | undefined {
 	if (!tool) {
 		return undefined;
@@ -280,13 +289,16 @@ const createTransformHandles = function createTransformHandles(
 		}
 
 		const attachment = project.attachments.find((candidate) => candidate.id === selectedId);
+		const evaluated = pose?.attachments.find((candidate) => candidate.id === selectedId);
 		const boneId = attachment?.kind === 'image'
 			? slotsById.get(attachment.slotId)?.boneId
 			: attachment?.boneId;
 		const boneMatrix = boneId ? matrixByBone.get(boneId) : undefined;
-		const worldMatrix = attachment && boneMatrix
-			? multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform))
-			: undefined;
+		const worldMatrix = pose
+			? evaluated?.worldMatrix
+			: attachment && boneMatrix
+				? multiplyAffine(boneMatrix, localTransformToMatrix(attachment.transform))
+				: undefined;
 
 		return worldMatrix ? [transformPoint(worldMatrix, { x: 0, y: 0 })] : [];
 	});
@@ -304,14 +316,19 @@ const createTransformHandles = function createTransformHandles(
 		? project.attachments.find((attachment) => attachment.id === visibleSelectedIds[0])
 		: undefined;
 	const selectedRectangle = selectedAttachment?.kind === 'rectangle' ? selectedAttachment : undefined;
-	const rectangleBoneMatrix = selectedRectangle ? matrixByBone.get(selectedRectangle.boneId) : undefined;
-	const rectangleWorldMatrix = selectedRectangle && rectangleBoneMatrix
-		? multiplyAffine(rectangleBoneMatrix, localTransformToMatrix(selectedRectangle.transform))
+	const evaluatedRectangle = selectedRectangle
+		? pose?.attachments.find((attachment) => attachment.id === selectedRectangle.id)
 		: undefined;
+	const rectangleBoneMatrix = selectedRectangle ? matrixByBone.get(selectedRectangle.boneId) : undefined;
+	const rectangleWorldMatrix = pose
+		? evaluatedRectangle?.kind === 'rectangle' ? evaluatedRectangle.worldMatrix : undefined
+		: selectedRectangle && rectangleBoneMatrix
+			? multiplyAffine(rectangleBoneMatrix, localTransformToMatrix(selectedRectangle.transform))
+			: undefined;
 	const rectangleHandlePoints = selectedRectangle && rectangleWorldMatrix
 		? {
-			right: transformPoint(rectangleWorldMatrix, { x: selectedRectangle.width / 2, y: 0 }),
-			bottom: transformPoint(rectangleWorldMatrix, { x: 0, y: selectedRectangle.height / 2 })
+			right: transformPoint(rectangleWorldMatrix, { x: (evaluatedRectangle?.kind === 'rectangle' ? evaluatedRectangle.width : selectedRectangle.width) / 2, y: 0 }),
+			bottom: transformPoint(rectangleWorldMatrix, { x: 0, y: (evaluatedRectangle?.kind === 'rectangle' ? evaluatedRectangle.height : selectedRectangle.height) / 2 })
 		}
 		: undefined;
 
@@ -325,7 +342,8 @@ const sceneWith = function sceneWith(
 	gameplayAttachments: readonly RenderGameplayAttachment[],
 	options: FixedCanvasRenderOptions,
 	showBones: boolean,
-	gridSpacing: number | undefined
+	gridSpacing: number | undefined,
+	pose?: EvaluatedPose
 ): RenderScene {
 	const hiddenIds = options.hiddenIds ?? new Set<EntityId>();
 	const selectedIds = options.selectedIds ?? [];
@@ -336,8 +354,8 @@ const sceneWith = function sceneWith(
 		images,
 		bones: showBones ? createBones(project, matrixByBone, hiddenIds) : [],
 		gameplayAttachments,
-		selectionGuides: createSelectionGuides(project, matrixByBone, selectedIds, hiddenIds),
-		transformHandles: createTransformHandles(project, matrixByBone, selectedIds, options.transformTool, hiddenIds),
+		selectionGuides: createSelectionGuides(project, matrixByBone, selectedIds, hiddenIds, pose),
+		transformHandles: createTransformHandles(project, matrixByBone, selectedIds, options.transformTool, hiddenIds, pose),
 		gridSpacing
 	};
 };
@@ -399,7 +417,8 @@ export const createPoseRenderScene = function createPoseRenderScene(
 		createPoseGameplayAttachments(project, pose, options.showGameplay === true, hiddenIds),
 		options,
 		options.showBones === true,
-		gridSpacing
+		gridSpacing,
+		pose
 	));
 };
 

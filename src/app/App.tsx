@@ -36,7 +36,8 @@ import { DEFAULT_GRID_SETTINGS, type GridSettings } from './grid.ts';
 import { createSelection, selectEntities, selectEntity, type SelectableEntity, type Selection } from './selection.ts';
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
 import { frameIndexForTime } from './timeline.ts';
-import { createTransformGesture, isTransformHandleHit, transformGestureCommands, type TransformGesture, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
+import { createTransformGesture, isTransformHandleHit, transformGestureCommands, transformGesturePropertyChangesFor, type CanvasGesturePropertyChange, type TransformGesture, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
+import { mergePendingAnimationEdits, pendingEditsForChanges, planCanvasAnimation, removePendingAnimationEdits, type CanvasAnimationIdAllocation, type CanvasAnimationPlan, type CanvasPendingAnimationEdit } from './canvas-animation.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
@@ -89,6 +90,14 @@ const keyingAnnouncementFor = function keyingAnnouncementFor(
 	};
 
 	return `${numericPropertySpecs[property].label} ${stateLabel[state]} at frame ${frameIndex + 1}.`;
+};
+
+const canvasKeyingAnnouncementFor = function canvasKeyingAnnouncementFor(
+	state: 'keyed' | 'pending',
+	count: number,
+	frameIndex: number
+): string {
+	return `${state === 'keyed' ? 'Keyed' : 'Pending'} ${count} changed propert${count === 1 ? 'y' : 'ies'} at frame ${frameIndex + 1}.`;
 };
 
 const blobForImage = function blobForImage(image: ImportedImage): Blob {
@@ -154,12 +163,7 @@ const animationProperties: readonly BoneTransformProperty[] = [
 	'shearY'
 ];
 
-type PendingAnimationProperty = BoneTransformProperty | 'opacity' | 'width' | 'height';
-
-type PendingAnimationEdit = Readonly<{
-	targetId: EntityId;
-	property: PendingAnimationProperty;
-}>;
+type PendingAnimationEdit = CanvasPendingAnimationEdit;
 
 type SelectedTransformEntry = Readonly<{
 	entity: Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
@@ -171,6 +175,19 @@ type DirectPropertyTarget = Readonly<{
 	setupValue: number;
 	currentValue: number;
 	command: ProjectCommand;
+}>;
+
+type CanvasTransformSession = Readonly<{
+	gesture: TransformGesture;
+	history: HistoryState;
+	mode: EditorMode;
+	clipId: EntityId | undefined;
+	frameIndex: number;
+	autoKey: boolean;
+	changes: readonly CanvasGesturePropertyChange[];
+	keyedProperties: readonly CanvasGesturePropertyChange[];
+	allocatedIds: readonly CanvasAnimationIdAllocation[];
+	idFactory: () => EntityId;
 }>;
 
 type NumericTrack = Extract<Track, {
@@ -479,7 +496,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [constraintStatus, setConstraintStatus] = useState<string | undefined>(undefined);
 	const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus | undefined>(undefined);
 	const [storageReport, setStorageReport] = useState<StorageReport | undefined>(undefined);
-	const transformSessionRef = useRef<Readonly<{ gesture: TransformGesture; history: HistoryState }> | undefined>(undefined);
+	const transformSessionRef = useRef<CanvasTransformSession | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetImportSummary, setAssetImportSummary] = useState<AssetImportSummary | undefined>(undefined);
 	const [assetQuery, setAssetQuery] = useState('');
@@ -1797,7 +1814,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 
 	const selectCanvasPoint = function selectCanvasPoint(point: ViewportPoint, additive: boolean): void {
-		const hit = hitTestProject(project, point, hiddenEntityIds);
+		const hit = hitTestProject(project, point, hiddenEntityIds, activePose);
 
 		if (hit) {
 			updateSelection(hit, additive, 'canvas');
@@ -1810,7 +1827,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 
 	const selectCanvasMarquee = function selectCanvasMarquee(bounds: Readonly<{ x: number; y: number; w: number; h: number }>, additive: boolean): void {
-		setSelectionFromSurface(selectEntities(selection, entitiesInBounds(project, bounds, hiddenEntityIds), additive), 'canvas');
+		setSelectionFromSurface(selectEntities(selection, entitiesInBounds(project, bounds, hiddenEntityIds, activePose), additive), 'canvas');
 	};
 
 	const dragBone = function dragBone(event: DragEvent<HTMLElement>, boneId: EntityId): void {
@@ -2325,24 +2342,126 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	};
 	const beginCanvasTransform = function beginCanvasTransform(point: ViewportPoint, tool: TransformTool, modifiers: TransformModifiers = {}): boolean {
 		const transformableSelection = selection.filter((entity) => entity.kind === 'bone' || entity.kind === 'attachment');
-		const hit = hitTestProject(project, point, hiddenEntityIds);
+		const pose = mode === 'animate' ? activePose : undefined;
+		const hit = hitTestProject(project, point, hiddenEntityIds, pose);
 		const selectedEntityHit = !!hit && transformableSelection.some((entity) => entity.kind === hit.kind && entity.id === hit.id);
-		const handleHit = transformableSelection.length > 0 && isTransformHandleHit(project, transformableSelection, point, tool);
+		const handleHit = transformableSelection.length > 0 && isTransformHandleHit(project, transformableSelection, point, tool, pose);
 
-		if (transformableSelection.length === 0 || (!selectedEntityHit && !handleHit)) {
+		if (transformableSelection.length === 0 || (mode === 'animate' && (!activeClip || !activePose)) || (!selectedEntityHit && !handleHit)) {
 			return false;
 		}
 
-		const gesture = createTransformGesture(project, transformableSelection, point, tool, modifiers);
+		const gesture = createTransformGesture(project, transformableSelection, point, tool, modifiers, pose);
 
 		if (!gesture) {
 			return false;
 		}
 
 		const started = beginTransaction(history);
-		transformSessionRef.current = { gesture, history: started };
+		transformSessionRef.current = {
+			gesture,
+			history: started,
+			mode,
+			clipId: mode === 'animate' ? activeClip?.id : undefined,
+			frameIndex: activePlayback.frameIndex,
+			autoKey,
+			changes: [],
+			keyedProperties: [],
+			allocatedIds: [],
+			idFactory: createEntityId
+		};
 		setHistory(started);
 		return true;
+	};
+
+	type CanvasSessionPlanResult = OperationResult<Readonly<{ session: CanvasTransformSession; plan: CanvasAnimationPlan }>> | undefined;
+
+	const planCanvasSessionAt = function planCanvasSessionAt(
+		session: CanvasTransformSession,
+		point: ViewportPoint
+	): CanvasSessionPlanResult {
+		const setupCommands = transformGestureCommands(session.gesture, point);
+
+		if (!setupCommands) {
+			return undefined;
+		}
+
+		const changes = transformGesturePropertyChangesFor(session.gesture, setupCommands);
+		const plan = planCanvasAnimation({
+			project: currentProject(session.history),
+			baseProject: session.history.transaction?.baseProject,
+			clipId: session.clipId,
+			frameIndex: session.frameIndex,
+			autoKey: session.autoKey,
+			setupCommands,
+			changes,
+			previousChanges: session.changes,
+			allocatedIds: session.allocatedIds
+		}, session.idFactory);
+
+		if (!plan.ok) {
+			return { ok: false, error: plan.error };
+		}
+
+		if (changes.length === 0) {
+			const reset = beginTransaction(cancelTransaction(session.history));
+
+			return {
+				ok: true,
+				value: {
+					plan: plan.value,
+					session: { ...session, history: reset, changes: [], keyedProperties: [], allocatedIds: [] }
+				}
+			};
+		}
+
+		const result = plan.value.commands.reduce<OperationResult<HistoryState>>(
+			(current, command) => current.ok ? dispatchCommand(current.value, command) : current,
+			{ ok: true, value: session.history }
+		);
+
+		if (!result.ok) {
+			return { ok: false, error: result.error };
+		}
+
+		return {
+			ok: true,
+			value: {
+				plan: plan.value,
+				session: {
+					...session,
+					history: result.value,
+					changes: plan.value.changedProperties,
+					keyedProperties: plan.value.keyedProperties,
+					allocatedIds: plan.value.allocatedIds
+				}
+			}
+		};
+	};
+
+	const finishCanvasTransform = function finishCanvasTransform(session: CanvasTransformSession): void {
+		transformSessionRef.current = undefined;
+		setConstraintStatus(undefined);
+		commitHistory(commitTransaction(session.history));
+
+		if (session.mode !== 'animate' || session.changes.length === 0) {
+			return;
+		}
+
+		if (session.autoKey) {
+			const keyedEdits = pendingEditsForChanges(session.keyedProperties);
+
+			if (keyedEdits.length > 0) {
+				setPendingAnimationEdits((current) => removePendingAnimationEdits(current, keyedEdits));
+				setKeyingAnnouncement(canvasKeyingAnnouncementFor('keyed', keyedEdits.length, session.frameIndex));
+			}
+			return;
+		}
+
+		const pendingEdits = pendingEditsForChanges(session.changes);
+
+		setPendingAnimationEdits((current) => mergePendingAnimationEdits(current, pendingEdits));
+		setKeyingAnnouncement(canvasKeyingAnnouncementFor('pending', pendingEdits.length, session.frameIndex));
 	};
 
 	const updateCanvasTransform = function updateCanvasTransform(point: ViewportPoint, phase: TransformPhase, modifiers: TransformModifiers = {}): void {
@@ -2357,34 +2476,35 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			setHistory(cancelTransaction(session.history));
 			return;
 		}
-		if (phase === 'end') {
-			transformSessionRef.current = undefined;
-			setConstraintStatus(undefined);
-			commitHistory(commitTransaction(session.history));
-			return;
-		}
 		if (modifiers.shiftKey) {
 			setConstraintStatus('Shift constraint active');
 		}
 
-		const commands = transformGestureCommands(session.gesture, point);
+		const planned = planCanvasSessionAt(session, point);
 
-		if (!commands) {
+		if (!planned) {
+			if (phase === 'end') {
+				finishCanvasTransform(session);
+			}
+			return;
+		}
+		if (!planned.ok) {
+			setCommandError(planned.error.message);
+			setConstraintStatus(undefined);
+			setHistory(cancelTransaction(session.history));
+			transformSessionRef.current = undefined;
 			return;
 		}
 
-		const result = commands.reduce<OperationResult<HistoryState>>(
-			(current, command) => current.ok ? dispatchCommand(current.value, command) : current,
-			{ ok: true, value: session.history }
-		);
+		const nextSession = planned.value.session;
 
-		if (!result.ok) {
-			setCommandError(result.error.message);
+		if (phase === 'end') {
+			finishCanvasTransform(nextSession);
 			return;
 		}
 
-		transformSessionRef.current = { ...session, history: result.value };
-		setHistory(result.value);
+		transformSessionRef.current = nextSession;
+		setHistory(nextSession.history);
 	};
 
 	const addChildBone = function addChildBone(): void {

@@ -9,7 +9,8 @@ import {
 	type Point
 } from '../domain/coordinates.ts';
 import type { EntityId } from '../domain/ids.ts';
-import type { Project } from '../domain/model.ts';
+import type { BoneTransformProperty, Project } from '../domain/model.ts';
+import type { EvaluatedPose } from '../domain/pose.ts';
 import { evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import type { SelectableEntity } from './selection.ts';
@@ -45,7 +46,7 @@ export type TransformGestureValues = Readonly<{
 
 type TransformEntity = Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
 
-type TransformTarget = Readonly<{
+export type TransformGestureTarget = Readonly<{
 	entity: TransformEntity;
 	initialTransform: LocalTransform;
 	parentMatrix: AffineMatrix;
@@ -55,13 +56,46 @@ type TransformTarget = Readonly<{
 }>;
 
 export type TransformGesture = Readonly<{
-	entities: readonly TransformTarget[];
+	entities: readonly TransformGestureTarget[];
 	tool: TransformTool;
 	startPoint: Point;
 	center: Point;
 	rectangleResizeAxis: RectangleResizeAxis | undefined;
 	constrained: boolean;
 }>;
+
+export type TransformGesturePropertyChange = Readonly<{
+	kind: 'transform';
+	entityKind: 'bone' | 'attachment';
+	targetId: EntityId;
+	property: BoneTransformProperty;
+	initialValue: number;
+	value: number;
+	delta: number;
+}>;
+
+export type RectangleSizeGesturePropertyChange = Readonly<{
+	kind: 'rectangle-size';
+	targetId: EntityId;
+	property: 'width' | 'height';
+	initialValue: number;
+	value: number;
+	delta: number;
+}>;
+
+export type CanvasGesturePropertyChange = TransformGesturePropertyChange | RectangleSizeGesturePropertyChange;
+
+export const transformGestureProperties = [
+	'x',
+	'y',
+	'rotation',
+	'scaleX',
+	'scaleY',
+	'shearX',
+	'shearY'
+] as const satisfies readonly BoneTransformProperty[];
+
+const rectangleSizeProperties = ['width', 'height'] as const;
 
 const attachmentBoneId = function attachmentBoneId(
 	project: Project,
@@ -76,8 +110,15 @@ const attachmentBoneId = function attachmentBoneId(
 
 const transformForEntity = function transformForEntity(
 	project: Project,
-	entity: TransformEntity
+	entity: TransformEntity,
+	pose: EvaluatedPose | undefined
 ): LocalTransform | undefined {
+	if (pose) {
+		return entity.kind === 'bone'
+			? pose.bones.find((bone) => bone.id === entity.id)?.localTransform
+			: pose.attachments.find((attachment) => attachment.id === entity.id)?.localTransform;
+	}
+
 	return entity.kind === 'bone'
 		? project.bones.find((bone) => bone.id === entity.id)?.transform
 		: project.attachments.find((attachment) => attachment.id === entity.id)?.transform;
@@ -102,9 +143,16 @@ const parentMatrixForEntity = function parentMatrixForEntity(
 const worldMatrixForEntity = function worldMatrixForEntity(
 	project: Project,
 	entity: TransformEntity,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	pose: EvaluatedPose | undefined
 ): AffineMatrix | undefined {
-	const transform = transformForEntity(project, entity);
+	if (pose) {
+		return entity.kind === 'bone'
+			? pose.bones.find((bone) => bone.id === entity.id)?.worldMatrix
+			: pose.attachments.find((attachment) => attachment.id === entity.id)?.worldMatrix;
+	}
+
+	const transform = transformForEntity(project, entity, pose);
 	const parentMatrix = parentMatrixForEntity(project, entity, matrixByBone);
 
 	return transform && parentMatrix
@@ -115,16 +163,18 @@ const worldMatrixForEntity = function worldMatrixForEntity(
 const transformTargetForEntity = function transformTargetForEntity(
 	project: Project,
 	entity: TransformEntity,
-	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>
-): TransformTarget | undefined {
-	const initialTransform = transformForEntity(project, entity);
+	matrixByBone: ReadonlyMap<EntityId, AffineMatrix>,
+	pose: EvaluatedPose | undefined
+): TransformGestureTarget | undefined {
+	const initialTransform = transformForEntity(project, entity, pose);
 	const parentMatrix = parentMatrixForEntity(project, entity, matrixByBone);
-	const worldMatrix = worldMatrixForEntity(project, entity, matrixByBone);
-	const attachment = entity.kind === 'attachment'
-		? project.attachments.find((candidate) => candidate.id === entity.id)
+	const worldMatrix = worldMatrixForEntity(project, entity, matrixByBone, pose);
+	const rectangleAttachment = entity.kind === 'attachment'
+		? pose?.attachments.find((attachment) => attachment.id === entity.id)
+			?? project.attachments.find((attachment) => attachment.id === entity.id)
 		: undefined;
-	const rectangleSize = attachment?.kind === 'rectangle'
-		? { width: attachment.width, height: attachment.height }
+	const rectangleSize = rectangleAttachment?.kind === 'rectangle'
+		? { width: rectangleAttachment.width, height: rectangleAttachment.height }
 		: undefined;
 
 	return initialTransform && parentMatrix && worldMatrix
@@ -140,7 +190,7 @@ const transformTargetForEntity = function transformTargetForEntity(
 };
 
 const rectangleResizeAxisFor = function rectangleResizeAxisFor(
-	target: TransformTarget,
+	target: TransformGestureTarget,
 	point: Point
 ): RectangleResizeAxis | undefined {
 	const size = target.rectangleSize;
@@ -157,7 +207,7 @@ const rectangleResizeAxisFor = function rectangleResizeAxisFor(
 	return handles.find((handle) => Math.hypot(point.x - handle.point.x, point.y - handle.point.y) <= 10)?.axis;
 };
 
-const centerForTargets = function centerForTargets(targets: readonly TransformTarget[]): Point {
+const centerForTargets = function centerForTargets(targets: readonly TransformGestureTarget[]): Point {
 	const total = targets.reduce(
 		(sum, target) => ({ x: sum.x + target.center.x, y: sum.y + target.center.y }),
 		{ x: 0, y: 0 }
@@ -249,7 +299,7 @@ const angleDeltaForGesture = function angleDeltaForGesture(
 
 const localDeltaFor = function localDeltaFor(
 	gesture: TransformGesture,
-	target: TransformTarget,
+	target: TransformGestureTarget,
 	point: Point
 ): Point | undefined {
 	const startLocal = worldToLocalPoint(target.parentMatrix, gesture.startPoint);
@@ -262,7 +312,7 @@ const localDeltaFor = function localDeltaFor(
 
 const transformForTarget = function transformForTarget(
 	gesture: TransformGesture,
-	target: TransformTarget,
+	target: TransformGestureTarget,
 	point: Point
 ): LocalTransform | undefined {
 	const rawDelta = localDeltaFor(gesture, target, point);
@@ -293,7 +343,7 @@ const transformForTarget = function transformForTarget(
 
 const rectangleSizeForTarget = function rectangleSizeForTarget(
 	gesture: TransformGesture,
-	target: TransformTarget,
+	target: TransformGestureTarget,
 	point: Point
 ): RectangleSize | undefined {
 	const axis = gesture.rectangleResizeAxis;
@@ -327,12 +377,15 @@ export const createTransformGesture = function createTransformGesture(
 	entityOrEntities: SelectableEntity | readonly SelectableEntity[],
 	startPoint: Point,
 	tool: TransformTool,
-	modifiers: TransformModifiers = {}
+	modifiers: TransformModifiers = {},
+	pose?: EvaluatedPose
 ): TransformGesture | undefined {
 	const entities = transformEntities(Array.isArray(entityOrEntities) ? entityOrEntities : [entityOrEntities]);
-	const evaluation = evaluateBoneWorldMatrices(project);
+	const evaluation = pose
+		? { matrices: new Map(pose.bones.map((bone) => [bone.id, bone.worldMatrix] as const)) }
+		: evaluateBoneWorldMatrices(project);
 	const targets = entities.flatMap((entity) => {
-		const target = transformTargetForEntity(project, entity, evaluation.matrices);
+		const target = transformTargetForEntity(project, entity, evaluation.matrices, pose);
 
 		return target ? [target] : [];
 	});
@@ -358,9 +411,10 @@ export const isTransformHandleHit = function isTransformHandleHit(
 	project: Project,
 	entityOrEntities: SelectableEntity | readonly SelectableEntity[],
 	point: Point,
-	tool: TransformTool
+	tool: TransformTool,
+	pose?: EvaluatedPose
 ): boolean {
-	const gesture = createTransformGesture(project, entityOrEntities, point, tool);
+	const gesture = createTransformGesture(project, entityOrEntities, point, tool, {}, pose);
 
 	if (!gesture) {
 		return false;
@@ -422,6 +476,82 @@ export const transformGestureCommands = function transformGestureCommands(
 		return target.entity.kind === 'bone'
 			? [{ kind: 'update-bone-transform' as const, boneId: target.entity.id, transform }]
 			: [{ kind: 'update-attachment-transform' as const, attachmentId: target.entity.id, transform }];
+	});
+};
+
+const transformChangeFor = function transformChangeFor(
+	target: TransformGestureTarget,
+	entityKind: 'bone' | 'attachment',
+	targetId: EntityId,
+	property: BoneTransformProperty,
+	value: number
+): TransformGesturePropertyChange | undefined {
+	const initialValue = target.initialTransform[property];
+
+	return Object.is(initialValue, value)
+		? undefined
+		: {
+			kind: 'transform',
+			entityKind,
+			targetId,
+			property,
+			initialValue,
+			value,
+			delta: value - initialValue
+		};
+};
+
+const rectangleChangeFor = function rectangleChangeFor(
+	target: TransformGestureTarget,
+	targetId: EntityId,
+	property: 'width' | 'height',
+	value: number
+): RectangleSizeGesturePropertyChange | undefined {
+	const initialValue = target.rectangleSize?.[property];
+
+	return initialValue === undefined || Object.is(initialValue, value)
+		? undefined
+		: {
+			kind: 'rectangle-size',
+			targetId,
+			property,
+			initialValue,
+			value,
+			delta: value - initialValue
+		};
+};
+
+export const transformGesturePropertyChangesFor = function transformGesturePropertyChangesFor(
+	gesture: TransformGesture,
+	commands: readonly ProjectCommand[]
+): readonly CanvasGesturePropertyChange[] {
+	return commands.flatMap((command): readonly CanvasGesturePropertyChange[] => {
+		if (command.kind === 'update-bone-transform' || command.kind === 'update-attachment-transform') {
+			const target = gesture.entities.find((candidate) => candidate.entity.id === (command.kind === 'update-bone-transform' ? command.boneId : command.attachmentId));
+
+			return target
+				? transformGestureProperties.flatMap((property) => {
+					const change = transformChangeFor(target, command.kind === 'update-bone-transform' ? 'bone' : 'attachment', command.kind === 'update-bone-transform' ? command.boneId : command.attachmentId, property, command.transform[property]);
+
+					return change ? [change] : [];
+				})
+				: [];
+		}
+
+		if (command.kind === 'update-rectangle-size') {
+			const target = gesture.entities.find((candidate) => candidate.entity.kind === 'attachment' && candidate.entity.id === command.attachmentId);
+
+			return target
+				? rectangleSizeProperties.flatMap((property) => {
+					const value = property === 'width' ? command.width : command.height;
+					const change = rectangleChangeFor(target, command.attachmentId, property, value);
+
+					return change ? [change] : [];
+				})
+				: [];
+		}
+
+		return [];
 	});
 };
 
