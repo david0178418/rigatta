@@ -157,6 +157,7 @@ export const TimelineSplitter = function TimelineSplitter({ height, viewportHeig
 type AnimateTimelineProps = Readonly<{
 	project: Project;
 	activeClip: Clip | undefined;
+	poseAvailable: boolean;
 	playback: PlaybackState;
 	selection: Selection;
 	rowMode: TimelineRowMode;
@@ -188,6 +189,10 @@ type AnimateTimelineProps = Readonly<{
 	onDeleteKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[]) => void;
 	onRetimeKeys: (keys: readonly Readonly<{ trackId: EntityId; keyId: EntityId }>[], deltaFrames: number) => void;
 	onPasteKeys: (clipboard: TimelineClipboard) => void;
+	onCopyPose: () => void;
+	onPastePose: () => void;
+	poseClipboardAvailable: boolean;
+	poseClipboardNotice?: string;
 	onSelectEntity: (entity: SelectableEntity, additive: boolean) => void;
 	onSelectTransformTool?: (tool: TransformTool) => void;
 	onRowModeChange: (mode: TimelineRowMode) => void;
@@ -259,6 +264,11 @@ export const AnimateTimeline = function AnimateTimeline({
 	onDeleteKeys,
 	onRetimeKeys,
 	onPasteKeys,
+	onCopyPose,
+	onPastePose,
+	poseAvailable,
+	poseClipboardAvailable,
+	poseClipboardNotice,
 	onSelectEntity,
 	onSelectTransformTool,
 	onRowModeChange,
@@ -858,7 +868,7 @@ export const AnimateTimeline = function AnimateTimeline({
 			setTimelineMarquee(undefined);
 			return;
 		}
-		if (modifier && key === 'c') {
+		if (modifier && !event.shiftKey && !event.altKey && key === 'c') {
 			event.preventDefault();
 			event.stopPropagation();
 			if (!activeClip) {
@@ -875,7 +885,7 @@ export const AnimateTimeline = function AnimateTimeline({
 			}
 			return;
 		}
-		if (modifier && key === 'v') {
+		if (modifier && !event.shiftKey && !event.altKey && key === 'v') {
 			event.preventDefault();
 			event.stopPropagation();
 			if (!timelineClipboard) {
@@ -1068,6 +1078,12 @@ export const AnimateTimeline = function AnimateTimeline({
 									<span className="playback-readout">Frame {playback.frameIndex + 1} / {frameCountForClip(activeClip)} · {frameTimeSeconds(playback, activeClip).toFixed(3)}s</span>
 									<label className="auto-key-field"><input type="checkbox" aria-label="Auto Key" checked={autoKey} onChange={(event) => onAutoKeyChange(event.target.checked)} /><span>Auto Key</span></label>
 									<button className="quiet-button" type="button" aria-keyshortcuts="K" onClick={onKeyPendingEdits} disabled={pendingEditCount === 0} title="Key edited properties · K">Key edited properties{pendingEditCount > 0 ? ` (${pendingEditCount})` : ''}</button>
+									<Tooltip label="Copy pose" shortcut="Ctrl/Cmd + Shift + C">
+										<button className="quiet-button" type="button" aria-label="Copy pose" aria-keyshortcuts="Control+Shift+C Meta+Shift+C" onClick={onCopyPose} disabled={!activeClip || !poseAvailable}>Copy pose</button>
+									</Tooltip>
+									<Tooltip label="Paste pose" shortcut="Ctrl/Cmd + Shift + V">
+										<button className="quiet-button" type="button" aria-label="Paste pose" aria-keyshortcuts="Control+Shift+V Meta+Shift+V" onClick={onPastePose} disabled={!activeClip || !poseClipboardAvailable}>Paste pose</button>
+									</Tooltip>
 								</div>
 								<div className="timeline-navigation">
 									<div className="timeline-navigation-actions" aria-label="Timeline navigation">
@@ -1113,6 +1129,7 @@ export const AnimateTimeline = function AnimateTimeline({
 									<span aria-label="Timeline frame range">Frames {timelineRange.startFrame + 1}–{timelineRange.endFrame + 1} of {frameCount}</span>
 									<span className="muted-copy">{trackRows.length} matching track{trackRows.length === 1 ? '' : 's'}</span>
 									{timelineNotice && <span className="timeline-notice" role="status">{timelineNotice}</span>}
+									{poseClipboardNotice && <span className="pose-clipboard-notice" role="status" aria-live="polite">{poseClipboardNotice}</span>}
 								</div>
 								<div className="dopesheet" aria-label="Animation tracks">
 									<div className="dopesheet-ruler">

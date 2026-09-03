@@ -72,6 +72,72 @@ exact frame/value/interpolation state. A multi-key selection displays mixed
 values explicitly; entering a common value applies it to every compatible
 selected key in one history transaction.
 
+## Pose clipboard
+
+The editor provides an application-local **Copy pose** / **Paste pose** workflow
+in Animate mode. It remains separate from timeline copy/paste, which copies
+selected keys, relative frame offsets, and interpolation metadata.
+
+**Copy pose** is available only when Animate mode has an active clip and an
+evaluated pose. It snapshots the evaluated parent-local transforms used by
+viewport rendering for every bone and every image, point, and rectangle
+attachment in the active rig. The snapshot includes `x`, `y`, `rotation`,
+`scaleX`, `scaleY`, `shearX`, and `shearY`; copying an interpolated frame stores
+the interpolated values at that playhead rather than setup transforms or only
+the values of keys at the playhead. The snapshot is session-only and is not
+changed by later project or pose changes. Copying creates no history, autosave,
+project, selection, or pending-edit changes.
+
+**Paste pose** is available only in Animate mode with a nonempty pose
+clipboard. It writes the snapshot to the active clip at the current playhead
+without moving the playhead. A paste into another clip is supported when that
+clip belongs to the same project and every copied entity ID and kind remains
+compatible. For each copied entity, all seven local transform properties are
+keyed so the sampled pose does not depend on neighboring keys. Missing tracks
+and destination keys are created as needed; a new key uses `linear`
+interpolation and `curve: null`.
+
+When a destination transform key already exists, pose paste replaces only its
+numeric value. The existing key keeps its ID, time, outgoing interpolation, and
+Bezier curve, so paste does not overwrite destination timing or interpolation
+metadata. A value-identical key produces no command; an entirely identical
+paste produces no history entry.
+
+Interpolation curves are not copied as pose data; the curve-preservation rule
+above applies to the existing curve on a destination key.
+
+Validation and ID planning finish before any command is dispatched. A
+successful paste is one atomic, recoverable history transaction, so one Undo
+restores the complete prior pose-key state, including tracks created only by
+the paste. An invalid or incompatible paste leaves the project unchanged.
+Pose paste is explicit and independent of Auto Key: it does not change the
+Auto Key setting or consume unrelated pending edits.
+
+The Animate timeline provides **Copy pose** and **Paste pose** toolbar actions
+near Auto Key and `Key edited properties`. Their exact shortcuts are
+`Ctrl/Cmd + Shift + C` and `Ctrl/Cmd + Shift + V`; only those Shift-modified
+bindings invoke pose actions. Unshifted `Ctrl/Cmd + C` and `Ctrl/Cmd + V`
+remain the timeline's selected-key clipboard actions, and Alt-modified
+variants do not invoke pose actions. The buttons expose stable accessible
+names and shortcut hints, while a polite status region announces copy/paste
+success, validation failures, and no-op results.
+
+Pose shortcuts do not move the playhead, change Auto Key, or consume unrelated
+pending edits. They are ignored in Setup mode and while focus is in an
+`input`, `textarea`, `select`, or contenteditable element. The clipboard is
+session-only UI state: it does not enter project data, history, autosave,
+archives, exports, or UI preferences.
+
+The pose clipboard plan explicitly excludes Setup mode; cross-project paste and
+operating-system clipboard serialization; selected-entities-only pose copy;
+slot attachment selection, draw order, image opacity, point/rectangle enabled
+state, rectangle width/height, events, and interpolation curves; setup
+transforms or other setup data; UI-only state such as selection, hidden
+entities, collapsed rows, pins, playhead position, or dock layout; and project
+schema, archive, autosave, export, and UI-preference changes. The user-facing
+name remains **pose**, not **frame**, until every keyable part of frame state is
+intentionally covered.
+
 Numeric key interpolation is stored on the key as the outgoing mode for the
 segment leading to the next key. Properties can choose Stepped, Linear, or
 Cubic Bezier interpolation; selecting Bezier creates normalized default control

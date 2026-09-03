@@ -35,6 +35,39 @@ own mouse close/cancel controls. Compact icon actions retain an accessible name
 outside their tooltip and show a visible hover/focus tooltip; when a shortcut
 exists, the same tooltip includes it.
 
+## Pose clipboard shortcuts
+
+These application-local bindings are implemented for Animate mode only. Copy
+uses the evaluated local pose at the current playhead, including interpolated
+values, for every bone and image, point, and rectangle attachment. It includes
+the seven transform properties `x`, `y`, `rotation`, `scaleX`, `scaleY`,
+`shearX`, and `shearY`.
+
+| Keys | Action | Semantics |
+| --- | --- | --- |
+| `Ctrl/Cmd + Shift + C` | Copy pose | In Animate mode, snapshot the evaluated local `x`, `y`, `rotation`, `scaleX`, `scaleY`, `shearX`, and `shearY` transforms for every bone and image, point, and rectangle attachment at the current playhead, including interpolated values. |
+| `Ctrl/Cmd + Shift + V` | Paste pose | In Animate mode, paste the snapshot at the current playhead in the active clip, or in another compatible clip in the same project. Replace destination transform values while preserving existing key IDs, times, outgoing interpolation, and Bezier curves; one successful paste is one undoable transaction. |
+
+The pose clipboard is separate from the timeline key clipboard. Only the exact
+Shift-modified bindings above invoke pose actions: unshifted `Ctrl/Cmd + C` and
+`Ctrl/Cmd + V` remain timeline-local selected-key copy/paste, and Alt-modified
+variants do not invoke pose actions. The pose actions do not move the playhead,
+change Auto Key, or consume pending edits. They are ignored in Setup mode and
+while focus is in an `input`, `textarea`, `select`, or contenteditable element.
+The pose snapshot is held in session-only state; it is not stored in project
+data, history, autosave, archives, exports, or UI preferences. The Animate
+toolbar buttons expose stable accessible names and shortcut hints, and
+copy/paste results, validation failures, and no-op results are announced
+through a polite status region.
+
+The plan excludes cross-project paste and operating-system clipboard
+serialization; selected-entities-only copying; slot attachment selection, draw
+order, image opacity, point/rectangle enabled state, rectangle width/height,
+events, and interpolation curves; setup transforms or other setup data; UI-only
+state such as selection, hidden entities, collapsed rows, pins, playhead
+position, or dock layout; and project schema, archive, autosave, export, or
+UI-preference changes.
+
 ## Timeline-local shortcuts
 
 These bindings apply only while the Animate timeline has focus, so they do not

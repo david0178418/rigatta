@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { shortcutActionFor, shortcutLabelFor, shortcutReference, type ShortcutKeyState } from '../../src/app/shortcuts.ts';
+import { shortcutActionFor, shortcutLabelFor, shortcutReference, shortcutReferenceEntryFor, type ShortcutKeyState } from '../../src/app/shortcuts.ts';
 
 const key = function key(value: string, overrides: Partial<ShortcutKeyState> = {}): ShortcutKeyState {
 	return {
@@ -27,6 +27,37 @@ describe('editor keyboard shortcuts', () => {
 		expect(shortcutActionFor(key('ArrowRight', { shiftKey: true }))).toBeUndefined();
 		expect(shortcutActionFor(key(' ', { ctrlKey: true }))).toBeUndefined();
 		expect(shortcutActionFor(key('z', { altKey: true, ctrlKey: true }))).toBeUndefined();
+	});
+
+	test('maps only shifted platform C/V shortcuts to pose actions', () => {
+		const copyCases = [
+			key('c', { ctrlKey: true, shiftKey: true }),
+			key('c', { metaKey: true, shiftKey: true })
+		] as const;
+		const pasteCases = [
+			key('v', { ctrlKey: true, shiftKey: true }),
+			key('v', { metaKey: true, shiftKey: true })
+		] as const;
+
+		copyCases.forEach((event) => expect(shortcutActionFor(event)).toBe('copy-pose'));
+		pasteCases.forEach((event) => expect(shortcutActionFor(event)).toBe('paste-pose'));
+	});
+
+	test('does not map unshifted or Alt-modified C/V shortcuts to pose actions', () => {
+		const events = [
+			key('c', { ctrlKey: true }),
+			key('c', { metaKey: true }),
+			key('v', { ctrlKey: true }),
+			key('v', { metaKey: true }),
+			key('c', { ctrlKey: true, shiftKey: true, altKey: true }),
+			key('c', { metaKey: true, shiftKey: true, altKey: true }),
+			key('v', { ctrlKey: true, shiftKey: true, altKey: true }),
+			key('v', { metaKey: true, shiftKey: true, altKey: true }),
+			key('c', { ctrlKey: true, altKey: true }),
+			key('v', { metaKey: true, altKey: true })
+		] as const;
+
+		events.forEach((event) => expect(shortcutActionFor(event)).toBeUndefined());
 	});
 
 	test('maps the documented W/E/R/T tools and editing actions', () => {
@@ -67,6 +98,8 @@ describe('editor keyboard shortcuts', () => {
 			'rename-selection',
 			'delete-selection',
 			'key-selection',
+			'copy-pose',
+			'paste-pose',
 			'cancel',
 			'select-previous',
 			'select-next',
@@ -76,5 +109,24 @@ describe('editor keyboard shortcuts', () => {
 		expect(shortcutLabelFor('tool-rotate')).toBe('E');
 		expect(shortcutLabelFor('tool-scale')).toBe('R');
 		expect(shortcutLabelFor('tool-shear')).toBe('T');
+	});
+
+	test('publishes exact pose shortcut reference entries', () => {
+		expect(shortcutReferenceEntryFor('copy-pose')).toEqual({
+			id: 'copy-pose',
+			keys: 'Ctrl/Cmd + Shift + C',
+			action: 'Copy pose',
+			description: 'Copy the evaluated pose at the current frame.',
+			scope: 'global'
+		});
+		expect(shortcutReferenceEntryFor('paste-pose')).toEqual({
+			id: 'paste-pose',
+			keys: 'Ctrl/Cmd + Shift + V',
+			action: 'Paste pose',
+			description: 'Paste the copied pose at the current frame.',
+			scope: 'global'
+		});
+		expect(shortcutLabelFor('copy-pose')).toBe('Ctrl/Cmd + Shift + C');
+		expect(shortcutLabelFor('paste-pose')).toBe('Ctrl/Cmd + Shift + V');
 	});
 });

@@ -56,6 +56,7 @@ import { clampWorkspaceLayout } from './workspace-layout.ts';
 import { numericPropertySpecs, type NumericProperty } from './property-drafts.ts';
 import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty, type PropertyKeyState } from './keying.ts';
 import { planKeyDrag, planPasteTimelineClipboard, type TimelineClipboard } from './timeline-model.ts';
+import { createPoseClipboard, planPastePoseClipboard, type PoseClipboard } from './pose-clipboard.ts';
 import { canNavigateSelectionHistory as canNavigateHistoryState, createSelectionHistory, navigateSelectionHistory as navigateHistoryState, recordSelectionHistory, type SelectionHistoryState } from './selection-history.ts';
 import type { KeyTimeChange, NumberKeyChange } from './shared-inspector.tsx';
 import type { InspectorContext } from './inspector-context.ts';
@@ -482,6 +483,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [autoKey, setAutoKey] = useState(true);
 	const [pendingAnimationEdits, setPendingAnimationEdits] = useState<readonly PendingAnimationEdit[]>([]);
 	const [keyingAnnouncement, setKeyingAnnouncement] = useState<string | undefined>(undefined);
+	const [poseClipboard, setPoseClipboard] = useState<PoseClipboard | undefined>(undefined);
+	const [poseClipboardNotice, setPoseClipboardNotice] = useState<string | undefined>(undefined);
 	const [playback, setPlayback] = useState<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	const [boneDropPreview, setBoneDropPreview] = useState<Readonly<{ boneId: EntityId; zone: BoneDropZone }> | undefined>(undefined);
 	const [assetSlotDropPreview, setAssetSlotDropPreview] = useState<EntityId | undefined>(undefined);
@@ -517,6 +520,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 	}), [startup.repository]);
 	const project = currentProject(history);
+	const projectRef = useRef(project);
+	projectRef.current = project;
 	const hiddenEntityIds = useMemo(() => new Set(presentation.hiddenEntityIds), [presentation.hiddenEntityIds]);
 	const collapsedInspectorSections = useMemo(() => new Set(presentation.collapsedInspectorSections), [presentation.collapsedInspectorSections]);
 	const projectDiagnostics = validateProject(project);
@@ -543,6 +548,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		return evaluatePose(project, activeClip.id, frameTimeSeconds(activePlayback, activeClip)).pose;
 	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, mode, project]);
+	const modeRef = useRef(mode);
+	modeRef.current = mode;
+	const activePoseRef = useRef(activePose);
+	activePoseRef.current = activePose;
+	const poseClipboardRef = useRef<PoseClipboard | undefined>(poseClipboard);
+	poseClipboardRef.current = poseClipboard;
 	const playbackRef = useRef<Readonly<{ clipId: EntityId; state: PlaybackState }> | undefined>(undefined);
 	playbackRef.current = playback;
 	const updatePresentation = function updatePresentation(update: (current: ProjectUiPreferences) => ProjectUiPreferences): void {
@@ -908,6 +919,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			},
 			'delete-selection': () => deleteSelected(),
 			'key-selection': () => keyPendingAnimationEdits(),
+			'copy-pose': () => copyPose(),
+			'paste-pose': () => pastePose(),
 			cancel: () => {
 				const contextualSurfaceWasOpen = exportPanelOpen || shortcutPanelOpen;
 
@@ -947,7 +960,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		return function cleanup(): void {
 			window.removeEventListener('keydown', onKeyDown);
 		};
-	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, activePlayback.playing, exportPanelOpen, history, mode, pendingAnimationEdits, selection, selectionHistory, shortcutPanelOpen]);
+	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, activePlayback.playing, exportPanelOpen, history, mode, pendingAnimationEdits, poseClipboard, selection, selectionHistory, shortcutPanelOpen]);
 
 	const commitHistory = function commitHistory(
 		nextHistory: HistoryState,
@@ -1636,6 +1649,70 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		commitHistory(commitTransaction(result.value), nextAssets);
 		return true;
+	};
+	const copyPose = function copyPose(): void {
+		if (modeRef.current !== 'animate') {
+			return;
+		}
+
+		const clip = activeClipRef.current;
+		const pose = activePoseRef.current;
+
+		if (!clip || !pose) {
+			setPoseClipboardNotice('Could not copy pose: an active clip and evaluated pose are required.');
+			return;
+		}
+
+		const copied = createPoseClipboard(projectRef.current, clip, activePlaybackRef.current.frameIndex, pose);
+
+		if (!copied.ok) {
+			setPoseClipboardNotice(`Could not copy pose: ${copied.error.message}`);
+			return;
+		}
+
+		setPoseClipboard(copied.value);
+		const boneCount = copied.value.transforms.filter((transform) => transform.kind === 'bone').length;
+		const attachmentCount = copied.value.transforms.filter((transform) => transform.kind === 'attachment').length;
+
+		setPoseClipboardNotice(`Copied pose: ${boneCount} bone${boneCount === 1 ? '' : 's'} and ${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}.`);
+	};
+	const pastePose = function pastePose(): void {
+		if (modeRef.current !== 'animate') {
+			return;
+		}
+
+		const clip = activeClipRef.current;
+		const clipboard = poseClipboardRef.current;
+
+		if (!clip) {
+			setPoseClipboardNotice('Could not paste pose: an active animation clip is required.');
+			return;
+		}
+		if (!clipboard) {
+			setPoseClipboardNotice('Could not paste pose: copy a pose first.');
+			return;
+		}
+
+		const plan = planPastePoseClipboard(projectRef.current, clip, activePlaybackRef.current.frameIndex, clipboard, createEntityId);
+
+		if (!plan.ok) {
+			setPoseClipboardNotice(`Could not paste pose: ${plan.error.message}`);
+			return;
+		}
+		if (plan.value.noOp || plan.value.commands.length === 0) {
+			setPoseClipboardNotice(`Paste pose made no changes: ${plan.value.summary.bones} bone${plan.value.summary.bones === 1 ? '' : 's'} and ${plan.value.summary.attachments} attachment${plan.value.summary.attachments === 1 ? '' : 's'} already match.`);
+			return;
+		}
+
+		const applied = applyCommandSequence(plan.value.commands);
+
+		if (!applied) {
+			setPoseClipboardNotice('Could not paste pose: the planned changes were rejected by the project.');
+			return;
+		}
+
+		const summary = plan.value.summary;
+		setPoseClipboardNotice(`Pasted pose: ${summary.propertiesChanged} propert${summary.propertiesChanged === 1 ? 'y' : 'ies'} across ${summary.bones} bone${summary.bones === 1 ? '' : 's'} and ${summary.attachments} attachment${summary.attachments === 1 ? '' : 's'}; ${summary.keysCreated} key${summary.keysCreated === 1 ? '' : 's'} created and ${summary.keysUpdated} updated.`);
 	};
 
 	const dropAssetOnCanvas = function dropAssetOnCanvas(assetId: string, point: ViewportPoint): void {
@@ -2984,6 +3061,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								pinnedEntityIds={new Set(presentation.pinnedTimelineEntityIds)}
 								autoKey={autoKey}
 								pendingEditCount={pendingAnimationEdits.length}
+								poseAvailable={activePose !== undefined}
+								poseClipboardAvailable={poseClipboard !== undefined}
+								poseClipboardNotice={poseClipboardNotice}
 								onSelectClip={selectActiveClip}
 								onCreateClip={createAnimationClip}
 								onDuplicateClip={duplicateActiveClip}
@@ -3008,6 +3088,8 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 								onDeleteKeys={deleteAnimationKeys}
 								onRetimeKeys={retimeAnimationKeys}
 								onPasteKeys={pasteAnimationKeys}
+								onCopyPose={copyPose}
+								onPastePose={pastePose}
 								onSelectEntity={(entity, additive) => updateSelection(entity, additive, 'timeline')}
 								onSelectTransformTool={setTransformTool}
 								onRowModeChange={(nextMode) => updatePresentation((current) => ({ ...current, timelineRowMode: nextMode }))}

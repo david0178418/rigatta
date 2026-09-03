@@ -8,6 +8,8 @@ export type ShortcutAction =
 	| 'rename-selection'
 	| 'delete-selection'
 	| 'key-selection'
+	| 'copy-pose'
+	| 'paste-pose'
 	| 'cancel'
 	| 'select-previous'
 	| 'select-next'
@@ -55,6 +57,8 @@ const globalShortcutBindings: readonly ShortcutBinding[] = [
 	{ keys: ['arrowleft'], modifier: 'none', shift: 'none', action: 'step-backward' },
 	{ keys: ['arrowright'], modifier: 'none', shift: 'none', action: 'step-forward' },
 	{ keys: ['?'], modifier: 'none', shift: 'any', action: 'open-reference' },
+	{ keys: ['c'], modifier: 'platform', shift: 'required', action: 'copy-pose' },
+	{ keys: ['v'], modifier: 'platform', shift: 'required', action: 'paste-pose' },
 	{ keys: ['f2'], modifier: 'none', shift: 'none', action: 'rename-selection' },
 	{ keys: ['delete', 'backspace'], modifier: 'none', shift: 'none', action: 'delete-selection' },
 	{ keys: ['k'], modifier: 'none', shift: 'none', action: 'key-selection' },
@@ -81,6 +85,8 @@ export const shortcutReference: readonly ShortcutReferenceEntry[] = [
 	{ id: 'rename-selection', keys: 'F2', action: 'Rename selection', description: 'Start inline rename for the selected rig item.', scope: 'global' },
 	{ id: 'delete-selection', keys: 'Delete / Backspace', action: 'Delete selection', description: 'Delete the selected rig item; in the timeline, delete selected keys.', scope: 'global' },
 	{ id: 'key-selection', keys: 'K', action: 'Key edited properties', description: 'In Animate mode, commit pending edited properties at the current frame.', scope: 'global' },
+	{ id: 'copy-pose', keys: 'Ctrl/Cmd + Shift + C', action: 'Copy pose', description: 'Copy the evaluated pose at the current frame.', scope: 'global' },
+	{ id: 'paste-pose', keys: 'Ctrl/Cmd + Shift + V', action: 'Paste pose', description: 'Paste the copied pose at the current frame.', scope: 'global' },
 	{ id: 'cancel', keys: 'Escape', action: 'Cancel / clear', description: 'Cancel an active gesture or close a contextual surface; when idle, clear the selection.', scope: 'global' },
 	{ id: 'select-previous', keys: 'Page Up', action: 'Previous selection', description: 'Restore the previous valid selection from selection history.', scope: 'global' },
 	{ id: 'select-next', keys: 'Page Down', action: 'Next selection', description: 'Restore the next valid selection from selection history.', scope: 'global' },
