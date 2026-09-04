@@ -22,7 +22,7 @@ const storedPinnedIds = async function storedPinnedIds(page: Page): Promise<read
 	}, { key: UI_PREFERENCES_STORAGE_KEY, projectId: EXAMPLE_PROJECT_ID });
 };
 
-test('pins Selection rows, keeps them synchronized, ignores stale IDs, clears them, and restores them', async ({ page }) => {
+test('pins Auto rows, keeps them synchronized, ignores stale IDs, clears them, and restores them', async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	const projectPreferences = {
 		...defaultProjectUiPreferences(),
@@ -71,13 +71,20 @@ test('pins Selection rows, keeps them synchronized, ignores stale IDs, clears th
 	await expect(armGroup).toHaveClass(/is-selected/);
 	await expect(arm.locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
 
-	const rowMode = page.getByLabel('Timeline rows', { exact: true });
+	const timelineOptionsTrigger = page.getByRole('button', { name: 'Timeline options', exact: true });
+	await timelineOptionsTrigger.click();
+	const rowMode = page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true });
 	await rowMode.selectOption('all-keyed');
-	await expect(timeline.getByRole('button', { name: /arm timeline rows/ })).toHaveCount(0);
-	await rowMode.selectOption('selection');
+	await page.keyboard.press('Escape');
+	await expect(timeline.getByRole('button', { name: 'Pin arm timeline rows', exact: true })).toHaveCount(0);
+	await timelineOptionsTrigger.click();
+	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true }).selectOption('auto');
+	await page.keyboard.press('Escape');
 	await expect(timeline.getByRole('button', { name: 'Unpin arm timeline rows', exact: true })).toBeVisible();
 
-	await page.getByRole('button', { name: 'Clear pinned timeline rows', exact: true }).click();
+	await timelineOptionsTrigger.click();
+	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByRole('button', { name: 'Clear pinned timeline rows', exact: true }).click();
+	await page.keyboard.press('Escape');
 	await expect(timeline.getByRole('button', { name: 'Pin arm timeline rows', exact: true })).toBeVisible();
 	await expect(timeline.getByRole('button', { name: 'Unpin arm timeline rows', exact: true })).toHaveCount(0);
 	await expect.poll(() => storedPinnedIds(page)).toEqual([]);

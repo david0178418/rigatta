@@ -6,6 +6,12 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 };
 
+const showAllKeyedTimelineRows = async function showAllKeyedTimelineRows(page: Page): Promise<void> {
+	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true }).selectOption('all-keyed');
+	await page.keyboard.press('Escape');
+};
+
 test('moves clip and event editing into Properties and preserves invalid JSON drafts', async ({ page }) => {
 	await loadExample(page);
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
@@ -61,10 +67,9 @@ test('applies a common key frame to multiple keys and undoes it as one action', 
 
 	const keys = page.getByRole('button', { name: 'Key frame 1', exact: true });
 	await expect(keys).toHaveCount(2);
-	await page.getByRole('button', { name: 'Close Track details', exact: true }).click();
+	await page.keyboard.press('Escape');
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
-	await page.getByRole('button', { name: 'Key details', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
 	await expect(page.getByTestId('mixed-key-state')).toContainText('2 keys selected');
 
@@ -91,13 +96,12 @@ test('retimes mixed numeric and discrete keys atomically', async ({ page }) => {
 	await page.getByRole('button', { name: 'Add track', exact: true }).click();
 	await page.getByRole('button', { name: 'Add key', exact: true }).click();
 
-	await page.getByLabel('Timeline rows', { exact: true }).selectOption('all-keyed');
+	await showAllKeyedTimelineRows(page);
 	const keys = page.getByRole('button', { name: 'Key frame 1', exact: true });
 	await expect(keys).toHaveCount(2);
-	await page.getByRole('button', { name: 'Close Track details', exact: true }).click();
+	await page.keyboard.press('Escape');
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
-	await page.getByRole('button', { name: 'Key details', exact: true }).click();
 	await expect(page.getByText('2 keys selected', { exact: false })).toBeVisible();
 	await page.getByLabel('Key frame', { exact: true }).fill('3');
 	await page.getByRole('button', { name: 'Apply key values', exact: true }).click();
@@ -252,7 +256,7 @@ test('keeps draw-order and attachment-swap contexts in Properties with navigatio
 test('shows focus-visible tooltips and restores Track details focus on Escape', async ({ page }) => {
 	await loadExample(page);
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await page.getByLabel('Timeline rows').selectOption('all-keyed');
+	await showAllKeyedTimelineRows(page);
 
 	const marker = page.getByRole('button', { name: 'Key frame 1', exact: true }).first();
 	await marker.focus();
@@ -279,9 +283,9 @@ test('shows focus-visible tooltips and restores Track details focus on Escape', 
 	const trackDetails = page.getByRole('button', { name: 'Track details', exact: true });
 	await trackDetails.click();
 	const panel = page.getByRole('dialog', { name: 'Track details' });
-	await expect(trackDetails).toHaveAttribute('aria-controls', 'timeline-track-creation-menu');
+	await expect(trackDetails).toHaveAttribute('aria-expanded', 'true');
 	await expect(panel).toHaveAttribute('role', 'dialog');
-	await expect(panel.getByRole('button', { name: 'Close Track details', exact: true })).toBeFocused();
+	await expect(panel.getByLabel('New track', { exact: true })).toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(panel).toHaveCount(0);
 	await expect(trackDetails).toBeFocused();
@@ -295,7 +299,7 @@ test('shows focus-visible tooltips and restores Track details focus on Escape', 
 test('selects a timeline key through the expanded pointer hit target', async ({ page }) => {
 	await loadExample(page);
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await page.getByLabel('Timeline rows', { exact: true }).selectOption('all-keyed');
+	await showAllKeyedTimelineRows(page);
 
 	const marker = page.getByRole('button', { name: 'Key frame 1', exact: true }).first();
 	await marker.scrollIntoViewIfNeeded();
@@ -309,14 +313,13 @@ test('selects a timeline key through the expanded pointer hit target', async ({ 
 
 	expect(hitTargetKeyId).toBe(await marker.getAttribute('data-key-id'));
 	await page.mouse.click(hitPoint.x, hitPoint.y);
-	await page.getByRole('button', { name: 'Key details', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
 });
 
 test('makes each timeline lane keyboard-seekable and each property label keyboard-selectable', async ({ page }) => {
 	await loadExample(page);
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await page.getByLabel('Timeline rows', { exact: true }).selectOption('all-keyed');
+	await showAllKeyedTimelineRows(page);
 
 	const lane = page.locator('.track-key-lane[data-timeline-lane]').first();
 	await lane.focus();

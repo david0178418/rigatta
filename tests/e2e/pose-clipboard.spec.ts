@@ -1,11 +1,19 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-const tooltipFor = function tooltipFor(button: Locator): Locator {
-	return button.locator('xpath=..').getByRole('tooltip');
-};
-
 const poseNoticeFor = function poseNoticeFor(page: Page): Locator {
 	return page.locator('.pose-clipboard-notice[role="status"]');
+};
+
+const openPoseMenu = async function openPoseMenu(page: Page): Promise<Locator> {
+	await page.getByRole('button', { name: 'Pose clipboard', exact: true }).click();
+
+	return page.getByRole('menu', { name: 'Pose clipboard', exact: true });
+};
+
+const clickPoseAction = async function clickPoseAction(page: Page, action: 'Copy pose' | 'Paste pose'): Promise<void> {
+	const menu = await openPoseMenu(page);
+
+	await menu.getByRole('menuitem', { name: action, exact: true }).click();
 };
 
 const loadExampleAnimation = async function loadExampleAnimation(page: Page): Promise<void> {
@@ -18,7 +26,9 @@ const loadExampleAnimation = async function loadExampleAnimation(page: Page): Pr
 };
 
 const showAllKeyedTimelineRows = async function showAllKeyedTimelineRows(page: Page): Promise<void> {
-	await page.getByRole('combobox', { name: 'Timeline rows', exact: true }).selectOption({ label: 'All keyed' });
+	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByRole('combobox', { name: 'Timeline rows', exact: true }).selectOption({ label: 'All keyed' });
+	await page.keyboard.press('Escape');
 };
 
 const copyInterpolatedExamplePose = async function copyInterpolatedExamplePose(page: Page): Promise<string> {
@@ -37,7 +47,7 @@ const copyInterpolatedExamplePose = async function copyInterpolatedExamplePose(p
 	await expect.poll(async () => (await canvas.screenshot()).toString('base64')).not.toBe(firstFrameImage);
 	const copiedPoseImage = (await canvas.screenshot()).toString('base64');
 
-	await page.getByRole('button', { name: 'Copy pose', exact: true }).click();
+	await clickPoseAction(page, 'Copy pose');
 	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 14 bones and 14 attachments.');
 
 	return copiedPoseImage;
@@ -47,35 +57,28 @@ test('shows the empty Animate state without pose controls when no clip is availa
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 
-	const copyPose = page.getByRole('button', { name: 'Copy pose', exact: true });
-	const pastePose = page.getByRole('button', { name: 'Paste pose', exact: true });
+	const poseClipboard = page.getByRole('button', { name: 'Pose clipboard', exact: true });
 
 	await expect(page.getByText('No clips yet', { exact: true })).toBeVisible();
-	await expect(copyPose).toHaveCount(0);
-	await expect(pastePose).toHaveCount(0);
+	await expect(poseClipboard).toHaveCount(0);
 });
 
 test('exposes exact pose actions, shortcut metadata, and pre-copy disabled state', async ({ page }) => {
 	await loadExampleAnimation(page);
 
-	const copyPose = page.getByRole('button', { name: 'Copy pose', exact: true });
-	const pastePose = page.getByRole('button', { name: 'Paste pose', exact: true });
+	const poseMenu = await openPoseMenu(page);
+	const copyPose = poseMenu.getByRole('menuitem', { name: 'Copy pose', exact: true });
+	const pastePose = poseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true });
 
 	await expect(copyPose).toBeVisible();
 	await expect(copyPose).toBeEnabled();
 	await expect(pastePose).toBeVisible();
 	await expect(pastePose).toBeDisabled();
-	await expect(copyPose).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+C Meta+Shift+C');
-	await expect(pastePose).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+V Meta+Shift+V');
-
-	await copyPose.focus();
-	await expect(tooltipFor(copyPose)).toBeVisible();
-	await expect(tooltipFor(copyPose)).toHaveText('Copy pose · Ctrl/Cmd + Shift + C');
+	await expect(copyPose).toContainText('Ctrl/Cmd + Shift + C');
+	await expect(pastePose).toContainText('Ctrl/Cmd + Shift + V');
 	await copyPose.click();
-	await expect(pastePose).toBeEnabled();
-	await pastePose.focus();
-	await expect(tooltipFor(pastePose)).toBeVisible();
-	await expect(tooltipFor(pastePose)).toHaveText('Paste pose · Ctrl/Cmd + Shift + V');
+	const reopenedPoseMenu = await openPoseMenu(page);
+	await expect(reopenedPoseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true })).toBeEnabled();
 });
 
 test('copies an interpolated pose with all example entities through visible feedback', async ({ page }) => {
@@ -87,7 +90,9 @@ test('copies an interpolated pose with all example entities through visible feed
 	await expect(notice).toHaveAttribute('role', 'status');
 	await expect(notice).toHaveAttribute('aria-live', 'polite');
 	await expect(notice).toHaveText('Copied pose: 14 bones and 14 attachments.');
-	await expect(page.getByRole('button', { name: 'Paste pose', exact: true })).toBeEnabled();
+	const poseMenu = await openPoseMenu(page);
+	await expect(poseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true })).toBeEnabled();
+	await page.keyboard.press('Escape');
 });
 
 test('pastes into an empty same-project clip, keeps the destination frame, and undoes atomically', async ({ page }) => {
@@ -107,7 +112,7 @@ test('pastes into an empty same-project clip, keeps the destination frame, and u
 	await expect.poll(async () => (await canvas.screenshot()).toString('base64')).not.toBe(copiedPoseImage);
 	const destinationBeforePasteImage = (await canvas.screenshot()).toString('base64');
 
-	await page.getByRole('button', { name: 'Paste pose', exact: true }).click();
+	await clickPoseAction(page, 'Paste pose');
 	await expect(poseNoticeFor(page)).toHaveText('Pasted pose: 196 properties across 14 bones and 14 attachments; 196 keys created and 0 updated.');
 	await expect(poseNoticeFor(page)).toHaveAttribute('aria-live', 'polite');
 	await expect.poll(async () => (await canvas.screenshot()).toString('base64')).toBe(copiedPoseImage);
@@ -191,23 +196,34 @@ test('ignores pose shortcuts in Setup mode and while a typing target has focus',
 	await page.getByRole('button', { name: 'Setup', exact: true }).click();
 	await page.keyboard.press('Control+Shift+C');
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Paste pose', exact: true })).toBeDisabled();
+	const setupPoseMenu = await openPoseMenu(page);
+	await expect(setupPoseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true })).toBeDisabled();
+	await page.keyboard.press('Escape');
 
 	await page.getByRole('button', { name: 'walk', exact: true }).click();
-	const filter = page.getByLabel('Filter tracks', { exact: true });
+	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
+	const timelineOptions = page.getByRole('dialog', { name: 'Timeline options', exact: true });
+	const filter = timelineOptions.getByLabel('Filter tracks', { exact: true });
 	await filter.focus();
 	await page.keyboard.press('Control+Shift+C');
 	await expect(poseNoticeFor(page)).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Paste pose', exact: true })).toBeDisabled();
+	await page.keyboard.press('Escape');
+	const filteredPoseMenu = await openPoseMenu(page);
+	await expect(filteredPoseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true })).toBeDisabled();
+	await page.keyboard.press('Escape');
 
 	await page.getByTestId('animate-timeline').focus();
 	await page.keyboard.press('Control+Shift+C');
 	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 14 bones and 14 attachments.');
 
 	await destinationClip.click();
-	await filter.focus();
+	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
+	const destinationOptions = page.getByRole('dialog', { name: 'Timeline options', exact: true });
+	const destinationFilter = destinationOptions.getByLabel('Filter tracks', { exact: true });
+	await destinationFilter.focus();
 	await page.keyboard.press('Control+Shift+V');
 	await expect(page.getByText(/^Pasted pose:/)).toHaveCount(0);
+	await page.keyboard.press('Escape');
 	await showAllKeyedTimelineRows(page);
 	await expect(page.getByText('0 matching tracks', { exact: true })).toBeVisible();
 

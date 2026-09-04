@@ -263,11 +263,15 @@ test('navigates and filters the animation timeline', async ({ page }) => {
 	await page.getByLabel('Duration (sec)').fill('3');
 	await page.getByRole('button', { name: 'Save clip', exact: true }).click();
 	await expect(page.getByLabel('Timeline frame range')).toHaveText('Frames 1–20 of 36');
-	await page.getByRole('button', { name: 'Zoom timeline in' }).click();
+	await page.getByRole('button', { name: 'Timeline view', exact: true }).click();
+	await page.getByRole('menu', { name: 'Timeline view', exact: true }).getByRole('menuitem', { name: 'Zoom timeline in', exact: true }).click();
 	await expect(page.getByText('125%', { exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Pan timeline right' }).click();
+	await page.getByRole('button', { name: 'Timeline view', exact: true }).click();
+	await page.getByRole('menu', { name: 'Timeline view', exact: true }).getByRole('menuitem', { name: 'Pan timeline right', exact: true }).click();
 	await expect(page.getByLabel('Timeline frame range')).toHaveText('Frames 9–24 of 36');
-	await page.getByLabel('Filter tracks').fill('bone');
+	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Filter tracks', { exact: true }).fill('bone');
+	await page.keyboard.press('Escape');
 	await expect(page.getByText('0 matching tracks', { exact: true })).toBeVisible();
 });
 
@@ -283,9 +287,8 @@ test('creates, moves, copies, and deletes typed animation keys', async ({ page }
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Add key' }).click();
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toBeVisible();
-	await page.getByRole('button', { name: 'Close Track details' }).click();
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
-	await page.getByRole('button', { name: 'Key details' }).click();
 	await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
 	await page.getByRole('spinbutton', { name: 'Key frame', exact: true }).fill('3');
 	await page.getByRole('button', { name: 'Apply key values', exact: true }).click();
@@ -309,7 +312,6 @@ test('creates and edits timeline events', async ({ page }) => {
 	await page.getByRole('button', { name: 'Create animation clip' }).click();
 	await page.getByRole('button', { name: 'Add event', exact: true }).click();
 	await page.getByRole('button', { name: 'Event event at frame 1', exact: true }).click();
-	await page.getByRole('button', { name: 'Event details' }).click();
 	await expect(page.getByRole('region', { name: 'Event properties' })).toBeVisible();
 	await page.getByLabel('Event name').fill('impact');
 	await page.getByLabel('Payload JSON').fill('{"damage":4,"tags":["hit"]}');
@@ -402,9 +404,8 @@ test('changes interpolation for a selected numeric key', async ({ page }) => {
 	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
-	await page.getByRole('button', { name: 'Close Track details' }).click();
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
-	await page.getByRole('button', { name: 'Key details' }).click();
 	await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
 	const interpolation = page.getByRole('combobox', { name: 'Inspector easing mode' });
 
@@ -434,10 +435,9 @@ test('retimes multiple selected animation keys together', async ({ page }) => {
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
 	const keys = page.getByRole('button', { name: 'Key frame 1' });
-	await page.getByRole('button', { name: 'Close Track details' }).click();
+	await page.keyboard.press('Escape');
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
-	await page.getByRole('button', { name: 'Key details' }).click();
 	await expect(page.getByText('2 keys selected', { exact: false })).toBeVisible();
 	await page.getByTestId('animate-timeline').focus();
 	await page.keyboard.press('ArrowRight');
@@ -458,7 +458,7 @@ test('undoes a multi-key animation deletion as one action', async ({ page }) => 
 	await page.getByRole('button', { name: 'Add key' }).click();
 
 	const keys = page.getByRole('button', { name: 'Key frame 1' });
-	await page.getByRole('button', { name: 'Close Track details' }).click();
+	await page.keyboard.press('Escape');
 	await keys.nth(0).click();
 	await keys.nth(1).click({ modifiers: ['Control'] });
 	await page.getByTestId('animate-timeline').focus();
@@ -650,9 +650,8 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	const keyAttachment = page.getByRole('combobox', { name: 'Key attachment' });
 	await keyAttachment.selectOption({ label: 'hero.png' });
 	await page.getByRole('button', { name: 'Add key' }).click();
-	await page.getByRole('button', { name: 'Close Track details' }).click();
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
-	await page.getByRole('button', { name: 'Key details' }).click();
 		const selectedAttachment = page.getByRole('combobox', { name: 'Keyed value · frame 1' });
 	await expect(selectedAttachment).toHaveValue(/.+/);
 	await selectedAttachment.selectOption({ label: 'alt.png' });
@@ -763,9 +762,8 @@ test('reorders setup slots through hierarchy drag and drop', async ({ page }) =>
 	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'Setup · Draw order' });
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
-	await page.getByRole('button', { name: 'Close Track details' }).click();
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Key frame 1' }).click();
-	await page.getByRole('button', { name: 'Key details' }).click();
 
 	await expect(page.getByRole('region', { name: 'Draw order properties' })).toBeVisible();
 	const keyedSlots = page.getByRole('list', { name: 'Keyed value · frame 1', exact: true }).locator('li');

@@ -25,7 +25,9 @@ test('synchronizes Draw Order and timeline entity selection with the Rig tree', 
 	await expect(tree.getByRole('treeitem', { name: 'Slot: body', exact: true }).locator('.slot-row')).toHaveAttribute('aria-pressed', 'true');
 
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await page.getByLabel('Timeline rows').selectOption('all-keyed');
+	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true }).selectOption('all-keyed');
+	await page.keyboard.press('Escape');
 	await page.getByRole('tab', { name: 'Draw Order', exact: true }).click();
 	const armTimelineRow = page.locator(`[data-entity-id="${armId}"]`).first().locator('.timeline-row-select');
 	await expect(armTimelineRow).toBeVisible();

@@ -189,7 +189,7 @@ test('keeps editor docks and the timeline independently scrollable', async ({ pa
 		await page.getByRole('button', { name: 'Track details' }).click();
 		await page.getByRole('button', { name: 'Add track' }).click();
 		await page.getByRole('button', { name: 'Add key' }).click();
-		await page.getByRole('button', { name: 'Close Track details' }).click();
+		await page.keyboard.press('Escape');
 
 		const metrics = await page.evaluate(() => ({
 			bodyHeight: document.body.scrollHeight,

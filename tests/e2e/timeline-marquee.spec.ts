@@ -6,7 +6,9 @@ const loadExampleAnimation = async function loadExampleAnimation(page: Page): Pr
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await page.getByRole('combobox', { name: 'Timeline rows', exact: true }).selectOption({ label: 'All keyed' });
+	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByRole('combobox', { name: 'Timeline rows', exact: true }).selectOption({ label: 'All keyed' });
+	await page.keyboard.press('Escape');
 	await expect(page.getByTestId('animate-timeline')).toBeVisible();
 };
 
@@ -38,9 +40,9 @@ test('starts a key marquee from an entity grid row and selects its visible prope
 	await expect(page.locator('.timeline-marquee')).toBeVisible();
 	await page.mouse.up();
 
-	await page.getByRole('button', { name: 'Key details', exact: true }).click();
 	await expect(page.getByText('2 keys selected', { exact: false })).toBeVisible();
 	await expect(page.locator('.timeline-property-row .track-key.is-selected')).toHaveCount(2);
+	await expect(page.getByRole('region', { name: 'Key properties', exact: true })).toBeVisible();
 	await page.getByTestId('animate-timeline').focus();
 	await page.keyboard.press('Control+c');
 	await expect(page.getByText('Copied 2 keys.', { exact: true })).toBeVisible();

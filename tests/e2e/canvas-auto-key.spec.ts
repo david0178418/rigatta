@@ -186,7 +186,7 @@ test('canvas existing keyed poses have no first-move jump and support undo redo 
 	await page.getByRole('button', { name: 'Add track', exact: true }).click();
 	await page.getByRole('spinbutton', { name: 'Value', exact: true }).fill('48');
 	await page.getByRole('button', { name: 'Add key', exact: true }).click();
-	await page.getByRole('button', { name: 'Close Track details', exact: true }).click();
+	await page.keyboard.press('Escape');
 
 	const xField = page.locator('input[name="x"]');
 	await expect(xField).toHaveValue('48');

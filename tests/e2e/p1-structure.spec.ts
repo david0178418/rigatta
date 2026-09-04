@@ -107,21 +107,17 @@ test('characterizes key and event detail contexts in Properties', async ({ page 
 	await page.getByRole('button', { name: 'Track details' }).click();
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
-	await page.getByRole('button', { name: 'Close Track details' }).click();
+	await page.keyboard.press('Escape');
 
 	const key = page.getByRole('button', { name: 'Key frame 1' });
 	await key.click();
-	await page.getByRole('button', { name: 'Key details' }).click();
 	await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
-	await expect(page.getByRole('dialog', { name: 'Key details' })).toHaveCount(0);
 	await expect(page.getByRole('tab', { name: 'Properties', exact: true })).toHaveAttribute('aria-selected', 'true');
 
 	await page.getByRole('button', { name: 'Add event', exact: true }).click();
 	const event = page.getByRole('button', { name: 'Event event at frame 1', exact: true });
 	await event.click();
-	await page.getByRole('button', { name: 'Event details' }).click();
 	await expect(page.getByRole('region', { name: 'Event properties' })).toBeVisible();
-	await expect(page.getByRole('dialog', { name: 'Event details' })).toHaveCount(0);
 	await expect(page.getByLabel('Event name')).toHaveValue('event');
 });
 
