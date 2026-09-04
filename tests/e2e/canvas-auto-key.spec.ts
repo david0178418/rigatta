@@ -175,7 +175,7 @@ test('canvas pending edits stay unkeyed until the explicit key action', async ({
 
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Key frame 3', exact: true })).toHaveCount(1);
-	await expect(page.getByRole('button', { name: 'Key edited properties', exact: true })).toBeDisabled();
+	await expect(page.getByRole('button', { name: /^Key edited properties/ })).toHaveCount(0);
 });
 
 test('canvas existing keyed poses have no first-move jump and support undo redo and cancel', async ({ page }) => {

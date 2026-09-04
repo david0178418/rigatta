@@ -44,6 +44,9 @@ const loadAnimateState = async function loadAnimateState(page: Page, state: Time
 	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true }).selectOption(state.rowMode);
 	await page.keyboard.press('Escape');
 	await expect(page.getByTestId('animate-timeline').locator('.timeline-property-row').first()).toBeVisible();
+	const expandedRows = page.getByTestId('animate-timeline').locator('.timeline-group-row:not(.timeline-overview-row) .timeline-row-expander');
+	await expect(expandedRows).not.toHaveCount(0);
+	await expect(expandedRows.first()).toHaveAttribute('aria-expanded', 'true');
 };
 
 const assertDefaultTimelineHeight = async function assertDefaultTimelineHeight(page: Page): Promise<void> {
@@ -202,7 +205,8 @@ test('gates contained timeline rows across supported desktop sizes at the defaul
 
 			assertContained(metrics, viewport);
 			assertStickyAndScrollable(metrics, viewport);
-			expect(metrics.visibleDataRowsAfter, `visible timeline rows at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThanOrEqual(3);
+			expect(metrics.visibleDataRows, `visible timeline rows without scrolling at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThanOrEqual(3);
+			expect(metrics.visibleDataRowsAfter, `visible timeline rows after scrolling at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThanOrEqual(3);
 			expect(metrics.dataRows).toBeGreaterThanOrEqual(metrics.visibleDataRowsAfter);
 			await page.screenshot({ path: `/tmp/bone-animation-timeline-${state.id}-${viewport.width}x${viewport.height}.png`, fullPage: false });
 		}, Promise.resolve());
