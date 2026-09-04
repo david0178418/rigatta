@@ -149,6 +149,17 @@ describe('pure pose evaluator', () => {
 		expect(missing.diagnostics[0]?.code).toBe('missing-clip');
 	});
 
+	test('applies editor-only numeric overrides without changing setup data', () => {
+		const project = animatedProject();
+		const overridden = evaluatePose(project, clipId, 0.5, [{ targetId: fixtureIds.child, property: 'rotation', value: 0.75 }]);
+		const child = overridden.pose?.bones.find((bone) => bone.id === fixtureIds.child);
+		const setupChild = project.bones.find((bone) => bone.id === fixtureIds.child);
+
+		expect(child?.localTransform.rotation).toBe(0.75);
+		expect(setupChild?.transform.rotation).toBe(0.6);
+		expect(evaluatePose(project, clipId, 0.5).pose?.bones.find((bone) => bone.id === fixtureIds.child)?.localTransform.rotation).toBe(0.6);
+	});
+
 	test('projects gameplay attachments into world-space frame data', () => {
 		const project = animatedProject();
 		const poseResult = evaluatePose(project, clipId, 0.5);

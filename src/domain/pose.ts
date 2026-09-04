@@ -13,6 +13,7 @@ import {
 import type {
 	Attachment,
 	BoneTransformTrack,
+	BoneTransformProperty,
 	Clip,
 	ImageAttachment,
 	PointAttachment,
@@ -83,6 +84,12 @@ export type EvaluatedPose = Readonly<{
 	slots: readonly EvaluatedSlot[];
 	attachments: readonly EvaluatedAttachment[];
 	drawOrder: readonly EntityId[];
+}>;
+
+export type PoseValueOverride = Readonly<{
+	targetId: EntityId;
+	property: BoneTransformProperty | 'opacity' | 'width' | 'height';
+	value: number;
 }>;
 
 export type EvaluatedGameplayPoint = Readonly<{
@@ -184,51 +191,55 @@ const effectiveTransform = function effectiveTransform(
 	clip: Clip,
 	targetId: EntityId,
 	boneTarget: boolean,
-	timeSeconds: number
+	timeSeconds: number,
+	overrides: readonly PoseValueOverride[]
 ): LocalTransform {
 	return transformProperties.reduce((currentTransform, property) => {
 		const track = boneTarget
 			? findBoneTrack(clip, targetId, property)
 			: findAttachmentTrack(clip, targetId, property);
+		const sampledValue = track && (track.kind === 'bone-transform' || track.kind === 'attachment-transform')
+			? sampleNumberKeys(
+				track.keys,
+				timeSeconds,
+				currentTransform[property],
+				property === 'rotation'
+			)
+			: currentTransform[property];
+		const override = overrides.find((candidate) => candidate.targetId === targetId && candidate.property === property);
 
-		if (!track || track.kind !== 'bone-transform' && track.kind !== 'attachment-transform') {
-			return currentTransform;
-		}
-
-		const value = sampleNumberKeys(
-			track.keys,
-			timeSeconds,
-			currentTransform[property],
-			property === 'rotation'
-		);
-
-		return setTransformProperty(currentTransform, property, value);
+		return setTransformProperty(currentTransform, property, override?.value ?? sampledValue);
 	}, transform);
 };
 
 const effectiveBoneTransforms = function effectiveBoneTransforms(
 	project: Project,
 	clip: Clip,
-	timeSeconds: number
+	timeSeconds: number,
+	overrides: readonly PoseValueOverride[]
 ): ReadonlyMap<EntityId, LocalTransform> {
 	return new Map(project.bones.map((bone) => [
 		bone.id,
-		effectiveTransform(bone.transform, clip, bone.id, true, timeSeconds)
+		effectiveTransform(bone.transform, clip, bone.id, true, timeSeconds, overrides)
 	] as const));
 };
 
 const effectiveImageOpacity = function effectiveImageOpacity(
 	attachment: ImageAttachment,
 	clip: Clip,
-	timeSeconds: number
+	timeSeconds: number,
+	overrides: readonly PoseValueOverride[]
 ): number {
 	const track = clip.tracks.find((candidate) => (
 		candidate.kind === 'attachment-opacity' && candidate.targetId === attachment.id
 	));
 
-	return track?.kind === 'attachment-opacity'
+	const sampledValue = track?.kind === 'attachment-opacity'
 		? sampleNumberKeys(track.keys, timeSeconds, attachment.opacity)
 		: attachment.opacity;
+	const override = overrides.find((candidate) => candidate.targetId === attachment.id && candidate.property === 'opacity');
+
+	return override?.value ?? sampledValue;
 };
 
 const effectiveSlotAttachment = function effectiveSlotAttachment(
@@ -263,7 +274,8 @@ const effectiveRectangleSize = function effectiveRectangleSize(
 	attachment: RectangleAttachment,
 	clip: Clip,
 	property: 'width' | 'height',
-	timeSeconds: number
+	timeSeconds: number,
+	overrides: readonly PoseValueOverride[]
 ): number {
 	const track = clip.tracks.find((candidate) => (
 		candidate.kind === 'rectangle-size'
@@ -271,9 +283,12 @@ const effectiveRectangleSize = function effectiveRectangleSize(
 		&& candidate.property === property
 	));
 
-	return track?.kind === 'rectangle-size'
+	const sampledValue = track?.kind === 'rectangle-size'
 		? sampleNumberKeys(track.keys, timeSeconds, attachment[property])
 		: attachment[property];
+	const override = overrides.find((candidate) => candidate.targetId === attachment.id && candidate.property === property);
+
+	return override?.value ?? sampledValue;
 };
 
 const effectiveRectangleEnabled = function effectiveRectangleEnabled(
@@ -318,7 +333,8 @@ const imagePose = function imagePose(
 	clip: Clip,
 	timeSeconds: number,
 	activeAttachmentIds: ReadonlyMap<EntityId, EntityId | null>,
-	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>
+	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>,
+	overrides: readonly PoseValueOverride[]
 ): EvaluatedImageAttachment | undefined {
 	const slot = project.slots.find((candidate) => candidate.id === attachment.slotId);
 	const boneWorldMatrix = slot ? worldMatrices.get(slot.boneId) : undefined;
@@ -327,7 +343,7 @@ const imagePose = function imagePose(
 		return undefined;
 	}
 
-	const localTransform = effectiveTransform(attachment.transform, clip, attachment.id, false, timeSeconds);
+	const localTransform = effectiveTransform(attachment.transform, clip, attachment.id, false, timeSeconds, overrides);
 
 	return {
 		id: attachment.id,
@@ -336,7 +352,7 @@ const imagePose = function imagePose(
 		assetId: attachment.assetId,
 		localTransform,
 		worldMatrix: multiplyAffine(boneWorldMatrix, localTransformToMatrix(localTransform)),
-		opacity: effectiveImageOpacity(attachment, clip, timeSeconds),
+		opacity: effectiveImageOpacity(attachment, clip, timeSeconds, overrides),
 		active: activeAttachmentIds.get(attachment.slotId) === attachment.id
 	};
 };
@@ -346,7 +362,8 @@ const pointPose = function pointPose(
 	project: Project,
 	clip: Clip,
 	timeSeconds: number,
-	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>
+	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>,
+	overrides: readonly PoseValueOverride[]
 ): EvaluatedPointAttachment | undefined {
 	const boneWorldMatrix = worldMatrices.get(attachment.boneId);
 
@@ -354,7 +371,7 @@ const pointPose = function pointPose(
 		return undefined;
 	}
 
-	const localTransform = effectiveTransform(attachment.transform, clip, attachment.id, false, timeSeconds);
+	const localTransform = effectiveTransform(attachment.transform, clip, attachment.id, false, timeSeconds, overrides);
 	const worldMatrix = multiplyAffine(boneWorldMatrix, localTransformToMatrix(localTransform));
 
 	return {
@@ -373,7 +390,8 @@ const rectanglePose = function rectanglePose(
 	project: Project,
 	clip: Clip,
 	timeSeconds: number,
-	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>
+	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>,
+	overrides: readonly PoseValueOverride[]
 ): EvaluatedRectangleAttachment | undefined {
 	const boneWorldMatrix = worldMatrices.get(attachment.boneId);
 
@@ -381,10 +399,10 @@ const rectanglePose = function rectanglePose(
 		return undefined;
 	}
 
-	const localTransform = effectiveTransform(attachment.transform, clip, attachment.id, false, timeSeconds);
+	const localTransform = effectiveTransform(attachment.transform, clip, attachment.id, false, timeSeconds, overrides);
 	const worldMatrix = multiplyAffine(boneWorldMatrix, localTransformToMatrix(localTransform));
-	const width = effectiveRectangleSize(attachment, clip, 'width', timeSeconds);
-	const height = effectiveRectangleSize(attachment, clip, 'height', timeSeconds);
+	const width = effectiveRectangleSize(attachment, clip, 'width', timeSeconds, overrides);
+	const height = effectiveRectangleSize(attachment, clip, 'height', timeSeconds, overrides);
 
 	return {
 		id: attachment.id,
@@ -411,22 +429,24 @@ const attachmentPose = function attachmentPose(
 	clip: Clip,
 	timeSeconds: number,
 	activeAttachmentIds: ReadonlyMap<EntityId, EntityId | null>,
-	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>
+	worldMatrices: ReadonlyMap<EntityId, AffineMatrix>,
+	overrides: readonly PoseValueOverride[]
 ): EvaluatedAttachment | undefined {
 	if (attachment.kind === 'image') {
-		return imagePose(project, attachment, clip, timeSeconds, activeAttachmentIds, worldMatrices);
+		return imagePose(project, attachment, clip, timeSeconds, activeAttachmentIds, worldMatrices, overrides);
 	}
 	if (attachment.kind === 'point') {
-		return pointPose(attachment, project, clip, timeSeconds, worldMatrices);
+		return pointPose(attachment, project, clip, timeSeconds, worldMatrices, overrides);
 	}
 
-	return rectanglePose(attachment, project, clip, timeSeconds, worldMatrices);
+	return rectanglePose(attachment, project, clip, timeSeconds, worldMatrices, overrides);
 };
 
 export const evaluatePose = function evaluatePose(
 	project: Project,
 	clipId: EntityId,
-	timeSeconds: number
+	timeSeconds: number,
+	overrides: readonly PoseValueOverride[] = []
 ): PoseEvaluationResult {
 	const projectDiagnostics = validateProject(project);
 	const clip = findClip(project, clipId);
@@ -443,14 +463,14 @@ export const evaluatePose = function evaluatePose(
 	}
 
 	const currentTime = normalizedTime(clip, timeSeconds);
-	const localTransforms = effectiveBoneTransforms(project, clip, currentTime);
+	const localTransforms = effectiveBoneTransforms(project, clip, currentTime, overrides);
 	const worldEvaluation = evaluateBoneWorldMatrices(project, localTransforms);
 	const activeAttachmentIds = new Map(project.slots.map((slot) => [
 		slot.id,
 		effectiveSlotAttachment(slot, clip, currentTime)
 	] as const));
 	const attachments = project.attachments.flatMap((attachment) => {
-		const evaluated = attachmentPose(project, attachment, clip, currentTime, activeAttachmentIds, worldEvaluation.matrices);
+		const evaluated = attachmentPose(project, attachment, clip, currentTime, activeAttachmentIds, worldEvaluation.matrices, overrides);
 
 		return evaluated ? [evaluated] : [];
 	});

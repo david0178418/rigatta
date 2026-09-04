@@ -14,10 +14,16 @@ export type CanvasPendingAnimationEdit = Readonly<{
 	property: KeyableProperty;
 }>;
 
+export type CanvasPendingAnimationValue = Readonly<CanvasPendingAnimationEdit & {
+	value: number;
+	initialValue: number;
+}>;
+
 export type CanvasAnimationIdAllocation = Readonly<{
 	targetId: EntityId;
 	property: KeyableProperty;
 	trackId?: EntityId;
+	seedKeyId?: EntityId;
 	keyId?: EntityId;
 }>;
 
@@ -69,6 +75,35 @@ const uniquePendingEdits = function uniquePendingEdits(
 			? unique
 			: [...unique, edit]
 	), []);
+};
+
+const samePendingValue = function samePendingValue(
+	left: CanvasPendingAnimationValue,
+	right: CanvasPendingAnimationValue
+): boolean {
+	return sameProperty(left, right);
+};
+
+export const mergePendingAnimationValues = function mergePendingAnimationValues(
+	current: readonly CanvasPendingAnimationValue[],
+	additions: readonly CanvasPendingAnimationValue[]
+): readonly CanvasPendingAnimationValue[] {
+	return additions.reduce<readonly CanvasPendingAnimationValue[]>((values, addition) => {
+		const previous = values.find((value) => samePendingValue(value, addition));
+		const next = previous ? { ...addition, initialValue: previous.initialValue } : addition;
+
+		return [
+			...values.filter((value) => !samePendingValue(value, addition)),
+			next
+		];
+	}, current);
+};
+
+export const removePendingAnimationValues = function removePendingAnimationValues(
+	current: readonly CanvasPendingAnimationValue[],
+	removed: readonly CanvasPendingAnimationEdit[]
+): readonly CanvasPendingAnimationValue[] {
+	return current.filter((value) => !removed.some((candidate) => sameProperty(value, candidate)));
 };
 
 const idFactoryForIds = function idFactoryForIds(ids: readonly EntityId[]): () => EntityId {
@@ -188,6 +223,18 @@ const restoreCommandsForChange = function restoreCommandsForChange(
 		}];
 	}
 
+	if (!baseKey && currentTrack && baseTrack) {
+		const baseKeyIds = new Set(baseTrack.keys.map((key) => key.id));
+		const addedKeys = currentTrack.keys.filter((key) => !baseKeyIds.has(key.id));
+
+		return addedKeys.map((key) => ({
+			kind: 'delete-key' as const,
+			clipId,
+			trackId: currentTrack.id,
+			keyId: key.id
+		}));
+	}
+
 	if (!baseKey && currentTrack && currentKey) {
 		return [
 			{ kind: 'delete-key', clipId, trackId: currentTrack.id, keyId: currentKey.id },
@@ -261,9 +308,14 @@ const animationCommandsFor = function animationCommandsFor(
 		const key = track ? keyAtFrame(clip, track, frameIndex) : undefined;
 		const previousAllocation = allocationFor(result.value.allocatedIds, change);
 		const trackId = track?.id ?? previousAllocation?.trackId ?? idFactory();
+		const seedAtStart = (!track || track.keys.length === 0) && frameIndex > 0;
+		const seedKeyId = seedAtStart
+			? previousAllocation?.seedKeyId ?? idFactory()
+			: undefined;
 		const keyId = key?.id ?? previousAllocation?.keyId ?? idFactory();
 		const generatedIds = [
 			...(track ? [] : [trackId]),
+			...(!seedKeyId ? [] : [seedKeyId]),
 			...(key ? [] : [keyId])
 		];
 
@@ -274,7 +326,8 @@ const animationCommandsFor = function animationCommandsFor(
 			change.property,
 			frameIndex,
 			idFactoryForIds(generatedIds),
-			change.value
+			change.value,
+			change.initialValue
 		);
 
 		if (commands.length === 0) {
@@ -286,6 +339,9 @@ const animationCommandsFor = function animationCommandsFor(
 			targetId: change.targetId,
 			property: change.property,
 			...(track ? previousAllocation?.trackId ? { trackId: previousAllocation.trackId } : {} : { trackId }),
+			...(seedKeyId
+				? { seedKeyId }
+				: previousAllocation?.seedKeyId ? { seedKeyId: previousAllocation.seedKeyId } : {}),
 			...(key ? previousAllocation?.keyId ? { keyId: previousAllocation.keyId } : {} : { keyId })
 		};
 
@@ -313,14 +369,17 @@ export const planCanvasAnimation = function planCanvasAnimation(
 	const changes = uniqueChanges(input.changes);
 	const previousChanges = uniqueChanges(input.previousChanges ?? []);
 	const staleChanges = previousChanges.filter((previous) => !changes.some((change) => sameProperty(previous, change)));
-	const cleanupCommands = staleChanges.flatMap((change) => restoreCommandsForChange(input.project, input.baseProject, input.clipId, input.frameIndex, change));
+	const cleanupCommands = input.autoKey
+		? staleChanges.flatMap((change) => restoreCommandsForChange(input.project, input.baseProject, input.clipId, input.frameIndex, change))
+		: [];
 	const cleanupResult = applyCommands(input.project, cleanupCommands);
 
 	if (!cleanupResult.ok) {
 		return cleanupResult;
 	}
 
-	const setupResult = applyCommands(cleanupResult.value, input.setupCommands);
+	const setupCommands = input.clipId === undefined ? input.setupCommands : [];
+	const setupResult = applyCommands(cleanupResult.value, setupCommands);
 
 	if (!setupResult.ok) {
 		return setupResult;
@@ -338,9 +397,9 @@ export const planCanvasAnimation = function planCanvasAnimation(
 		ok: true,
 		value: {
 			cleanupCommands,
-			setupCommands: input.setupCommands,
+			setupCommands,
 			animationCommands: animationResult.value.commands,
-			commands: [...cleanupCommands, ...input.setupCommands, ...animationResult.value.commands],
+			commands: [...cleanupCommands, ...setupCommands, ...animationResult.value.commands],
 			changedProperties: changes,
 			keyedProperties: animationResult.value.keyedProperties,
 			pendingEdits: pendingEditsForChanges(changes),

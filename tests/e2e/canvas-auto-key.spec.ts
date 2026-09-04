@@ -129,13 +129,42 @@ test('canvas image translation creates one track with keys at two frames', async
 	await expect.poll(async () => (await page.locator('canvas.pixi-canvas').screenshot()).toString('base64')).not.toBe(firstFrameImage);
 });
 
+test('inspector rotation seeds the setup value and interpolates the head pose', async ({ page }) => {
+	await openExampleAnimation(page);
+	await selectRigNode(page, 'Bone: head');
+	const rotation = page.getByLabel('Rotation (deg)', { exact: true });
+
+	await page.getByLabel('Playhead', { exact: true }).fill('4');
+	await rotation.fill('30');
+	await rotation.press('Enter');
+
+	const rotationRow = page.locator('[data-track-id]').filter({ hasText: 'Bone transform · rotation · head' });
+
+	await expect(rotationRow).toHaveCount(1);
+	await expect(rotationRow.getByRole('button', { name: 'Key frame 1', exact: true })).toHaveCount(1);
+	await expect(rotationRow.getByRole('button', { name: 'Key frame 5', exact: true })).toHaveCount(1);
+
+	await page.getByLabel('Playhead', { exact: true }).fill('2');
+	await expect(rotation).toHaveValue('15');
+	await page.getByLabel('Playhead', { exact: true }).fill('0');
+	await expect(rotation).toHaveValue('0');
+	await page.getByRole('button', { name: 'Setup', exact: true }).click();
+	await expect(rotation).toHaveValue('0');
+});
+
 test('canvas pending edits stay unkeyed until the explicit key action', async ({ page }) => {
 	await openExampleAnimation(page);
 	await selectRigNode(page, 'Bone: root');
 	await page.getByLabel('Auto Key').uncheck();
 	await page.getByLabel('Playhead', { exact: true }).fill('2');
 
-	await dragLogical(page, { x: 128, y: 128 }, { x: 148, y: 128 });
+	const startScreen = await screenPointForLogical(page, { x: 128, y: 128 });
+	const endScreen = await screenPointForLogical(page, { x: 148, y: 128 });
+	await page.mouse.move(startScreen.x, startScreen.y);
+	await page.mouse.down();
+	await page.mouse.move(endScreen.x, endScreen.y, { steps: 4 });
+	await expect(page.locator('input[name="x"]')).toHaveValue('148');
+	await page.mouse.up();
 
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Add X key at frame 3', exact: true })).toHaveAttribute('data-key-state', 'pending');

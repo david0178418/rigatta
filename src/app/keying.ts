@@ -1,6 +1,6 @@
 import { createEntityId, type EntityId } from '../domain/ids.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
-import type { BoneTransformProperty, Clip, Project, Track } from '../domain/model.ts';
+import type { BoneTransformProperty, Clip, NumberKey, Project, Track } from '../domain/model.ts';
 import type { TrackDefinition } from '../domain/animation.ts';
 
 const transformProperties = [
@@ -31,6 +31,8 @@ export type KeyingContext = Readonly<{
 	frameIndex: number;
 	autoKey: boolean;
 	pendingEdits?: readonly Readonly<{ targetId: EntityId; property: KeyableProperty }>[];
+	valueOverride?: number;
+	initialValueOverride?: number;
 }>;
 
 export type KeyingPlan = Readonly<{
@@ -120,8 +122,10 @@ const keyAtFrame = function keyAtFrame(
 	clip: Clip,
 	track: Track,
 	frameIndex: number
-): Readonly<{ id: EntityId }> | undefined {
-	return track.keys.find((key) => Math.round(key.timeSeconds * clip.fps) === frameIndex);
+): NumberKey | undefined {
+	const key = track.keys.find((candidate) => Math.round(candidate.timeSeconds * clip.fps) === frameIndex);
+
+	return key && 'value' in key && typeof key.value === 'number' ? key : undefined;
 };
 
 export const propertyKeyState = function propertyKeyState(context: KeyingContext): PropertyKeyState {
@@ -150,7 +154,8 @@ const commandsForKey = function commandsForKey(
 	definition: TrackDefinition,
 	track: Track | undefined,
 	value: number,
-	idFactory: () => EntityId
+	idFactory: () => EntityId,
+	initialValue: number | undefined
 ): readonly ProjectCommand[] {
 	const clip = context.clip;
 
@@ -160,6 +165,8 @@ const commandsForKey = function commandsForKey(
 
 	const trackId = track?.id ?? idFactory();
 	const key = track ? keyAtFrame(clip, track, context.frameIndex) : undefined;
+	const seedAtStart = (!track || track.keys.length === 0) && context.frameIndex > 0;
+	const seedKeyId = seedAtStart ? idFactory() : undefined;
 	const keyId = key?.id ?? idFactory();
 	const keyCommand = key
 		? {
@@ -170,8 +177,8 @@ const commandsForKey = function commandsForKey(
 			input: {
 				timeSeconds: Math.max(0, context.frameIndex) / clip.fps,
 				value,
-				interpolation: 'linear' as const,
-				curve: null
+				interpolation: key.interpolation,
+				curve: key.curve
 			}
 		}
 		: {
@@ -189,6 +196,20 @@ const commandsForKey = function commandsForKey(
 
 	return [
 		...(track ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: clip.id, definition }]),
+		...(seedKeyId
+			? [{
+				kind: 'add-number-key' as const,
+				id: seedKeyId,
+				clipId: clip.id,
+				trackId,
+				input: {
+					timeSeconds: 0,
+					value: initialValue ?? value,
+					interpolation: 'linear' as const,
+					curve: null
+				}
+			}]
+			: []),
 		keyCommand
 	];
 };
@@ -217,13 +238,14 @@ export const planPropertyKeyToggle = function planPropertyKeyToggle(
 		};
 	}
 
-	const value = valueForProperty(context.project, context.targetId, context.property);
+	const value = context.valueOverride ?? valueForProperty(context.project, context.targetId, context.property);
+	const initialValue = context.initialValueOverride ?? valueForProperty(context.project, context.targetId, context.property);
 
 	return value === undefined
 		? { state, commands: [], reason: 'The selected property value is unavailable.' }
 		: {
 			state,
-			commands: commandsForKey(context, definition, track, value, idFactory)
+			commands: commandsForKey(context, definition, track, value, idFactory, initialValue)
 		};
 };
 
@@ -236,7 +258,8 @@ export const autoKeyCommandsForProperty = function autoKeyCommandsForProperty(
 	property: KeyableProperty,
 	frameIndex: number,
 	idFactory: () => EntityId = createEntityId,
-	valueOverride?: number
+	valueOverride?: number,
+	initialValueOverride?: number
 ): readonly ProjectCommand[] {
 	const context: KeyingContext = {
 		project,
@@ -250,6 +273,6 @@ export const autoKeyCommandsForProperty = function autoKeyCommandsForProperty(
 	const value = valueOverride ?? valueForProperty(project, targetId, property);
 
 	return definition && value !== undefined
-		? commandsForKey(context, definition, clip.tracks.find((track) => trackMatchesDefinition(track, definition)), value, idFactory)
+		? commandsForKey(context, definition, clip.tracks.find((track) => trackMatchesDefinition(track, definition)), value, idFactory, initialValueOverride ?? valueForProperty(project, targetId, property))
 		: [];
 };

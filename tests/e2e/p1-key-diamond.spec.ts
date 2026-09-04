@@ -58,3 +58,30 @@ test('adds and removes current-frame keys as undoable transactions', async ({ pa
 	await undo.click();
 	await expect(page.getByRole('button', { name: 'Remove X key at frame 1', exact: true })).toBeVisible();
 });
+
+test('keys a pending later-frame edit with an initial setup seed', async ({ page }) => {
+	await openAnimationForRoot(page);
+
+	const xField = page.locator('input[name="x"]');
+	await page.getByLabel('Auto Key').uncheck();
+	await page.getByLabel('Playhead', { exact: true }).fill('4');
+	await xField.fill('48');
+	await xField.press('Enter');
+	await page.getByLabel('Playhead', { exact: true }).fill('6');
+	await xField.fill('72');
+	await xField.press('Enter');
+	await page.getByLabel('Playhead', { exact: true }).fill('2');
+	await expect(xField).toHaveValue('72');
+
+	const pendingX = page.getByRole('button', { name: 'Add X key at frame 3', exact: true });
+
+	await expect(pendingX).toHaveAttribute('data-key-state', 'pending');
+	await pendingX.click();
+
+	await expect(page.getByRole('button', { name: 'Remove X key at frame 3', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Key frame 1', exact: true })).toHaveCount(1);
+	await expect(page.getByRole('button', { name: 'Key frame 3', exact: true })).toHaveCount(1);
+	await expect(page.getByRole('button', { name: 'Key frame 5', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Key frame 7', exact: true })).toHaveCount(0);
+	await expect(xField).toHaveValue('72');
+});

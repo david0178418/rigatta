@@ -16,7 +16,7 @@ import {
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import { createEmptyProject, type Attachment, type BoneTransformProperty, type Clip, type Project, type Track } from '../domain/model.ts';
-import { evaluatePose } from '../domain/pose.ts';
+import { evaluatePose, type PoseValueOverride } from '../domain/pose.ts';
 import { validateProject, type ValidationDiagnostic } from '../domain/validation.ts';
 import { canvasWarningsForSetup, type CanvasWarning } from '../domain/canvas-warnings.ts';
 import type { DuplicateClipIds, EventKeyInput, EventKeyUpdate, NumberKeyInterpolationInput, TrackDefinition } from '../domain/animation.ts';
@@ -37,7 +37,7 @@ import { createSelection, selectEntities, selectEntity, type SelectableEntity, t
 import { slotDropCommands, slotDropZoneForClientY, type SlotDropZone } from './slot-dnd.ts';
 import { frameIndexForTime } from './timeline.ts';
 import { createTransformGesture, isTransformHandleHit, transformGestureCommands, transformGesturePropertyChangesFor, type CanvasGesturePropertyChange, type TransformGesture, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
-import { mergePendingAnimationEdits, pendingEditsForChanges, planCanvasAnimation, removePendingAnimationEdits, type CanvasAnimationIdAllocation, type CanvasAnimationPlan, type CanvasPendingAnimationEdit } from './canvas-animation.ts';
+import { mergePendingAnimationEdits, mergePendingAnimationValues, pendingEditsForChanges, planCanvasAnimation, removePendingAnimationEdits, removePendingAnimationValues, type CanvasAnimationIdAllocation, type CanvasAnimationPlan, type CanvasPendingAnimationEdit, type CanvasPendingAnimationValue } from './canvas-animation.ts';
 import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
@@ -165,6 +165,7 @@ const animationProperties: readonly BoneTransformProperty[] = [
 ];
 
 type PendingAnimationEdit = CanvasPendingAnimationEdit;
+type PendingAnimationValue = CanvasPendingAnimationValue;
 
 type SelectedTransformEntry = Readonly<{
 	entity: Extract<SelectableEntity, { kind: 'bone' | 'attachment' }>;
@@ -175,6 +176,7 @@ type DirectPropertyTarget = Readonly<{
 	entity: SelectableEntity;
 	setupValue: number;
 	currentValue: number;
+	initialValue: number;
 	command: ProjectCommand;
 }>;
 
@@ -188,6 +190,7 @@ type CanvasTransformSession = Readonly<{
 	changes: readonly CanvasGesturePropertyChange[];
 	keyedProperties: readonly CanvasGesturePropertyChange[];
 	allocatedIds: readonly CanvasAnimationIdAllocation[];
+	pendingAnimationValues: readonly PendingAnimationValue[];
 	idFactory: () => EntityId;
 }>;
 
@@ -212,21 +215,6 @@ const trackMatchesDefinition = function trackMatchesDefinition(
 
 	return (!('targetId' in definition) || ('targetId' in track && track.targetId === definition.targetId))
 		&& (!('property' in definition) || ('property' in track && track.property === definition.property));
-};
-
-const autoKeyCommandsForNumber = function autoKeyCommandsForNumber(
-	clip: Clip,
-	definition: TrackDefinition,
-	value: number,
-	timeSeconds: number
-): readonly ProjectCommand[] {
-	const existingTrack = clip.tracks.find((track) => trackMatchesDefinition(track, definition));
-	const trackId = existingTrack?.id ?? createEntityId();
-
-	return [
-		...(existingTrack ? [] : [{ kind: 'create-track' as const, id: trackId, clipId: clip.id, definition }]),
-		{ kind: 'set-number-key' as const, id: createEntityId(), clipId: clip.id, trackId, input: { timeSeconds, value, interpolation: 'linear' as const, curve: null } }
-	];
 };
 
 export const App = function App(): ReactElement {
@@ -482,6 +470,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [activeClipId, setActiveClipId] = useState<EntityId | undefined>(undefined);
 	const [autoKey, setAutoKey] = useState(true);
 	const [pendingAnimationEdits, setPendingAnimationEdits] = useState<readonly PendingAnimationEdit[]>([]);
+	const [pendingAnimationValues, setPendingAnimationValues] = useState<readonly PendingAnimationValue[]>([]);
 	const [keyingAnnouncement, setKeyingAnnouncement] = useState<string | undefined>(undefined);
 	const [poseClipboard, setPoseClipboard] = useState<PoseClipboard | undefined>(undefined);
 	const [poseClipboardNotice, setPoseClipboardNotice] = useState<string | undefined>(undefined);
@@ -546,8 +535,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			return undefined;
 		}
 
-		return evaluatePose(project, activeClip.id, frameTimeSeconds(activePlayback, activeClip)).pose;
-	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, mode, project]);
+		const overrides: readonly PoseValueOverride[] = pendingAnimationValues.map(({ targetId, property, value }) => ({ targetId, property, value }));
+
+		return evaluatePose(project, activeClip.id, frameTimeSeconds(activePlayback, activeClip), overrides).pose;
+	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, mode, pendingAnimationValues, project]);
 	const modeRef = useRef(mode);
 	modeRef.current = mode;
 	const activePoseRef = useRef(activePose);
@@ -678,6 +669,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setActiveClipId(nextProject.clips[0]?.id);
 		setPlayback(undefined);
 		setPendingAnimationEdits([]);
+		setPendingAnimationValues([]);
 		setExportSelection(createExportClipSelection(nextProject));
 		setCommandError(undefined);
 		setPersistenceError(undefined);
@@ -995,6 +987,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setActiveClipId(clipId);
 		setInspectorContext(clipId ? { kind: 'clip', clipId } : { kind: 'none' });
 		setPendingAnimationEdits([]);
+		setPendingAnimationValues([]);
 	};
 
 	const createAnimationClip = function createAnimationClip(): void {
@@ -2116,7 +2109,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				property,
 				frameIndex: activePlayback.frameIndex,
 				autoKey,
-				pendingEdits: pendingAnimationEdits
+				pendingEdits: pendingAnimationEdits,
+				valueOverride: pendingAnimationValues.find((pending) => pending.targetId === entity.id && pending.property === property)?.value,
+				initialValueOverride: pendingAnimationValues.find((pending) => pending.targetId === entity.id && pending.property === property)?.initialValue
 			})];
 		});
 		const reason = plans.find((plan) => plan.reason)?.reason;
@@ -2130,7 +2125,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		if (commands.length > 0 && applyCommandSequence(commands)) {
 			const targetIds = new Set(selection.map((entity) => entity.id));
+			const removed = selection.map((entity) => ({ targetId: entity.id, property }));
 			setPendingAnimationEdits((current) => current.filter((pending) => !targetIds.has(pending.targetId) || pending.property !== property));
+			setPendingAnimationValues((current) => removePendingAnimationValues(current, removed));
 			setKeyingAnnouncement(keyingAnnouncementFor(property, state === 'keyed' ? 'unkeyed' : 'keyed', activePlayback.frameIndex));
 			return;
 		}
@@ -2157,8 +2154,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					: { kind: 'update-attachment-transform', attachmentId: entity.id, transform: nextTransform };
 
 				const evaluatedTransform = evaluatedTransformFor(entity) ?? transform;
+				const pendingValue = pendingAnimationValues.find((pending) => pending.targetId === entity.id && pending.property === transformProperty);
 
-				return [{ entity, setupValue: transform[transformProperty], currentValue: evaluatedTransform[transformProperty], command }];
+				return [{ entity, setupValue: transform[transformProperty], currentValue: evaluatedTransform[transformProperty], initialValue: pendingValue?.initialValue ?? evaluatedTransform[transformProperty], command }];
 			}
 
 			const attachment = entity.kind === 'attachment'
@@ -2169,28 +2167,31 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				if (property === 'opacity') {
 					const evaluated = mode === 'animate' ? activePose?.attachments.find((candidate) => candidate.id === attachment.id) : undefined;
 					const currentValue = evaluated?.kind === 'image' ? evaluated.opacity : attachment.opacity;
+					const pendingValue = pendingAnimationValues.find((pending) => pending.targetId === attachment.id && pending.property === property);
 
-					return [{ entity, setupValue: attachment.opacity, currentValue, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { opacity: value } } }];
+					return [{ entity, setupValue: attachment.opacity, currentValue, initialValue: pendingValue?.initialValue ?? currentValue, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { opacity: value } } }];
 				}
 				if (property === 'pivotX') {
-					return [{ entity, setupValue: attachment.pivotX, currentValue: attachment.pivotX, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotX: value } } }];
+					return [{ entity, setupValue: attachment.pivotX, currentValue: attachment.pivotX, initialValue: attachment.pivotX, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotX: value } } }];
 				}
 				if (property === 'pivotY') {
-					return [{ entity, setupValue: attachment.pivotY, currentValue: attachment.pivotY, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotY: value } } }];
+					return [{ entity, setupValue: attachment.pivotY, currentValue: attachment.pivotY, initialValue: attachment.pivotY, command: { kind: 'update-image-properties', attachmentId: attachment.id, properties: { pivotY: value } } }];
 				}
 			}
 			if (attachment?.kind === 'rectangle') {
 				if (property === 'width') {
 					const evaluated = mode === 'animate' ? activePose?.attachments.find((candidate) => candidate.id === attachment.id) : undefined;
 					const currentValue = evaluated?.kind === 'rectangle' ? evaluated.width : attachment.width;
+					const pendingValue = pendingAnimationValues.find((pending) => pending.targetId === attachment.id && pending.property === property);
 
-					return [{ entity, setupValue: attachment.width, currentValue, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: value, height: attachment.height } }];
+					return [{ entity, setupValue: attachment.width, currentValue, initialValue: pendingValue?.initialValue ?? currentValue, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: value, height: attachment.height } }];
 				}
 				if (property === 'height') {
 					const evaluated = mode === 'animate' ? activePose?.attachments.find((candidate) => candidate.id === attachment.id) : undefined;
 					const currentValue = evaluated?.kind === 'rectangle' ? evaluated.height : attachment.height;
+					const pendingValue = pendingAnimationValues.find((pending) => pending.targetId === attachment.id && pending.property === property);
 
-					return [{ entity, setupValue: attachment.height, currentValue, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: attachment.width, height: value } }];
+					return [{ entity, setupValue: attachment.height, currentValue, initialValue: pendingValue?.initialValue ?? currentValue, command: { kind: 'update-rectangle-size', attachmentId: attachment.id, width: attachment.width, height: value } }];
 				}
 			}
 
@@ -2209,9 +2210,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		const animationClip = mode === 'animate' ? activeClip : undefined;
 		const autoKeys = animationClip && autoKey && keyableProperty
-			? changedTargets.flatMap((target) => autoKeyCommandsForProperty(project, animationClip, target.entity.id, keyableProperty, activePlayback.frameIndex, createEntityId, value))
+			? changedTargets.flatMap((target) => autoKeyCommandsForProperty(project, animationClip, target.entity.id, keyableProperty, activePlayback.frameIndex, createEntityId, value, target.initialValue))
 			: [];
-		const setupCommands = changedTargets.flatMap((target) => Object.is(target.setupValue, value) ? [] : [target.command]);
+		const animateKeyableEdit = mode === 'animate' && animationClip !== undefined && keyableProperty !== undefined;
+		const setupCommands = changedTargets.flatMap((target) => animateKeyableEdit
+			? []
+			: Object.is(target.setupValue, value) ? [] : [target.command]);
 		const committed = applyCommandSequence([...setupCommands, ...autoKeys]);
 
 		if (!committed) {
@@ -2225,6 +2229,15 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 				return autoKey ? retained : [...retained, ...changedTargets.map((target) => ({ targetId: target.entity.id, property: keyableProperty }))];
 			});
+			const pendingValues = changedTargets.map((target): PendingAnimationValue => ({
+				targetId: target.entity.id,
+				property: keyableProperty,
+				value,
+				initialValue: target.initialValue
+			}));
+			setPendingAnimationValues((current) => autoKey
+				? removePendingAnimationValues(current, pendingValues)
+				: mergePendingAnimationValues(current, pendingValues));
 			setKeyingAnnouncement(keyingAnnouncementFor(keyableProperty, autoKey ? 'keyed' : 'pending', activePlayback.frameIndex));
 		}
 
@@ -2445,6 +2458,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			changes: [],
 			keyedProperties: [],
 			allocatedIds: [],
+			pendingAnimationValues,
 			idFactory: createEntityId
 		};
 		setHistory(started);
@@ -2463,7 +2477,11 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			return undefined;
 		}
 
-		const changes = transformGesturePropertyChangesFor(session.gesture, setupCommands);
+		const changes = transformGesturePropertyChangesFor(session.gesture, setupCommands).map((change) => {
+			const pending = session.pendingAnimationValues.find((candidate) => candidate.targetId === change.targetId && candidate.property === change.property);
+
+			return pending ? { ...change, initialValue: pending.initialValue } : change;
+		});
 		const plan = planCanvasAnimation({
 			project: currentProject(session.history),
 			baseProject: session.history.transaction?.baseProject,
@@ -2530,14 +2548,22 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 			if (keyedEdits.length > 0) {
 				setPendingAnimationEdits((current) => removePendingAnimationEdits(current, keyedEdits));
+				setPendingAnimationValues((current) => removePendingAnimationValues(current, keyedEdits));
 				setKeyingAnnouncement(canvasKeyingAnnouncementFor('keyed', keyedEdits.length, session.frameIndex));
 			}
 			return;
 		}
 
 		const pendingEdits = pendingEditsForChanges(session.changes);
+		const pendingValues = session.changes.map((change): PendingAnimationValue => ({
+			targetId: change.targetId,
+			property: change.property,
+			value: change.value,
+			initialValue: change.initialValue
+		}));
 
 		setPendingAnimationEdits((current) => mergePendingAnimationEdits(current, pendingEdits));
+		setPendingAnimationValues((current) => mergePendingAnimationValues(current, pendingValues));
 		setKeyingAnnouncement(canvasKeyingAnnouncementFor('pending', pendingEdits.length, session.frameIndex));
 	};
 
@@ -2550,6 +2576,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		if (phase === 'cancel') {
 			setConstraintStatus(undefined);
 			transformSessionRef.current = undefined;
+			setPendingAnimationValues(session.pendingAnimationValues);
 			setHistory(cancelTransaction(session.history));
 			return;
 		}
@@ -2574,6 +2601,17 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		}
 
 		const nextSession = planned.value.session;
+
+		if (nextSession.mode === 'animate' && !nextSession.autoKey) {
+			const pendingValues = nextSession.changes.map((change): PendingAnimationValue => ({
+				targetId: change.targetId,
+				property: change.property,
+				value: change.value,
+				initialValue: change.initialValue
+			}));
+
+			setPendingAnimationValues(mergePendingAnimationValues(nextSession.pendingAnimationValues, pendingValues));
+		}
 
 		if (phase === 'end') {
 			finishCanvasTransform(nextSession);
@@ -2715,35 +2753,15 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			return;
 		}
 
-		const timeSeconds = activePlayback.frameIndex / activeClip.fps;
 		const commands = pendingAnimationEdits.flatMap((pending) => {
-			const transformProperty = animationProperties.find((property) => property === pending.property);
-			const bone = project.bones.find((candidate) => candidate.id === pending.targetId);
+			const pendingValue = pendingAnimationValues.find((candidate) => candidate.targetId === pending.targetId && candidate.property === pending.property);
 
-			if (bone && transformProperty) {
-				return autoKeyCommandsForNumber(activeClip, { kind: 'bone-transform', targetId: bone.id, property: transformProperty }, bone.transform[transformProperty], timeSeconds);
-			}
-
-			const attachment = project.attachments.find((candidate) => candidate.id === pending.targetId);
-
-			if (!attachment) {
-				return [];
-			}
-			if (transformProperty) {
-				return autoKeyCommandsForNumber(activeClip, { kind: 'attachment-transform', targetId: attachment.id, property: transformProperty }, attachment.transform[transformProperty], timeSeconds);
-			}
-			if (attachment.kind === 'image' && pending.property === 'opacity') {
-				return autoKeyCommandsForNumber(activeClip, { kind: 'attachment-opacity', targetId: attachment.id }, attachment.opacity, timeSeconds);
-			}
-		if (attachment.kind === 'rectangle' && (pending.property === 'width' || pending.property === 'height')) {
-				return autoKeyCommandsForNumber(activeClip, { kind: 'rectangle-size', targetId: attachment.id, property: pending.property }, attachment[pending.property], timeSeconds);
-			}
-
-			return [];
+			return autoKeyCommandsForProperty(project, activeClip, pending.targetId, pending.property, activePlayback.frameIndex, createEntityId, pendingValue?.value, pendingValue?.initialValue);
 		});
 
 		if (commands.length > 0 && applyCommandSequence(commands)) {
 			setPendingAnimationEdits([]);
+			setPendingAnimationValues((current) => removePendingAnimationValues(current, pendingAnimationEdits));
 			const count = pendingAnimationEdits.length;
 			setKeyingAnnouncement(`Keyed ${count} pending propert${count === 1 ? 'y' : 'ies'} at frame ${activePlayback.frameIndex + 1}.`);
 		}

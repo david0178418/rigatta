@@ -17,9 +17,11 @@ import {
 } from '../../src/app/transform-gesture.ts';
 import {
 	mergePendingAnimationEdits,
+	mergePendingAnimationValues,
 	pendingEditsForChanges,
 	planCanvasAnimation,
-	removePendingAnimationEdits
+	removePendingAnimationEdits,
+	removePendingAnimationValues
 } from '../../src/app/canvas-animation.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
 
@@ -30,6 +32,8 @@ const yTrackId = '123e4567-e89b-42d3-a456-426614174014';
 const yKeyId = '123e4567-e89b-42d3-a456-426614174015';
 const freshTrackId = '123e4567-e89b-42d3-a456-426614174016';
 const freshKeyId = '123e4567-e89b-42d3-a456-426614174017';
+const freshSeedKeyId = '123e4567-e89b-42d3-a456-426614174018';
+const freshYKeyId = '123e4567-e89b-42d3-a456-426614174019';
 
 const idFactoryFor = function idFactoryFor(ids: readonly string[]): () => string {
 	const iterator = ids[Symbol.iterator]();
@@ -397,7 +401,7 @@ describe('canvas animation planning and transaction behavior', () => {
 			autoKey: true,
 			setupCommands: [{ kind: 'update-bone-transform', boneId: fixtureIds.root, transform: transformForRoot(project, { x: 120 }) }],
 			changes: [firstChange]
-		}, idFactoryFor([freshTrackId, freshKeyId]));
+		}, idFactoryFor([freshTrackId, freshSeedKeyId, freshKeyId]));
 
 		if (!firstPlan.ok) {
 			throw new Error(firstPlan.error.message);
@@ -413,7 +417,10 @@ describe('canvas animation planning and transaction behavior', () => {
 		expect(firstPlan.value.pendingEdits).toEqual([{ targetId: fixtureIds.root, property: 'x' }]);
 		expect(firstClip.tracks).toHaveLength(1);
 		expect(firstClip.tracks[0]?.id).toBe(freshTrackId);
-		expect(firstClip.tracks[0]?.keys[0]?.id).toBe(freshKeyId);
+		expect(firstClip.tracks[0]?.keys[0]?.id).toBe(freshSeedKeyId);
+		expect(firstClip.tracks[0]?.keys[1]?.id).toBe(freshKeyId);
+		expect(firstDraft.bones.find((bone) => bone.id === fixtureIds.root)?.transform.x).toBe(100);
+		expect(evaluatePose(firstDraft, clip.id, 0.25).pose?.bones.find((bone) => bone.id === fixtureIds.root)?.localTransform.x).toBe(110);
 
 		const secondPlan = planCanvasAnimation({
 			project: firstDraft,
@@ -445,8 +452,8 @@ describe('canvas animation planning and transaction behavior', () => {
 		}
 
 		expect(secondClip.tracks).toHaveLength(1);
-		expect(secondClip.tracks[0]?.keys).toHaveLength(1);
-			expect(secondClip.tracks[0]?.keys[0]).toMatchObject({ id: freshKeyId, value: 130 });
+		expect(secondClip.tracks[0]?.keys).toHaveLength(2);
+			expect(secondClip.tracks[0]?.keys[1]).toMatchObject({ id: freshKeyId, value: 130 });
 		});
 
 		test('retains generated track and key IDs if a temporary property is reintroduced', () => {
@@ -460,7 +467,7 @@ describe('canvas animation planning and transaction behavior', () => {
 				autoKey: true,
 				setupCommands: [{ kind: 'update-bone-transform', boneId: fixtureIds.root, transform: transformForRoot(project, { x: 120 }) }],
 				changes: [firstChange]
-			}, idFactoryFor([freshTrackId, freshKeyId]));
+			}, idFactoryFor([freshTrackId, freshSeedKeyId, freshKeyId]));
 
 			if (!firstPlan.ok) {
 				throw new Error(firstPlan.error.message);
@@ -501,7 +508,54 @@ describe('canvas animation planning and transaction behavior', () => {
 
 			expect(reintroducedPlan.value.animationCommands).toEqual([
 				{ kind: 'create-track', id: freshTrackId, clipId: clip.id, definition: { kind: 'bone-transform', targetId: fixtureIds.root, property: 'x' } },
+				{ kind: 'add-number-key', id: freshSeedKeyId, clipId: clip.id, trackId: freshTrackId, input: { timeSeconds: 0, value: 100, interpolation: 'linear', curve: null } },
 				{ kind: 'add-number-key', id: freshKeyId, clipId: clip.id, trackId: freshTrackId, input: { timeSeconds: 0.5, value: 120, interpolation: 'linear', curve: null } }
+			]);
+		});
+
+		test('removes both seeded keys when restoring an initially empty track', () => {
+			const base = projectWithClip();
+			const emptyTrack = createTrack(base.project, clipId, { kind: 'bone-transform', targetId: fixtureIds.root, property: 'x' }, idFactoryFor([xTrackId]));
+
+			if (!emptyTrack.ok) {
+				throw new Error(emptyTrack.error.message);
+			}
+
+			const firstChange = rootChange('x', 100, 120);
+			const firstPlan = planCanvasAnimation({
+				project: emptyTrack.value,
+				baseProject: emptyTrack.value,
+				clipId,
+				frameIndex: 5,
+				autoKey: true,
+				setupCommands: [],
+				changes: [firstChange]
+			}, idFactoryFor([freshSeedKeyId, freshKeyId]));
+
+			if (!firstPlan.ok) {
+				throw new Error(firstPlan.error.message);
+			}
+
+			const firstDraft = reduceCommands(emptyTrack.value, firstPlan.value.commands);
+			const resetPlan = planCanvasAnimation({
+				project: firstDraft,
+				baseProject: emptyTrack.value,
+				clipId,
+				frameIndex: 5,
+				autoKey: true,
+				setupCommands: [],
+				changes: [],
+				previousChanges: [firstChange],
+				allocatedIds: firstPlan.value.allocatedIds
+			}, idFactoryFor([]));
+
+			if (!resetPlan.ok) {
+				throw new Error(resetPlan.error.message);
+			}
+
+			expect(resetPlan.value.cleanupCommands).toEqual([
+				{ kind: 'delete-key', clipId, trackId: xTrackId, keyId: freshSeedKeyId },
+				{ kind: 'delete-key', clipId, trackId: xTrackId, keyId: freshKeyId }
 			]);
 		});
 
@@ -527,7 +581,7 @@ describe('canvas animation planning and transaction behavior', () => {
 			autoKey: true,
 			setupCommands: [{ kind: 'update-bone-transform', boneId: fixtureIds.root, transform: transformForRoot(yKey.value, { x: 120 }) }],
 			changes: [rootChange('x', 100, 120)]
-		}, idFactoryFor([freshTrackId, freshKeyId]));
+		}, idFactoryFor([freshTrackId, freshSeedKeyId, freshKeyId]));
 
 		if (!xPlan.ok) {
 			throw new Error(xPlan.error.message);
@@ -543,7 +597,7 @@ describe('canvas animation planning and transaction behavior', () => {
 			setupCommands: [{ kind: 'update-bone-transform', boneId: fixtureIds.root, transform: transformForRoot(xDraft, { x: 100, y: 55 }) }],
 			changes: [rootChange('y', 50, 55)],
 			previousChanges: [rootChange('x', 100, 120)]
-		}, idFactoryFor([freshTrackId, freshKeyId]));
+		}, idFactoryFor([freshYKeyId]));
 
 		if (!yPlan.ok) {
 			throw new Error(yPlan.error.message);
@@ -566,7 +620,7 @@ describe('canvas animation planning and transaction behavior', () => {
 		expect(finalClip.tracks.some((track) => track.kind === 'bone-transform' && track.property === 'y' && track.keys.some((key) => key.id === freshKeyId))).toBe(false);
 	});
 
-		test('returns deduplicated pending records and keeps explicit removal scoped', () => {
+	test('returns deduplicated pending records and keeps explicit removal scoped', () => {
 		const changes = [rootChange('x', 100, 120), rootChange('x', 100, 130), rootChange('y', 50, 60)];
 		const pending = pendingEditsForChanges(changes);
 		const merged = mergePendingAnimationEdits([{ targetId: fixtureIds.root, property: 'x' }], pending);
@@ -576,8 +630,14 @@ describe('canvas animation planning and transaction behavior', () => {
 			{ targetId: fixtureIds.root, property: 'y' }
 		]);
 		expect(merged).toEqual(pending);
-			expect(removePendingAnimationEdits(merged, [{ targetId: fixtureIds.root, property: 'x' }])).toEqual([{ targetId: fixtureIds.root, property: 'y' }]);
-			expect(mergePendingAnimationEdits([], [{ targetId: fixtureIds.image, property: 'opacity' }])).toEqual([{ targetId: fixtureIds.image, property: 'opacity' }]);
+		expect(removePendingAnimationEdits(merged, [{ targetId: fixtureIds.root, property: 'x' }])).toEqual([{ targetId: fixtureIds.root, property: 'y' }]);
+		expect(mergePendingAnimationEdits([], [{ targetId: fixtureIds.image, property: 'opacity' }])).toEqual([{ targetId: fixtureIds.image, property: 'opacity' }]);
+
+		const firstDraft = [{ targetId: fixtureIds.root, property: 'x' as const, value: 120, initialValue: 100 }];
+		const replacedDraft = mergePendingAnimationValues(firstDraft, [{ targetId: fixtureIds.root, property: 'x', value: 140, initialValue: 120 }]);
+
+		expect(replacedDraft).toEqual([{ targetId: fixtureIds.root, property: 'x', value: 140, initialValue: 100 }]);
+		expect(removePendingAnimationValues(replacedDraft, [{ targetId: fixtureIds.root, property: 'x' }])).toEqual([]);
 
 		const { project, clip } = projectWithClip();
 		const plan = planCanvasAnimation({
@@ -594,6 +654,8 @@ describe('canvas animation planning and transaction behavior', () => {
 		}
 
 		expect(plan.value.animationCommands).toEqual([]);
+		expect(plan.value.setupCommands).toEqual([]);
+		expect(plan.value.commands).toEqual([]);
 		expect(plan.value.pendingEdits).toEqual(pending);
 	});
 });
@@ -611,7 +673,7 @@ describe('canvas gesture history boundaries', () => {
 			autoKey: true,
 			setupCommands: [{ kind: 'update-bone-transform', boneId: fixtureIds.root, transform: transformForRoot(project, { x: 120 }) }],
 			changes: [rootChange('x', 100, 120)]
-		}, idFactoryFor([freshTrackId, freshKeyId]));
+		}, idFactoryFor([freshTrackId, freshSeedKeyId, freshKeyId]));
 
 		if (!plan.ok) {
 			throw new Error(plan.error.message);
@@ -655,7 +717,7 @@ describe('canvas gesture history boundaries', () => {
 		const reset = beginTransaction(cancelTransaction(started));
 		const finished = commitTransaction(reset);
 
-		expect(noOpPlan.value.commands).not.toHaveLength(0);
+		expect(noOpPlan.value.commands).toHaveLength(0);
 		expect(finished.present).toEqual(project);
 		expect(finished.past).toHaveLength(0);
 		expect(finished.future).toHaveLength(0);

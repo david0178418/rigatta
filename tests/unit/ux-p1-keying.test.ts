@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { addNumberKey, createClip, createTrack } from '../../src/domain/animation.ts';
+import { addNumberKey, createClip, createTrack, setNumberKeyInterpolation } from '../../src/domain/animation.ts';
 import { reduceProject, type ProjectCommand } from '../../src/domain/commands.ts';
 import type { Clip, Project, Track } from '../../src/domain/model.ts';
 import type { TrackDefinition } from '../../src/domain/animation.ts';
@@ -30,6 +30,7 @@ const secondTrackId = '123e4567-e89b-42d3-a456-426614174033';
 const secondKeyId = '123e4567-e89b-42d3-a456-426614174034';
 const thirdTrackId = '123e4567-e89b-42d3-a456-426614174035';
 const thirdKeyId = '123e4567-e89b-42d3-a456-426614174036';
+const seedKeyId = '123e4567-e89b-42d3-a456-426614174037';
 
 const numericProperties = [
 	'x',
@@ -262,23 +263,32 @@ describe('UX P1 continuous keying contracts', () => {
 
 	test('plans an exact add sequence for an existing compatible track', () => {
 		const { project, clip } = projectWithTrack({ kind: 'bone-transform', targetId: fixtureIds.root, property: 'x' });
-		const plan = planPropertyKeyToggle({ project, clip, targetId: fixtureIds.root, property: 'x', frameIndex: 4, autoKey: true }, idFactoryFor([keyId]));
+		const plan = planPropertyKeyToggle({ project, clip, targetId: fixtureIds.root, property: 'x', frameIndex: 4, autoKey: true }, idFactoryFor([seedKeyId, keyId]));
 
 		expect(plan).toEqual({
 			state: 'unkeyed',
-			commands: [{
-				kind: 'add-number-key',
-				id: keyId,
-				clipId: clip.id,
-				trackId,
-				input: { timeSeconds: 0.4, value: 100, interpolation: 'linear', curve: null }
-			}]
+			commands: [
+				{
+					kind: 'add-number-key',
+					id: seedKeyId,
+					clipId: clip.id,
+					trackId,
+					input: { timeSeconds: 0, value: 100, interpolation: 'linear', curve: null }
+				},
+				{
+					kind: 'add-number-key',
+					id: keyId,
+					clipId: clip.id,
+					trackId,
+					input: { timeSeconds: 0.4, value: 100, interpolation: 'linear', curve: null }
+				}
+			]
 		});
 	});
 
 	test('plans create-track plus add sequence for a missing compatible track', () => {
 		const { project, clip } = projectWithClip();
-		const plan = planPropertyKeyToggle({ project, clip, targetId: fixtureIds.root, property: 'y', frameIndex: 6, autoKey: true }, idFactoryFor([secondTrackId, secondKeyId]));
+		const plan = planPropertyKeyToggle({ project, clip, targetId: fixtureIds.root, property: 'y', frameIndex: 6, autoKey: true }, idFactoryFor([secondTrackId, seedKeyId, secondKeyId]));
 
 		expect(plan).toEqual({
 			state: 'unkeyed',
@@ -286,10 +296,75 @@ describe('UX P1 continuous keying contracts', () => {
 				{ kind: 'create-track', id: secondTrackId, clipId: clip.id, definition: { kind: 'bone-transform', targetId: fixtureIds.root, property: 'y' } },
 				{
 					kind: 'add-number-key',
+					id: seedKeyId,
+					clipId: clip.id,
+					trackId: secondTrackId,
+					input: { timeSeconds: 0, value: 50, interpolation: 'linear', curve: null }
+				},
+				{
+					kind: 'add-number-key',
 					id: secondKeyId,
 					clipId: clip.id,
 					trackId: secondTrackId,
 					input: { timeSeconds: 0.6, value: 50, interpolation: 'linear', curve: null }
+				}
+			]
+		});
+	});
+
+	test('seeds an existing empty track when its first key is later than frame 1', () => {
+		const { project, clip } = projectWithTrack({ kind: 'bone-transform', targetId: fixtureIds.root, property: 'y' });
+		const plan = planPropertyKeyToggle({ project, clip, targetId: fixtureIds.root, property: 'y', frameIndex: 6, autoKey: true }, idFactoryFor([seedKeyId, secondKeyId]));
+
+		expect(plan.commands).toEqual([
+			{
+				kind: 'add-number-key',
+				id: seedKeyId,
+				clipId: clip.id,
+				trackId: trackId,
+				input: { timeSeconds: 0, value: 50, interpolation: 'linear', curve: null }
+			},
+			{
+				kind: 'add-number-key',
+				id: secondKeyId,
+				clipId: clip.id,
+				trackId: trackId,
+				input: { timeSeconds: 0.6, value: 50, interpolation: 'linear', curve: null }
+			}
+		]);
+	});
+
+	test('keys a pending draft while seeding from its pre-edit value', () => {
+		const { project, clip } = projectWithClip();
+		const plan = planPropertyKeyToggle({
+			project,
+			clip,
+			targetId: fixtureIds.root,
+			property: 'rotation',
+			frameIndex: 6,
+			autoKey: false,
+			pendingEdits: [{ targetId: fixtureIds.root, property: 'rotation' }],
+			valueOverride: 0.75,
+			initialValueOverride: 0
+		}, idFactoryFor([thirdTrackId, seedKeyId, thirdKeyId]));
+
+		expect(plan).toEqual({
+			state: 'pending',
+			commands: [
+				{ kind: 'create-track', id: thirdTrackId, clipId: clip.id, definition: { kind: 'bone-transform', targetId: fixtureIds.root, property: 'rotation' } },
+				{
+					kind: 'add-number-key',
+					id: seedKeyId,
+					clipId: clip.id,
+					trackId: thirdTrackId,
+					input: { timeSeconds: 0, value: 0, interpolation: 'linear', curve: null }
+				},
+				{
+					kind: 'add-number-key',
+					id: thirdKeyId,
+					clipId: clip.id,
+					trackId: thirdTrackId,
+					input: { timeSeconds: 0.6, value: 0.75, interpolation: 'linear', curve: null }
 				}
 			]
 		});
@@ -305,13 +380,43 @@ describe('UX P1 continuous keying contracts', () => {
 		});
 	});
 
+	test('preserves existing interpolation when updating a current-frame key', () => {
+		const keyed = projectWithKey();
+		const steppedProject = setNumberKeyInterpolation(keyed.project, keyed.clip.id, trackId, keyId, { interpolation: 'stepped' });
+
+		if (!steppedProject.ok) {
+			throw new Error(steppedProject.error.message);
+		}
+
+		const steppedClip = steppedProject.value.clips.find((candidate) => candidate.id === keyed.clip.id);
+
+		if (!steppedClip) {
+			throw new Error('The stepped fixture clip disappeared.');
+		}
+
+		expect(autoKeyCommandsForProperty(steppedProject.value, steppedClip, fixtureIds.root, 'x', 4, idFactoryFor([]), 160)).toEqual([{
+			kind: 'set-number-key',
+			id: keyId,
+			clipId: steppedClip.id,
+			trackId,
+			input: { timeSeconds: 0.4, value: 160, interpolation: 'stepped', curve: null }
+		}]);
+	});
+
 	continuousCases.forEach(({ property, targetId, value, definition }) => {
 		test(`auto-keys ${property} with one compatible track and no duplicates`, () => {
 			const { project, clip } = projectWithClip();
-			const commands = autoKeyCommandsForProperty(project, clip, targetId, property, 5, idFactoryFor([thirdTrackId, thirdKeyId]), value);
+			const commands = autoKeyCommandsForProperty(project, clip, targetId, property, 5, idFactoryFor([thirdTrackId, seedKeyId, thirdKeyId]), value);
 
 			expect(commands).toEqual([
 				{ kind: 'create-track', id: thirdTrackId, clipId: clip.id, definition },
+				{
+					kind: 'add-number-key',
+					id: seedKeyId,
+					clipId: clip.id,
+					trackId: thirdTrackId,
+					input: { timeSeconds: 0, value, interpolation: 'linear', curve: null }
+				},
 				{
 					kind: 'add-number-key',
 					id: thirdKeyId,
@@ -330,8 +435,9 @@ describe('UX P1 continuous keying contracts', () => {
 
 			const keyedTrack = trackForId(keyedClip, thirdTrackId);
 			expect(keyedClip.tracks.filter((candidate) => candidate.kind === definition.kind && ('targetId' in candidate ? candidate.targetId === targetId : true) && ('property' in candidate ? candidate.property === property : true))).toHaveLength(1);
-			expect(keyedTrack.keys).toHaveLength(1);
-			expect(keyedTrack.keys[0]).toMatchObject({ id: thirdKeyId, timeSeconds: 0.5, value });
+			expect(keyedTrack.keys).toHaveLength(2);
+			expect(keyedTrack.keys[0]).toMatchObject({ id: seedKeyId, timeSeconds: 0, value });
+			expect(keyedTrack.keys[1]).toMatchObject({ id: thirdKeyId, timeSeconds: 0.5, value });
 
 			const updatedValue = property === 'opacity' ? 0.5 : value + 1;
 			const secondCommands = autoKeyCommandsForProperty(keyedProject, keyedClip, targetId, property, 5, idFactoryFor([keyId]), updatedValue);
@@ -352,7 +458,7 @@ describe('UX P1 continuous keying contracts', () => {
 			}
 
 			expect(updatedClip.tracks.filter((candidate) => candidate.kind === definition.kind && ('targetId' in candidate ? candidate.targetId === targetId : true) && ('property' in candidate ? candidate.property === property : true))).toHaveLength(1);
-			expect(trackForId(updatedClip, thirdTrackId).keys).toHaveLength(1);
+			expect(trackForId(updatedClip, thirdTrackId).keys).toHaveLength(2);
 		});
 	});
 });
