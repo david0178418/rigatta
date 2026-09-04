@@ -380,6 +380,32 @@ describe('UX P1 continuous keying contracts', () => {
 		});
 	});
 
+	test('updates an existing current-frame key when committing a pending draft', () => {
+		const { project, clip } = projectWithKey();
+		const plan = planPropertyKeyToggle({
+			project,
+			clip,
+			targetId: fixtureIds.root,
+			property: 'x',
+			frameIndex: 4,
+			autoKey: false,
+			pendingEdits: [{ targetId: fixtureIds.root, property: 'x' }],
+			valueOverride: 180,
+			initialValueOverride: 100
+		});
+
+		expect(plan).toEqual({
+			state: 'pending',
+			commands: [{
+				kind: 'set-number-key',
+				id: keyId,
+				clipId: clip.id,
+				trackId,
+				input: { timeSeconds: 0.4, value: 180, interpolation: 'linear', curve: null }
+			}]
+		});
+	});
+
 	test('preserves existing interpolation when updating a current-frame key', () => {
 		const keyed = projectWithKey();
 		const steppedProject = setNumberKeyInterpolation(keyed.project, keyed.clip.id, trackId, keyId, { interpolation: 'stepped' });

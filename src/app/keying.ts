@@ -231,7 +231,7 @@ export const planPropertyKeyToggle = function planPropertyKeyToggle(
 	const track = context.clip.tracks.find((candidate) => trackMatchesDefinition(candidate, definition));
 	const key = track ? keyAtFrame(context.clip, track, context.frameIndex) : undefined;
 
-	if (key && track) {
+	if (key && track && state !== 'pending') {
 		return {
 			state,
 			commands: [{ kind: 'delete-key', clipId: context.clip.id, trackId: track.id, keyId: key.id }]

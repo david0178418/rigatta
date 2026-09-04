@@ -2595,6 +2595,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		if (!planned.ok) {
 			setCommandError(planned.error.message);
 			setConstraintStatus(undefined);
+			setPendingAnimationValues(session.pendingAnimationValues);
 			setHistory(cancelTransaction(session.history));
 			transformSessionRef.current = undefined;
 			return;
