@@ -354,8 +354,12 @@ const sceneWith = function sceneWith(
 		images,
 		bones: showBones ? createBones(project, matrixByBone, hiddenIds) : [],
 		gameplayAttachments,
-		selectionGuides: createSelectionGuides(project, matrixByBone, selectedIds, hiddenIds, pose),
-		transformHandles: createTransformHandles(project, matrixByBone, selectedIds, options.transformTool, hiddenIds, pose),
+		selectionGuides: options.showSelectionGuides === false
+			? []
+			: createSelectionGuides(project, matrixByBone, selectedIds, hiddenIds, pose),
+		transformHandles: options.showTransformHandles === false
+			? undefined
+			: createTransformHandles(project, matrixByBone, selectedIds, options.transformTool, hiddenIds, pose),
 		gridSpacing
 	};
 };

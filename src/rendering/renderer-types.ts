@@ -14,6 +14,8 @@ export type FixedCanvasRenderOptions = Readonly<{
 	gridSpacing?: number;
 	showBones?: boolean;
 	showGameplay?: boolean;
+	showSelectionGuides?: boolean;
+	showTransformHandles?: boolean;
 	selectedIds?: readonly EntityId[];
 	transformTool?: 'translate' | 'rotate' | 'scale' | 'shear';
 	hiddenIds?: ReadonlySet<EntityId>;

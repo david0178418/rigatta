@@ -28,6 +28,12 @@ import type { Selection } from './selection.ts';
 import { canvasGestureModeFor, type CanvasGestureMode, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { isShortcutTypingTarget } from './shortcuts.ts';
 import { Tooltip } from './ui-primitives.tsx';
+import {
+	transformGestureEnabledFor,
+	viewportPresentationFor,
+	viewportRenderFlagsFor,
+	type ViewportPresentation
+} from './viewport-presentation.ts';
 
 type PointerSession = Readonly<{
 	id: number;
@@ -53,6 +59,7 @@ type RenderRequest = Readonly<{
 	hiddenIds: ReadonlySet<EntityId>;
 	selectedIds: readonly EntityId[];
 	transformTool: TransformTool | undefined;
+	presentation: ViewportPresentation;
 }>;
 
 const devicePixelRatioFor = function devicePixelRatioFor(): number {
@@ -111,7 +118,8 @@ export const ViewportCanvas = function ViewportCanvas({
 	gridVisible,
 	gridSpacing,
 	snapToGrid,
-	hiddenIds = new Set<EntityId>()
+	hiddenIds = new Set<EntityId>(),
+	viewportPresentation
 }: Readonly<{
 	project: Project;
 	assets: ProjectAssetBlobs;
@@ -127,7 +135,9 @@ export const ViewportCanvas = function ViewportCanvas({
 	gridSpacing?: number;
 	snapToGrid?: boolean;
 	hiddenIds?: ReadonlySet<EntityId>;
+	viewportPresentation?: ViewportPresentation;
 }>): ReactElement {
+	const effectivePresentation = viewportPresentation ?? viewportPresentationFor('authoring', pose ? 'animate' : 'setup');
 	const hostRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const pointerSessionRef = useRef<PointerSession | undefined>(undefined);
@@ -154,6 +164,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	const transformStartRef = useRef(onCanvasTransformStart);
 	const transformRef = useRef(onCanvasTransform);
 	const transformToolRef = useRef<TransformTool>(transformTool ?? 'translate');
+	const transformEnabledRef = useRef(transformGestureEnabledFor(effectivePresentation));
 	const gridSpacingRef = useRef(gridSpacing ?? DEFAULT_GRID_SETTINGS.spacing);
 	const snapToGridRef = useRef(snapToGrid ?? DEFAULT_GRID_SETTINGS.snap);
 	cameraRef.current = camera;
@@ -164,6 +175,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	transformStartRef.current = onCanvasTransformStart;
 	transformRef.current = onCanvasTransform;
 	transformToolRef.current = transformTool ?? 'translate';
+	transformEnabledRef.current = transformGestureEnabledFor(effectivePresentation);
 	gridSpacingRef.current = gridSpacing ?? DEFAULT_GRID_SETTINGS.spacing;
 	snapToGridRef.current = snapToGrid ?? DEFAULT_GRID_SETTINGS.snap;
 
@@ -191,6 +203,29 @@ export const ViewportCanvas = function ViewportCanvas({
 		);
 
 		return snap ? snapPointToGrid(point, gridSpacingRef.current) : point;
+	};
+
+	const cancelActiveGesture = function cancelActiveGesture(): boolean {
+		const session = pointerSessionRef.current;
+		const stage = currentMeasurement();
+		const onTransform = transformRef.current;
+
+		if (!session) {
+			return false;
+		}
+		if (session.mode === 'transform' && stage && onTransform) {
+			onTransform(logicalPointAt({ x: session.startX, y: session.startY }, stage, session.constrained), 'cancel', { shiftKey: session.constrained });
+		}
+		if (hostRef.current?.hasPointerCapture(session.id)) {
+			hostRef.current.releasePointerCapture(session.id);
+		}
+
+		pointerSessionRef.current = undefined;
+		setMarquee(undefined);
+		setGestureMode('idle');
+		setIsPanning(false);
+
+		return true;
 	};
 
 	useEffect(() => {
@@ -329,7 +364,8 @@ export const ViewportCanvas = function ViewportCanvas({
 				gridSpacing,
 				hiddenIds,
 				selectedIds: selection?.map((entity) => entity.id) ?? [],
-				transformTool
+				transformTool,
+				presentation: effectivePresentation
 			}
 			: undefined;
 
@@ -348,23 +384,17 @@ export const ViewportCanvas = function ViewportCanvas({
 			}
 
 			try {
+				const renderOptions = {
+					...viewportRenderFlagsFor(request.presentation),
+					gridVisible: request.presentation.showGrid ? request.gridVisible : false,
+					gridSpacing: request.gridSpacing,
+					hiddenIds: request.hiddenIds,
+					selectedIds: request.selectedIds,
+					transformTool: request.transformTool
+				};
 				const rendered = request.pose
-					? await request.renderer.renderPose(request.project, request.pose, request.assets, {
-						gridVisible: request.gridVisible,
-						gridSpacing: request.gridSpacing,
-						hiddenIds: request.hiddenIds,
-						selectedIds: request.selectedIds,
-						transformTool: request.transformTool,
-						showBones: true,
-						showGameplay: true
-					})
-					: await request.renderer.renderSetup(request.project, request.assets, {
-						selectedIds: request.selectedIds,
-						transformTool: request.transformTool,
-						gridVisible: request.gridVisible,
-						gridSpacing: request.gridSpacing,
-						hiddenIds: request.hiddenIds
-					});
+					? await request.renderer.renderPose(request.project, request.pose, request.assets, renderOptions)
+					: await request.renderer.renderSetup(request.project, request.assets, renderOptions);
 
 				if (renderRequestRef.current === request.id) {
 					if (!rendered.ok) {
@@ -395,7 +425,24 @@ export const ViewportCanvas = function ViewportCanvas({
 				latestRenderRef.current = undefined;
 			}
 		};
-	}, [assets, gridSpacing, gridVisible, hiddenIds, pose, project, renderer, selection, transformTool]);
+	}, [
+		assets,
+		effectivePresentation.mode,
+		effectivePresentation.preset,
+		effectivePresentation.showBones,
+		effectivePresentation.showGameplay,
+		effectivePresentation.showGrid,
+		effectivePresentation.showSelectionGuides,
+		effectivePresentation.showTransformHandles,
+		gridSpacing,
+		gridVisible,
+		hiddenIds,
+		pose,
+		project,
+		renderer,
+		selection,
+		transformTool
+	]);
 
 	const beginPan = function beginPan(event: PointerEvent): void {
 		if (event.button !== 0 && event.button !== 1) {
@@ -409,7 +456,8 @@ export const ViewportCanvas = function ViewportCanvas({
 			? logicalPointAt({ x: event.clientX, y: event.clientY }, stage, snapToGridRef.current)
 			: undefined;
 		const transformStart = transformStartRef.current;
-		const transformClaimed = !panRequested
+		const transformClaimed = transformEnabledRef.current
+			&& !panRequested
 			&& !!startPoint
 			&& !!transformStart
 			&& transformStart(startPoint, transformToolRef.current, { shiftKey: event.shiftKey });
@@ -449,6 +497,12 @@ export const ViewportCanvas = function ViewportCanvas({
 		}
 
 		if (session.mode === 'transform') {
+			if (!transformEnabledRef.current) {
+				cancelActiveGesture();
+
+				return;
+			}
+
 			const stage = currentMeasurement();
 			const onTransform = transformRef.current;
 
@@ -485,7 +539,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			: undefined;
 
 		if (session.mode === 'transform' && onTransform && currentPoint) {
-			onTransform(currentPoint, select ? 'end' : 'cancel', { shiftKey: session.constrained });
+			onTransform(currentPoint, select && transformEnabledRef.current ? 'end' : 'cancel', { shiftKey: session.constrained });
 		} else if (select && session.mode === 'marquee' && didPanRef.current && stage && onMarquee) {
 			onMarquee(screenRectangleToWorldBounds(
 				{ x: session.startX, y: session.startY },
@@ -570,28 +624,14 @@ export const ViewportCanvas = function ViewportCanvas({
 	}, []);
 
 	useEffect(() => {
-		const cancelActiveGesture = function cancelActiveGesture(): boolean {
-			const session = pointerSessionRef.current;
-			const stage = currentMeasurement();
-			const onTransform = transformRef.current;
+		if (pointerSessionRef.current?.mode === 'transform') {
+			cancelActiveGesture();
+		}
 
-			if (!session) {
-				return false;
-			}
-			if (session.mode === 'transform' && stage && onTransform) {
-				onTransform(logicalPointAt({ x: session.startX, y: session.startY }, stage, session.constrained), 'cancel', { shiftKey: session.constrained });
-			}
-			if (hostRef.current?.hasPointerCapture(session.id)) {
-				hostRef.current.releasePointerCapture(session.id);
-			}
+		return function cleanup(): void {};
+	}, [effectivePresentation.preset]);
 
-			pointerSessionRef.current = undefined;
-			setMarquee(undefined);
-			setGestureMode('idle');
-			setIsPanning(false);
-
-			return true;
-		};
+	useEffect(() => {
 		const onKeyDown = function onKeyDown(event: KeyboardEvent): void {
 			if (event.key === 'Escape' && cancelActiveGesture()) {
 				event.preventDefault();
@@ -690,6 +730,8 @@ export const ViewportCanvas = function ViewportCanvas({
 			data-camera-scale={String(camera.scale)}
 			data-camera-offset-x={String(camera.offsetX)}
 			data-camera-offset-y={String(camera.offsetY)}
+			data-viewport-preset={effectivePresentation.preset}
+			data-transform-enabled={String(effectivePresentation.transformEnabled)}
 			data-gesture-mode={gestureMode}
 			ref={viewportRef}
 			role="application"
