@@ -68,6 +68,7 @@ const readTimelineLayout = async function readTimelineLayout(page: Page): Promis
 	rulerLabel: Readonly<{ left: number; width: number }>;
 	visibleDataRows: number;
 	visibleDataRowsAfter: number;
+	keyedDataRows: number;
 	dataRows: number;
 	scrollHeight: number;
 	clientHeight: number;
@@ -105,6 +106,7 @@ const readTimelineLayout = async function readTimelineLayout(page: Page): Promis
 		const contentBounds = boundsFor(content);
 		const rulerBounds = boundsFor(ruler);
 		const dataRows = Array.from(content.querySelectorAll<HTMLElement>('.timeline-group-row:not(.timeline-overview-row), .timeline-property-row, .timeline-special-row, .timeline-event-row'));
+		const keyedDataRows = dataRows.filter((row) => row.querySelector('[data-key-id], [data-event-id]') !== null).length;
 		const visibleRowsBetween = function visibleRowsBetween(
 			rows: readonly HTMLElement[],
 			top: number,
@@ -138,6 +140,7 @@ const readTimelineLayout = async function readTimelineLayout(page: Page): Promis
 			rulerLabel: { left: rulerLabel.getBoundingClientRect().left, width: rulerLabel.getBoundingClientRect().width },
 			visibleDataRows,
 			visibleDataRowsAfter,
+			keyedDataRows,
 			dataRows: dataRows.length,
 			scrollHeight: content.scrollHeight,
 			clientHeight: content.clientHeight,
@@ -202,11 +205,11 @@ test('gates contained timeline rows across supported desktop sizes at the defaul
 			await assertDefaultTimelineHeight(page);
 
 			const metrics = await readTimelineLayout(page);
-
 			assertContained(metrics, viewport);
 			assertStickyAndScrollable(metrics, viewport);
 			expect(metrics.visibleDataRows, `visible timeline rows without scrolling at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThanOrEqual(3);
 			expect(metrics.visibleDataRowsAfter, `visible timeline rows after scrolling at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThanOrEqual(3);
+			expect(metrics.keyedDataRows, `keyed timeline rows at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThan(0);
 			expect(metrics.dataRows).toBeGreaterThanOrEqual(metrics.visibleDataRowsAfter);
 			await page.screenshot({ path: `/tmp/bone-animation-timeline-${state.id}-${viewport.width}x${viewport.height}.png`, fullPage: false });
 		}, Promise.resolve());

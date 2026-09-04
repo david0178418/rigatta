@@ -3846,3 +3846,103 @@ button.timeline-summary-key.timeline-key-marker[class] {
 		flex: 1 1 auto;
 	}
 }
+
+/* Keep the default Animate timeline useful at its bounded height. */
+.timeline-panel[data-mode="animate"] .timeline-header .eyebrow {
+	display: none;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-header {
+	min-height: 20px;
+}
+
+.timeline-panel[data-mode="animate"] .animate-timeline {
+	margin-top: 0;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-sticky {
+	gap: 0;
+}
+
+.timeline-panel[data-mode="animate"] .clip-tab,
+.timeline-panel[data-mode="animate"] .timeline-detail-actions .quiet-button,
+.timeline-panel[data-mode="animate"] .timeline-compact-actions .quiet-button {
+	padding: 3px 6px;
+	font-size: 10px;
+	line-height: 1.1;
+}
+
+.timeline-panel[data-mode="animate"] .clip-playback-controls {
+	gap: 4px;
+	padding-top: 1px;
+	padding-bottom: 1px;
+}
+
+.timeline-panel[data-mode="animate"] .clip-playback-controls .quiet-button,
+.timeline-panel[data-mode="animate"] .clip-playback-controls .secondary-button {
+	padding: 3px 6px;
+	font-size: 10px;
+	line-height: 1.1;
+}
+
+.timeline-panel[data-mode="animate"] .auto-key-field,
+.timeline-panel[data-mode="animate"] .playback-readout,
+.timeline-panel[data-mode="animate"] .timeline-zoom-readout {
+	font-size: 10px;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-content {
+	padding-top: 2px;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-content .timeline-ruler-meta {
+	font-size: 9px;
+	line-height: 1;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-ruler {
+	min-height: 24px;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-tick {
+	padding-top: 5px;
+	font-size: 8px;
+}
+
+.timeline-panel[data-mode="animate"] .track-row,
+.timeline-panel[data-mode="animate"] .timeline-group-row,
+.timeline-panel[data-mode="animate"] .timeline-property-row,
+.timeline-panel[data-mode="animate"] .timeline-event-row {
+	min-height: 28px;
+}
+
+.timeline-panel[data-mode="animate"] .track-row-label {
+	padding: 3px 7px;
+	font-size: 9px;
+	line-height: 1.05;
+}
+
+.timeline-panel[data-mode="animate"] .track-row-label small,
+.timeline-panel[data-mode="animate"] .timeline-row-select small {
+	font-size: 7px;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-group-label {
+	padding: 1px 4px;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-row-expander,
+.timeline-panel[data-mode="animate"] .timeline-pin {
+	height: 22px;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-row-select {
+	gap: 0;
+	padding: 2px 4px;
+	font-size: 9px;
+	line-height: 1.05;
+}
+
+.timeline-panel[data-mode="animate"] .timeline-summary-lane {
+	min-height: 28px;
+}

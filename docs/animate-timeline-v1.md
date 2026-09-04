@@ -52,9 +52,11 @@ default 260 px Animate timeline at 1120 × 720 and 1440 × 900. It covers no
 selection, one selected bone, and the `All keyed` override. Each state asserts
 viewport/document containment, the sticky ruler and row labels, the timeline's
 independent scroll region, and at least three applicable data rows in the
-initial unscrolled view when those rows exist. It also verifies that the Auto
-groups are expanded by default; the scroll assertion is independent of the
-initial visibility gate. The test writes full-viewport evidence to
+initial unscrolled view when those rows exist. Compact controls and row density
+are part of this 260 px contract. It also verifies that the Auto groups are
+expanded by default and that keyed rows are present; the scroll assertion is
+independent of the initial visibility gate. The test writes full-viewport
+evidence to
 these six paths during a run:
 
 ```text
