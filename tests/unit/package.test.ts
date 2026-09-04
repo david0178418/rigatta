@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { unzipSync } from 'fflate';
-import { createExportZip } from '../../src/export/package.ts';
+import { createExportZip, safeExportFilenameFor, safeExportPathSegment } from '../../src/export/package.ts';
 
 const files = [
 	{ path: 'animations.json', bytes: Uint8Array.from([2]) },
@@ -25,5 +25,11 @@ describe('export ZIP packaging', () => {
 		expect(createExportZip([{ path: 'frame.png', bytes: new Uint8Array() }, { path: 'frame.png', bytes: new Uint8Array() }])).toMatchObject({ ok: false });
 		expect(createExportZip([{ path: '../frame.png', bytes: new Uint8Array() }])).toMatchObject({ ok: false });
 		expect(createExportZip([{ path: 'folder\\frame.png', bytes: new Uint8Array() }])).toMatchObject({ ok: false });
+	});
+
+	test('derives stable safe names for generated export paths', () => {
+		expect(safeExportPathSegment('  Robot / Walk  ')).toBe('Robot-Walk');
+		expect(safeExportPathSegment('...')).toBe('export');
+		expect(safeExportFilenameFor('  Cutout Robot  ')).toBe('Cutout-Robot.zip');
 	});
 });

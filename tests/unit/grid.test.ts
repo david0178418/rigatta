@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { composeGridFrames, createGridLayout } from '../../src/export/grid.ts';
+import { composeGridFrames, createGridLayout, createGridPageLayouts } from '../../src/export/grid.ts';
 import { encodeRgbaPng } from '../../src/export/png.ts';
 import type { RgbaFrame } from '../../src/export/trim.ts';
 
@@ -49,6 +49,20 @@ describe('grid export layout', () => {
 			20, 0, 0, 255, 20, 0, 0, 255
 		]);
 		expect([...first.pixels]).toEqual([10, 0, 0, 255, 10, 0, 0, 255]);
+	});
+
+	test('splits complete cells into deterministic pages when a sheet is full', () => {
+		const result = createGridPageLayouts(2, 2, 5, 4);
+
+		if (!result.ok) {
+			throw new Error(result.error);
+		}
+
+		expect(result.value.map((page) => ({ index: page.index, offset: page.offset, count: page.layout.placements.length }))).toEqual([
+			{ index: 0, offset: 0, count: 4 },
+			{ index: 1, offset: 4, count: 1 }
+		]);
+		expect(result.value[1]?.layout).toMatchObject({ width: 2, height: 2, columns: 2, rows: 1 });
 	});
 
 	test('encodes deterministic RGBA PNG bytes', () => {

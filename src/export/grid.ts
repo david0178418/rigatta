@@ -16,6 +16,12 @@ export type GridLayout = Readonly<{
 	placements: readonly GridPlacement[];
 }>;
 
+export type GridPageLayout = Readonly<{
+	index: number;
+	offset: number;
+	layout: GridLayout;
+}>;
+
 export type GridResult<TValue> =
 	| Readonly<{ ok: true; value: TValue }>
 	| Readonly<{ ok: false; error: string }>;
@@ -75,6 +81,50 @@ export const createGridLayout = function createGridLayout(
 			height: frameHeight
 		}))
 	});
+};
+
+export const createGridPageLayouts = function createGridPageLayouts(
+	frameWidth: number,
+	frameHeight: number,
+	frameCount: number,
+	maxTextureSize: number
+): GridResult<readonly GridPageLayout[]> {
+	if (!validPositiveInteger(frameWidth) || !validPositiveInteger(frameHeight)) {
+		return failure('Grid frame dimensions must be positive integers.');
+	}
+	if (!validPositiveInteger(frameCount)) {
+		return failure('Grid frame count must be a positive integer.');
+	}
+	if (!validPositiveInteger(maxTextureSize)) {
+		return failure('Grid texture size must be a positive integer.');
+	}
+
+	const columns = Math.floor(maxTextureSize / frameWidth);
+	const rowsPerPage = Math.floor(maxTextureSize / frameHeight);
+
+	if (columns < 1) {
+		return failure('Grid frame width exceeds the maximum texture size.');
+	}
+	if (rowsPerPage < 1) {
+		return failure('Grid frame height exceeds the maximum texture size.');
+	}
+
+	const framesPerPage = columns * rowsPerPage;
+	const pageCount = Math.ceil(frameCount / framesPerPage);
+	const pages = Array.from({ length: pageCount }, (_, index): GridResult<GridPageLayout> => {
+		const offset = index * framesPerPage;
+		const pageFrameCount = Math.min(framesPerPage, frameCount - offset);
+		const layout = createGridLayout(frameWidth, frameHeight, pageFrameCount, maxTextureSize);
+
+		return layout.ok
+			? success({ index, offset, layout: layout.value })
+			: layout;
+	});
+	const failedPage = pages.find((page) => !page);
+
+	return failedPage && !failedPage.ok
+		? failedPage
+		: success(pages.flatMap((page) => page.ok ? [page.value] : []));
 };
 
 export const composeGridFrames = function composeGridFrames(

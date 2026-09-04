@@ -23,6 +23,30 @@ const comparePaths = function comparePaths(left: string, right: string): number 
 	return left === right ? 0 : left < right ? -1 : 1;
 };
 
+export const sortExportFiles = function sortExportFiles(
+	files: readonly ExportFile[]
+): readonly ExportFile[] {
+	return [...files].sort((left, right) => comparePaths(left.path, right.path));
+};
+
+export const safeExportPathSegment = function safeExportPathSegment(
+	value: string,
+	fallback: string = 'export'
+): string {
+	const normalized = value.trim()
+		.replace(/[^a-z0-9_-]+/gi, '-')
+		.replace(/^-+|-+$/g, '')
+		.slice(0, 80);
+
+	return normalized.length > 0 ? normalized : fallback;
+};
+
+export const safeExportFilenameFor = function safeExportFilenameFor(
+	projectName: string
+): string {
+	return `${safeExportPathSegment(projectName, 'project')}.zip`;
+};
+
 const validExportPath = function validExportPath(path: string): boolean {
 	const segments = path.split('/');
 
@@ -45,10 +69,33 @@ export const createExportZip = function createExportZip(
 		return failure('Export file paths must be unique.');
 	}
 
-	const sortedFiles = [...files].sort((left, right) => comparePaths(left.path, right.path));
+	const sortedFiles = sortExportFiles(files);
 	const entries = Object.fromEntries(sortedFiles.map((file) => [file.path, file.bytes]));
 
 	return success(zipSync(entries, { level: 6, mtime: ZIP_EPOCH }));
+};
+
+const createZipBlobFromBytes = function createZipBlobFromBytes(
+	bytes: Uint8Array
+): ExportPackageResult<Blob> {
+	if (typeof globalThis.Blob === 'undefined') {
+		return failure('This browser cannot create an export ZIP Blob.');
+	}
+
+	try {
+		const buffer = new ArrayBuffer(bytes.byteLength);
+		new Uint8Array(buffer).set(bytes);
+
+		return success(new Blob([buffer], { type: 'application/zip' }));
+	} catch (error: unknown) {
+		return failure(error instanceof Error ? error.message : 'The export ZIP Blob could not be created.');
+	}
+};
+
+export const createExportZipBlobFromBytes = function createExportZipBlobFromBytes(
+	bytes: Uint8Array
+): ExportPackageResult<Blob> {
+	return createZipBlobFromBytes(bytes);
 };
 
 export const createExportZipBlob = function createExportZipBlob(
@@ -60,8 +107,5 @@ export const createExportZipBlob = function createExportZipBlob(
 		return archive;
 	}
 
-	const buffer = new ArrayBuffer(archive.value.byteLength);
-	new Uint8Array(buffer).set(archive.value);
-
-	return success(new Blob([buffer], { type: 'application/zip' }));
+	return createZipBlobFromBytes(archive.value);
 };

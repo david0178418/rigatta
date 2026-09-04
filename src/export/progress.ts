@@ -25,6 +25,8 @@ const defaultYieldControl = function defaultYieldControl(): Promise<void> {
 	});
 };
 
+export const yieldExportControl = defaultYieldControl;
+
 const noProgress = function noProgress(): void {};
 
 const cancelled = function cancelled(): ExportRunResult<never> {
