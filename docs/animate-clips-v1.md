@@ -176,15 +176,23 @@ through one history transaction. Undo therefore restores the complete prior
 selection in one step, while single-key edits and atomic retiming commands keep
 their own entries.
 
-Auto Key is enabled by default for the editor session. Editing a changed bone
-or attachment transform in Animate mode updates setup data and creates or
-upserts the corresponding numeric key at the current frame in the same
-history transaction. Opacity and rectangle-size changes use the same path.
+Auto Key is enabled by default for the editor session. When an active clip is
+selected, editing a changed bone or attachment transform in Animate mode writes
+only the evaluated animation value: setup transforms remain unchanged, and the
+corresponding numeric key is created or upserted at the current frame in the
+same history transaction.
+Opacity and rectangle-size changes use the same keyed-value path. When a
+property has no compatible numeric track and the current frame is later than
+frame 1, the editor first seeds frame 1 with the property's pre-edit
+evaluated/setup value, then writes the edited current-frame key. Existing
+tracks, key identities, and interpolation metadata are preserved.
 
 With Auto Key disabled, changed numeric properties are retained as pending
-edited-but-unkeyed state. The Animate panel keeps the compact Key edited
-properties action beside Auto Key; it commits all pending values at the current
-frame in one transaction, and the pending state is cleared only after a
+edited-but-unkeyed UI state without changing setup data. The current pose shows
+the latest pending value while it remains pending, including when the playhead
+moves. The Animate panel keeps the compact Key
+edited properties action beside Auto Key; it commits all pending values at the
+current frame in one transaction, and the pending state is cleared only after a
 successful commit.
 
 Each animatable inspector property exposes one current-frame key diamond. A
