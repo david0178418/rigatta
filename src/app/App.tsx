@@ -42,6 +42,11 @@ import { ViewportCanvas } from './ViewportCanvas.tsx';
 import type { ViewportPoint } from './viewport.ts';
 import { clipIdsForProject, createExportClipSelection, normalizeExportClipIds, setExportOutputMode, toggleExportClip, type ExportClipSelection } from '../export/selection.ts';
 import { createExportDiagnostics, formatByteCount } from '../export/diagnostics.ts';
+import { createExportFrameCaptureAdapter } from '../export/capture.ts';
+import { downloadExportZip } from '../export/download.ts';
+import { exportError, type ExportError } from '../export/errors.ts';
+import { runExport, type ExportFileResult, type ExportProgress } from '../export/orchestrator.ts';
+import { createFixedCanvasRenderer } from '../rendering/fixed-canvas.ts';
 import { createExampleAssetBlobs, exampleProject } from '../examples/example-project.ts';
 import { shortcutActionFor, shortcutReference, type ShortcutAction } from './shortcuts.ts';
 import { nextAvailableName } from './entity-names.ts';
@@ -273,12 +278,57 @@ const StartupStateView = function StartupStateView({
 	);
 };
 
+type ExportUiStatus = 'idle' | 'rendering' | 'packaging' | 'completed' | 'cancelled' | 'failed';
+
+type ExportUiState = Readonly<{
+	status: ExportUiStatus;
+	progress?: ExportProgress;
+	result?: ExportFileResult;
+	error?: ExportError;
+}>;
+
+const idleExportState: ExportUiState = { status: 'idle' };
+
+const exportStatusLabel = function exportStatusLabel(state: ExportUiState): string {
+	const labels: Readonly<Record<ExportUiStatus, string>> = {
+		idle: 'Ready to export.',
+		rendering: 'Rendering frames…',
+		packaging: 'Packaging ZIP…',
+		completed: 'Export complete.',
+		cancelled: 'Export cancelled.',
+		failed: 'Export failed.'
+	};
+	const progress = state.progress;
+
+	return progress && (state.status === 'rendering' || state.status === 'packaging')
+		? `${labels[state.status]} ${progress.completed} of ${progress.total} frames.`
+		: labels[state.status];
+};
+
+const exportErrorForRenderer = function exportErrorForRenderer(
+	error: Readonly<{ code: 'unsupported-browser' | 'invalid-project' | 'invalid-asset' | 'renderer-failure'; message: string }>
+): ExportError {
+	const code = error.code === 'unsupported-browser'
+		? 'unsupported-browser'
+		: error.code === 'invalid-project'
+			? 'invalid-project'
+			: error.code === 'invalid-asset'
+				? 'missing-asset'
+				: 'render-failure';
+
+	return exportError(code, 'rendering', error.message, { cause: error.code });
+};
+
 type ExportControlsProps = Readonly<{
 	project: Project;
 	selection: ExportClipSelection;
 	storageReport?: StorageReport;
 	requiredStorageBytes: number;
+	exportState: ExportUiState;
 	onChange: (selection: ExportClipSelection) => void;
+	onExport: () => void;
+	onCancel: () => void;
+	onRetry: () => void;
 	onClose: () => void;
 }>;
 
@@ -287,21 +337,27 @@ const ExportControls = function ExportControls({
 	selection,
 	storageReport,
 	requiredStorageBytes,
+	exportState,
 	onChange,
+	onExport,
+	onCancel,
+	onRetry,
 	onClose
 }: ExportControlsProps): ReactElement {
 	const selectedClipIds = normalizeExportClipIds(project, selection.clipIds);
 	const allClipsSelected = project.clips.length > 0 && selectedClipIds.length === project.clips.length;
+	const isRunning = exportState.status === 'rendering' || exportState.status === 'packaging';
 	const preflight = createExportDiagnostics(project, { ...selection, clipIds: selectedClipIds }, {
 		storageReport,
 		requiredStorageBytes
 	});
+	const hasErrors = preflight.diagnostics.some((item) => item.severity === 'error');
 
 	return (
 		<Dialog className="export-panel" id="export-animation-dialog" label="Export animation" onClose={onClose} overlayClassName="export-panel-overlay">
-				<p className="eyebrow">Output</p>
-				<p className="muted-copy export-description">Choose the clips and file grouping for the next export.</p>
-				<fieldset className="export-mode-fieldset">
+			<p className="eyebrow">Output</p>
+			<p className="muted-copy export-description">Choose the clips and file grouping for the next export.</p>
+			<fieldset className="export-mode-fieldset" disabled={isRunning}>
 					<legend>File grouping</legend>
 					<label>
 						<input
@@ -323,38 +379,39 @@ const ExportControls = function ExportControls({
 						/>
 						<span>One output per clip</span>
 					</label>
-				</fieldset>
-				<div className="export-clip-heading">
+			</fieldset>
+			<div className="export-clip-heading">
 					<span className="field-label">Clips</span>
 					<div className="inspector-actions">
-						<button className="quiet-button" type="button" onClick={() => onChange({ ...selection, clipIds: clipIdsForProject(project) })}>Select all</button>
-						<button className="quiet-button" type="button" onClick={() => onChange({ ...selection, clipIds: [] })}>Clear</button>
+						<button className="quiet-button" disabled={isRunning} type="button" onClick={() => onChange({ ...selection, clipIds: clipIdsForProject(project) })}>Select all</button>
+						<button className="quiet-button" disabled={isRunning} type="button" onClick={() => onChange({ ...selection, clipIds: [] })}>Clear</button>
 					</div>
 				</div>
-				<div className="export-clip-list" aria-label="Export clips">
+			<div className="export-clip-list" aria-label="Export clips">
 					{project.clips.length === 0 ? (
 						<span className="muted-copy">Create a clip before exporting.</span>
 					) : project.clips.map((clip) => (
 						<label className="export-clip-option" key={clip.id}>
 							<input
 								type="checkbox"
-								aria-label={`Export clip ${clip.name}`}
-								checked={selectedClipIds.includes(clip.id)}
-								onChange={() => onChange(toggleExportClip(project, selection, clip.id))}
+									aria-label={`Export clip ${clip.name}`}
+									checked={selectedClipIds.includes(clip.id)}
+									disabled={isRunning}
+									onChange={() => onChange(toggleExportClip(project, selection, clip.id))}
 							/>
 							<span>{clip.name}</span>
 						</label>
 					))}
-				</div>
-					<p className="muted-copy export-selection-count" aria-live="polite">
-						{selectedClipIds.length} of {project.clips.length} clips selected{allClipsSelected ? ' · all clips' : ''}.
-					</p>
-					<section className="export-diagnostics" aria-label="Export diagnostics">
-						<div className="export-diagnostics-heading">
+			</div>
+			<p className="muted-copy export-selection-count" aria-live="polite">
+					{selectedClipIds.length} of {project.clips.length} clips selected{allClipsSelected ? ' · all clips' : ''}.
+			</p>
+			<section className="export-diagnostics" aria-label="Export diagnostics">
+				<div className="export-diagnostics-heading">
 							<span className="field-label">Preflight</span>
 							<strong>{preflight.diagnostics.length === 0 ? 'Ready' : `${preflight.diagnostics.length} issue${preflight.diagnostics.length === 1 ? '' : 's'}`}</strong>
-						</div>
-						{preflight.diagnostics.length > 0 && (
+				</div>
+				{preflight.diagnostics.length > 0 && (
 							<ul>
 								{preflight.diagnostics.map((item, index) => (
 									<li className={`export-diagnostic-${item.severity}`} key={`${item.code}:${item.path}:${index}`}>
@@ -364,9 +421,28 @@ const ExportControls = function ExportControls({
 								))}
 							</ul>
 						)}
-						<p className="muted-copy">Estimated peak memory: {formatByteCount(preflight.memory.totalBytes)}.</p>
-					</section>
-					<p className="muted-copy export-status">Rendering and download controls will appear after the export pipeline is connected.</p>
+				<p className="muted-copy">Estimated peak memory: {formatByteCount(preflight.memory.totalBytes)}.</p>
+			</section>
+			<div className="export-run-status" data-export-status={exportState.status} data-testid="export-run-state" aria-live="polite" aria-busy={isRunning}>
+				<strong>{exportStatusLabel(exportState)}</strong>
+				{exportState.progress && isRunning && (
+					<progress aria-label="Export progress" max={exportState.progress.total} value={exportState.progress.completed} />
+				)}
+				{exportState.error && <span className="export-run-error" role="alert">{exportState.error.message}</span>}
+				{exportState.result && (
+					<span className="export-run-summary">Downloaded {exportState.result.filename} · {exportState.result.frameCount} frames · {exportState.result.pageCount} atlas page{exportState.result.pageCount === 1 ? '' : 's'}.</span>
+				)}
+			</div>
+			<div className="export-actions">
+				{isRunning ? (
+					<button className="quiet-button" type="button" onClick={onCancel}>Cancel</button>
+				) : exportState.status === 'failed' || exportState.status === 'cancelled' ? (
+					<button className="primary-button" type="button" disabled={hasErrors || selectedClipIds.length === 0} onClick={onRetry}>Retry</button>
+				) : (
+					<button className="primary-button" type="button" disabled={hasErrors || selectedClipIds.length === 0} onClick={onExport}>Export ZIP</button>
+				)}
+				<button className="quiet-button" type="button" onClick={onClose}>Close</button>
+			</div>
 		</Dialog>
 	);
 };
@@ -480,6 +556,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [slotOrderDropPreview, setSlotOrderDropPreview] = useState<Readonly<{ slotId: EntityId; zone: SlotDropZone }> | undefined>(undefined);
 	const [exportPanelOpen, setExportPanelOpen] = useState(false);
 	const [exportSelection, setExportSelection] = useState<ExportClipSelection>({ mode: 'combined', clipIds: [] });
+	const [exportState, setExportState] = useState<ExportUiState>(idleExportState);
+	const exportAbortRef = useRef<AbortController | undefined>(undefined);
+	const exportRunIdRef = useRef(0);
+	const exportRendererHostRef = useRef<HTMLDivElement>(null);
 	const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
 	const [recentProjects, setRecentProjects] = useState<readonly RecentProject[]>([]);
 	const [recentProjectsLoading, setRecentProjectsLoading] = useState(true);
@@ -650,6 +730,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		};
 	}, [presentation, project.id]);
 	const replaceProject = function replaceProject(nextProject: Project, nextAssets: ProjectAssetBlobs): void {
+		cancelExport();
 		const projectPreferences = projectUiPreferencesFor(uiPreferencesRef.current, nextProject);
 		const nextPresentation = {
 			...projectPreferences,
@@ -682,6 +763,117 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			? createExportClipSelection(project, current.mode)
 			: { ...current, clipIds: normalizeExportClipIds(project, current.clipIds) });
 		setExportPanelOpen(true);
+	};
+	const changeExportSelection = function changeExportSelection(nextSelection: ExportClipSelection): void {
+		if (exportAbortRef.current) {
+			return;
+		}
+
+		setExportSelection(nextSelection);
+		setExportState((current) => current.status === 'idle' ? current : idleExportState);
+	};
+	const cancelExport = function cancelExport(): void {
+		exportAbortRef.current?.abort();
+	};
+	const runSpriteSheetExport = async function runSpriteSheetExport(): Promise<void> {
+		if (exportAbortRef.current) {
+			return;
+		}
+
+		const host = exportRendererHostRef.current;
+
+		if (!host) {
+			setExportState({ status: 'failed', error: exportError('render-failure', 'rendering', 'The export renderer host is unavailable.') });
+			return;
+		}
+
+		const runId = exportRunIdRef.current + 1;
+		const controller = new AbortController();
+		const exportProject = project;
+		const exportAssets = assetBlobs;
+		const exportSelectionSnapshot = {
+			mode: exportSelection.mode,
+			clipIds: normalizeExportClipIds(exportProject, exportSelection.clipIds)
+		} as const;
+
+		exportRunIdRef.current = runId;
+		exportAbortRef.current = controller;
+		setExportState({ status: 'rendering' });
+
+		const isCurrentRun = function isCurrentRun(): boolean {
+			return exportRunIdRef.current === runId && exportAbortRef.current === controller;
+		};
+		const setRunState = function setRunState(nextState: ExportUiState): void {
+			if (isCurrentRun()) {
+				setExportState(nextState);
+			}
+		};
+
+		try {
+			const created = await createFixedCanvasRenderer(host, exportProject.logicalCanvas);
+
+			if (!isCurrentRun() || controller.signal.aborted) {
+				if (created.ok) {
+					created.value.destroy();
+				}
+
+				return;
+			}
+			if (!created.ok) {
+				setRunState({ status: 'failed', error: exportErrorForRenderer(created.error) });
+				return;
+			}
+
+			const frameCapture = createExportFrameCaptureAdapter(created.value);
+			const result = await runExport({
+				project: exportProject,
+				clipIds: exportSelectionSnapshot.clipIds,
+				mode: exportSelectionSnapshot.mode,
+				assets: exportAssets,
+				frameCapture,
+				signal: controller.signal,
+				onProgress: (progress) => setRunState({
+					status: progress.phase === 'rendering' ? 'rendering' : 'packaging',
+					progress
+				})
+			});
+
+			if (!isCurrentRun()) {
+				return;
+			}
+			if (!result.ok) {
+				setRunState({
+					status: result.error.code === 'cancelled' ? 'cancelled' : 'failed',
+					error: result.error
+				});
+				return;
+			}
+
+			const downloaded = downloadExportZip(result.value.zipBlob, result.value.filename);
+
+			if (!downloaded.ok) {
+				setRunState({ status: 'failed', error: downloaded.error });
+				return;
+			}
+
+			setRunState({ status: 'completed', progress: { phase: 'packaging', completed: result.value.frameCount, total: result.value.frameCount }, result: result.value });
+		} catch (error: unknown) {
+			setRunState({
+				status: 'failed',
+				error: exportError('unexpected-failure', 'rendering', error instanceof Error ? error.message : 'The export failed unexpectedly.')
+			});
+		} finally {
+			if (exportAbortRef.current === controller) {
+				exportAbortRef.current = undefined;
+			}
+		}
+	};
+	const retryExport = function retryExport(): void {
+		void runSpriteSheetExport();
+	};
+	const closeExportPanel = function closeExportPanel(): void {
+		cancelExport();
+		setExportPanelOpen(false);
 	};
 	const loadExampleProject = function loadExampleProject(): void {
 		if (projectHasContent && !window.confirm('Replace the current project with the built-in example?')) {
@@ -789,6 +981,12 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 			autosave.cancel();
 		};
 	}, [autosave]);
+
+	useEffect(() => {
+		return function cleanup(): void {
+			exportAbortRef.current?.abort();
+		};
+	}, []);
 
 	useEffect(() => {
 		const flushAutosave = function flushAutosave(): void {
@@ -2969,11 +3167,16 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 						selection={exportSelection}
 						storageReport={storageReport}
 						requiredStorageBytes={requiredStorageBytes}
-						onChange={setExportSelection}
-					onClose={() => setExportPanelOpen(false)}
-				/>
-			)}
-			{shortcutPanelOpen && <ShortcutReference onClose={() => setShortcutPanelOpen(false)} />}
+						exportState={exportState}
+						onChange={changeExportSelection}
+						onExport={() => void runSpriteSheetExport()}
+						onCancel={cancelExport}
+						onRetry={retryExport}
+						onClose={closeExportPanel}
+					/>
+				)}
+				{shortcutPanelOpen && <ShortcutReference onClose={() => setShortcutPanelOpen(false)} />}
+				<div aria-hidden="true" className="export-renderer-host" ref={exportRendererHostRef} />
 
 <WorkspaceDocks
 	assetBrowserProps={assetBrowserProps}

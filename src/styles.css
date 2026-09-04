@@ -1836,6 +1836,17 @@ h2 {
 	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
 }
 
+.export-renderer-host {
+	position: fixed;
+	top: 0;
+	left: -10000px;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	opacity: 0;
+	pointer-events: none;
+}
+
 .export-description,
 .export-status {
 	font-size: 11px;
@@ -2868,6 +2879,36 @@ h2 {
 	margin: 16px 0 0;
 }
 
+.export-run-status {
+	display: grid;
+	gap: 6px;
+	margin-top: 16px;
+	min-height: 34px;
+	font-size: 11px;
+	line-height: 1.45;
+}
+
+.export-run-status progress {
+	width: 100%;
+	height: 6px;
+	accent-color: var(--accent);
+}
+
+.export-run-error {
+	color: var(--warning);
+}
+
+.export-run-summary {
+	color: var(--muted);
+}
+
+.export-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 16px;
+}
+
 .export-diagnostics {
 	margin-top: 16px;
 	padding: 10px;
@@ -3575,4 +3616,142 @@ button.timeline-summary-key.timeline-key-marker[class] {
 
 .timeline-detail-surface .clip-form label:first-child {
 	flex: 1 1 150px;
+}
+
+/* Compact Animate timeline controls. */
+.timeline-control-row {
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.timeline-controls-second-row {
+	justify-content: space-between;
+}
+
+.timeline-controls-second-row .clip-playback-controls {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.timeline-compact-actions {
+	min-width: 0;
+	flex: 0 1 auto;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.timeline-compact-actions > .menu-wrap,
+.timeline-compact-actions > .popover-wrap {
+	flex: 0 0 auto;
+}
+
+.timeline-compact-actions .quiet-button {
+	white-space: nowrap;
+}
+
+.timeline-compact-popover .popover-surface {
+	width: min(360px, calc(100vw - 16px));
+	max-height: min(460px, calc(100dvh - 16px));
+}
+
+.timeline-popover-content {
+	display: grid;
+	gap: 10px;
+}
+
+.timeline-popover-heading {
+	display: grid;
+	gap: 2px;
+}
+
+.timeline-popover-heading h2 {
+	margin: 0;
+	font-size: 14px;
+}
+
+.timeline-popover-content .track-create-form,
+.timeline-popover-content .key-create-form {
+	margin: 0;
+}
+
+.timeline-popover-content .track-create-form label {
+	min-width: 0;
+}
+
+.timeline-options-content .timeline-filter-field,
+.timeline-options-content .timeline-row-mode-field {
+	display: grid;
+	gap: 4px;
+}
+
+.timeline-options-content .timeline-filter-field input,
+.timeline-options-content .timeline-row-mode-field select {
+	width: 100%;
+	max-width: none;
+}
+
+.timeline-auto-empty,
+.timeline-empty-state {
+	display: grid;
+	gap: 4px;
+	justify-items: start;
+	text-align: left;
+}
+
+.timeline-auto-empty strong,
+.timeline-empty-state strong {
+	color: var(--text);
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.timeline-auto-empty span,
+.timeline-empty-state span {
+	color: var(--muted);
+	font-size: 10px;
+}
+
+@media (max-width: 960px) {
+	.timeline-controls-second-row {
+		align-items: stretch;
+		flex-wrap: wrap;
+	}
+
+	.timeline-controls-second-row .clip-playback-controls,
+	.timeline-compact-actions {
+		flex-basis: 100%;
+	}
+
+	.timeline-compact-actions {
+		justify-content: flex-start;
+	}
+}
+
+@media (max-width: 560px) {
+	.clip-selector-row {
+		align-items: stretch;
+		flex-wrap: wrap;
+	}
+
+	.clip-tabs {
+		flex-basis: 100%;
+	}
+
+	.timeline-detail-actions {
+		width: 100%;
+		overflow-x: auto;
+	}
+
+	.timeline-controls-second-row .clip-playback-controls {
+		flex-wrap: wrap;
+	}
+
+	.timeline-controls-second-row .playback-readout {
+		flex: 1 1 auto;
+	}
 }

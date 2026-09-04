@@ -15,6 +15,7 @@ export type ExportErrorCode =
 	| 'frame-too-large'
 	| 'composition-failure'
 	| 'packaging-failure'
+	| 'download-failure'
 	| 'cancelled'
 	| 'cleanup-failure'
 	| 'unexpected-failure';
