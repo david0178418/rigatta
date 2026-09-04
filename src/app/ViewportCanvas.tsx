@@ -29,6 +29,7 @@ import { canvasGestureModeFor, type CanvasGestureMode, type TransformModifiers, 
 import { isShortcutTypingTarget } from './shortcuts.ts';
 import { Tooltip } from './ui-primitives.tsx';
 import {
+	shouldCancelTransformGestureForPresetChange,
 	transformGestureEnabledFor,
 	viewportPresentationFor,
 	viewportRenderFlagsFor,
@@ -165,6 +166,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	const transformRef = useRef(onCanvasTransform);
 	const transformToolRef = useRef<TransformTool>(transformTool ?? 'translate');
 	const transformEnabledRef = useRef(transformGestureEnabledFor(effectivePresentation));
+	const previousViewportPresetRef = useRef(effectivePresentation.preset);
 	const gridSpacingRef = useRef(gridSpacing ?? DEFAULT_GRID_SETTINGS.spacing);
 	const snapToGridRef = useRef(snapToGrid ?? DEFAULT_GRID_SETTINGS.snap);
 	cameraRef.current = camera;
@@ -624,7 +626,14 @@ export const ViewportCanvas = function ViewportCanvas({
 	}, []);
 
 	useEffect(() => {
-		if (pointerSessionRef.current?.mode === 'transform') {
+		const previousPreset = previousViewportPresetRef.current;
+		previousViewportPresetRef.current = effectivePresentation.preset;
+
+		if (shouldCancelTransformGestureForPresetChange(
+			pointerSessionRef.current?.mode === 'transform',
+			previousPreset,
+			effectivePresentation.preset
+		)) {
 			cancelActiveGesture();
 		}
 

@@ -3,6 +3,7 @@ import {
 	DEFAULT_VIEWPORT_PRESET,
 	VIEWPORT_PRESET_DEFINITIONS,
 	VIEWPORT_PRESET_VALUES,
+	shouldCancelTransformGestureForPresetChange,
 	transformGestureEnabledFor,
 	viewportPresentationFor,
 	viewportRenderFlagsFor,
@@ -53,6 +54,13 @@ describe('viewport presentation presets', () => {
 			'Visual preview',
 			'Gameplay preview'
 		]);
+	});
+
+	test('cancels only an active transform when the preset changes', () => {
+		expect(shouldCancelTransformGestureForPresetChange(true, 'authoring', 'visual-preview')).toBe(true);
+		expect(shouldCancelTransformGestureForPresetChange(true, 'gameplay-preview', 'authoring')).toBe(true);
+		expect(shouldCancelTransformGestureForPresetChange(true, 'authoring', 'authoring')).toBe(false);
+		expect(shouldCancelTransformGestureForPresetChange(false, 'authoring', 'visual-preview')).toBe(false);
 	});
 
 	(['setup', 'animate'] as const satisfies readonly ViewportMode[]).forEach((mode) => {

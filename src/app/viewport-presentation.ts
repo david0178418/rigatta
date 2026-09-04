@@ -91,3 +91,10 @@ export const transformGestureEnabledFor = function transformGestureEnabledFor(
 	return presentation.transformEnabled;
 };
 
+export const shouldCancelTransformGestureForPresetChange = function shouldCancelTransformGestureForPresetChange(
+	hasActiveTransformGesture: boolean,
+	previousPreset: ViewportPreset,
+	nextPreset: ViewportPreset
+): boolean {
+	return hasActiveTransformGesture && previousPreset !== nextPreset;
+};
