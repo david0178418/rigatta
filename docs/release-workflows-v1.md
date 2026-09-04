@@ -15,6 +15,31 @@ Focus a form field when editing a numeric value or name; global shortcuts are
 intentionally disabled for input, textarea, select, and contenteditable
 elements.
 
+## Viewport presentation workflow
+
+1. Open `Load example`, switch to Animate, and move the playhead to a keyed
+   frame. Select a rig item so the authoring state is visible.
+2. Use the compact `Presentation` control in the viewport toolbar to compare
+   `Authoring`, `Visual preview`, and `Gameplay preview`. Authoring shows bones
+   and selection guides; Visual preview shows artwork without editor overlays;
+   Gameplay preview shows gameplay guides without bones.
+3. In either preview, verify that pan, zoom, Fit, playback, frame navigation,
+   scrubbing, tree selection, and inspector selection still work. Preview
+   pointer drags do not transform entities; `Escape` cancels a pending gesture.
+   Returning to Authoring restores transform guides and handles.
+4. Switch between Setup and Animate, reload, and load a second project. The
+   selected preset persists only for its project, malformed preference storage
+   falls back to Authoring, and none of these actions creates a project-history
+   entry.
+5. For release evidence, capture the three presets at 1120×720 and 1440×900.
+   Compare Visual preview canvas samples with the clean keyed frame from
+   `Export ZIP`; confirm the canvas has no renderer alert and contains scene
+   pixels. The permanent proof is:
+
+   `bunx playwright test tests/e2e/viewport-presets.spec.ts --project=chromium --workers=1`
+
+   The proof writes inspectable screenshots to `/tmp/bone-animation-v1-<width>-<preset>.png`.
+
 ## Recovery workflow
 
 1. Continue editing. Each committed project command schedules a debounced

@@ -22,6 +22,16 @@ JSON, or sampled/export frames. Invalid project references remain handled by
 the existing validation boundary; visibility resolution itself is cycle-safe
 and returns a conservative result without mutating malformed input.
 
+Viewport presentation presets are independent of editor-only visibility. A
+hidden entity remains hidden in Authoring, Visual preview, and Gameplay preview
+where that entity would otherwise be rendered; selecting a preset does not
+clear the hidden set or the current selection. Authoring adds bones and
+selection guides, Visual preview removes editor overlays, and Gameplay preview
+adds gameplay guides without adding bones. Clean export pixels remain governed
+by the export renderer and are not changed by either hidden-entity preferences
+or viewport presets.
+
 Focused evidence is in `tests/unit/editor-visibility.test.ts`,
 `tests/unit/hit-testing.test.ts`, `tests/unit/ui-preferences.test.ts`, and
-`tests/e2e/p2-visibility.spec.ts`.
+`tests/e2e/p2-visibility.spec.ts`. The preset-specific screenshot and pixel
+evidence is in `tests/e2e/viewport-presets.spec.ts`.

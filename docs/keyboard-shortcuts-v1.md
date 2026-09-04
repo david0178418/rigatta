@@ -87,3 +87,17 @@ are layout controls and do not create project-history entries.
 Shortcuts are ignored while focus is in an `input`, `textarea`, `select`, or
 contenteditable element. The `?` toolbar button opens the same reference without
 a keyboard.
+
+## Viewport presentation control
+
+The viewport toolbar contains a compact, labelled `Presentation` group with
+`Authoring`, `Visual preview`, and `Gameplay preview` buttons. Each button is
+keyboard-focusable, exposes its accessible label and `aria-pressed` state, and
+shows a matching tooltip. There is no competing global shortcut: focus the
+group and activate the desired preset with Enter or Space.
+
+`Escape` keeps its normal priority and cancels an active canvas gesture before
+selection changes. Preview presets disable transform starts while retaining
+pan, zoom, Fit, Animate playback, frame navigation, scrubbing, tree selection,
+and inspector selection. Switching back to Authoring restores guides and
+handles without adding a project-history entry.

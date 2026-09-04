@@ -403,7 +403,7 @@ export const createEditorViewportRenderer = async function createEditorViewportR
 			state.destroyed = true;
 			state.requestId += 1;
 			resources.destroy();
-			application.destroy(true, true);
+			application.destroy({ removeView: true }, false);
 		};
 
 		return rendererSuccess({

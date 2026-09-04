@@ -42,6 +42,33 @@ point at the viewport center, while Fit refits to the new measurement.
   visible action tooltips. Setup and Animate mode changes preserve the mounted
   camera.
 
+## Presentation presets
+
+The compact `Presentation` control in the viewport toolbar exposes three
+project-scoped UI presets:
+
+- `Authoring` renders bones, gameplay guides, selection guides, transform
+  handles, and the configured grid; transform gestures remain enabled.
+- `Visual preview` renders the evaluated artwork without editor overlays and
+  disables transform gestures.
+- `Gameplay preview` renders artwork and gameplay guides without bones,
+  selection guides, or transform handles; transform gestures remain disabled.
+
+Changing a preset preserves selection, camera navigation, Fit/Actual size,
+playhead scrubbing, playback, the rig tree, and inspector context. A preset
+change cancels an active transform without committing a project command; pan,
+zoom, and Fit remain available in both preview presets. Setup and Animate mode
+switches retain the selected preset. Preferences are validated and stored per
+project outside project history, authored pose data, archives, and exports;
+malformed or stale storage falls back to `Authoring`.
+
+Permanent Chromium evidence is in
+[`tests/e2e/viewport-presets.spec.ts`](../tests/e2e/viewport-presets.spec.ts).
+It captures the built-in example at a keyed Animate frame in all three presets
+at 1120×720 and 1440×900, asserts no viewport renderer alert and non-background
+scene pixels, compares Visual preview samples with the downloaded clean export
+atlas frame, and checks the overlay and interaction contracts.
+
 The current focused browser evidence covers full-stage bounds, pasteboard
 marquee/pan/zoom, non-square Fit/Actual size, resize behavior, pasteboard drop,
 camera history isolation, transform cancellation, and the supported desktop

@@ -336,7 +336,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			rendererRef.current = undefined;
 			setRenderer(undefined);
 		};
-	}, [project.logicalCanvas.height, project.logicalCanvas.width]);
+	}, [effectivePresentation.preset, project.logicalCanvas.height, project.logicalCanvas.width]);
 
 	useEffect(() => {
 		if (!renderer || !measurement) {
