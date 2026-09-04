@@ -301,7 +301,12 @@ const reloadPixiAtlasPage = async function reloadPixiAtlasPage(
 	frameKeys: readonly string[]
 ): Promise<void> {
 	const validation = await page.evaluate(async ({ pngBytes, atlasData, keys }) => {
-		const atlasModule = await import(`${location.origin}/src/export/pixi-atlas-validation.ts`) as typeof import('../../src/export/pixi-atlas-validation.ts');
+		const atlasModuleUrl = `${location.origin}/src/export/pixi-atlas-validation.ts`;
+		const atlasModule = await import(atlasModuleUrl).catch(async (error: unknown) => {
+			const response = await fetch(atlasModuleUrl);
+			const body = await response.text();
+			throw new Error(`${error instanceof Error ? error.message : 'Atlas module import failed.'} (${response.status}) ${body.slice(0, 240)}`);
+		}) as typeof import('../../src/export/pixi-atlas-validation.ts');
 		const image = await createImageBitmap(new Blob([Uint8Array.from(pngBytes)], { type: 'image/png' }));
 
 		try {
@@ -526,9 +531,10 @@ export const inspectExportGroup = async function inspectExportGroup(
 		.sort();
 
 	expect(atlasJsonPaths).toHaveLength(atlasPngPaths.length);
-	expect(atlasJsonPaths.length).toBe(options.expectedPageCount === 'multiple' ? expect.any(Number) : options.expectedPageCount);
 	if (options.expectedPageCount === 'multiple') {
 		expect(atlasJsonPaths.length).toBeGreaterThan(1);
+	} else {
+		expect(atlasJsonPaths.length).toBe(options.expectedPageCount);
 	}
 
 	const atlasFrameKeys = await atlasJsonPaths.reduce(async (previousPromise, atlasJsonPath, pageIndex) => {

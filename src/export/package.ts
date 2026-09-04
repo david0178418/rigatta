@@ -1,6 +1,8 @@
 import { zipSync } from 'fflate';
 
-const ZIP_EPOCH = new Date(Date.UTC(1980, 0, 1));
+// fflate reads the DOS timestamp through local Date getters. Construct the
+// epoch in local calendar time so every timezone remains within ZIP's range.
+const ZIP_EPOCH = new Date(1980, 0, 1);
 
 export type ExportFile = Readonly<{
 	path: string;

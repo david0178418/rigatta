@@ -135,7 +135,7 @@ test('shows render failure recovery without a partial download', async ({ page }
 	await setExportProofControl(page, { failCapture: true });
 	await dialog.getByRole('button', { name: 'Export ZIP', exact: true }).click();
 	await waitForExportStatus(page, 'failed');
-	await expect(dialog.getByRole('alert')).toContainText('The canvas PNG extraction returned no data.');
+	await expect(dialog.getByRole('alert')).toContainText('Canvas PNG extraction returned no data.');
 	expect(downloads).toHaveLength(0);
 
 	await setExportProofControl(page, { failCapture: false });
