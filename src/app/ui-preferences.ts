@@ -4,6 +4,7 @@ import { DEFAULT_WORKSPACE_LAYOUT, type WorkspaceLayout } from './workspace-layo
 import { timelineEntityIdsForProject, type TimelineRowMode } from './timeline-model.ts';
 import type { SelectableEntity, Selection } from './selection.ts';
 import { SELECTION_HISTORY_LIMIT } from './selection-history.ts';
+import { DEFAULT_VIEWPORT_PRESET, isViewportPreset, type ViewportPreset } from './viewport-presentation.ts';
 
 export const UI_PREFERENCES_STORAGE_KEY = 'bone-animation.ui-preferences.v2';
 export const UI_PREFERENCES_VERSION = 2 as const;
@@ -18,6 +19,7 @@ export type ProjectUiPreferences = Readonly<{
 	leftDockTab: LeftDockTab;
 	rightDockTab: RightDockTab;
 	assetDensity: AssetDensity;
+	viewportPreset: ViewportPreset;
 	rigExpandedIds: readonly EntityId[];
 	hiddenEntityIds: readonly EntityId[];
 	selectionHistory: readonly Selection[];
@@ -41,6 +43,7 @@ export const defaultProjectUiPreferences = function defaultProjectUiPreferences(
 		leftDockTab: 'rig',
 		rightDockTab: 'properties',
 		assetDensity: 'list',
+		viewportPreset: DEFAULT_VIEWPORT_PRESET,
 		rigExpandedIds: [],
 		hiddenEntityIds: [],
 		selectionHistory: [],
@@ -164,6 +167,7 @@ const parseProjectPreferences = function parseProjectPreferences(
 		leftDockTab: isLeftDockTab(value.leftDockTab) ? value.leftDockTab : defaults.leftDockTab,
 		rightDockTab: isRightDockTab(value.rightDockTab) ? value.rightDockTab : defaults.rightDockTab,
 		assetDensity: density,
+		viewportPreset: isViewportPreset(value.viewportPreset) ? value.viewportPreset : defaults.viewportPreset,
 		rigExpandedIds: isIdArray(value.rigExpandedIds) ? [...value.rigExpandedIds] : defaults.rigExpandedIds,
 		hiddenEntityIds: isIdArray(value.hiddenEntityIds) ? [...value.hiddenEntityIds] : defaults.hiddenEntityIds,
 		selectionHistory: selectionHistoryForStoredValue(value.selectionHistory),

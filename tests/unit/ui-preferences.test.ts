@@ -45,6 +45,7 @@ describe('versioned UI preferences', () => {
 		const preferences = updateProjectUiPreferences(defaultUiPreferences(), project.id, (current) => ({
 			...current,
 			assetDensity: 'thumbnail',
+			viewportPreset: 'gameplay-preview',
 			leftDockTab: 'draw-order',
 			pinnedTimelineEntityIds: [fixtureIds.slot],
 			collapsedInspectorSections: ['entity-properties'],
@@ -53,6 +54,7 @@ describe('versioned UI preferences', () => {
 
 		expect(saveUiPreferences(preferences, storage)).toBe(true);
 		expect(loadUiPreferences(storage)).toEqual(preferences);
+		expect(loadUiPreferences(storage).projects[project.id]?.viewportPreset).toBe('gameplay-preview');
 		expect(migrateUiPreferences({
 			version: 0,
 			density: 'compact',
@@ -62,6 +64,10 @@ describe('versioned UI preferences', () => {
 			globalDensity: 'compact',
 			projects: { [project.id]: { assetDensity: 'compact', rightDockTab: 'assets' } }
 		});
+		expect(migrateUiPreferences({
+			version: 0,
+			projects: { [project.id]: {} }
+		}).projects[project.id]?.viewportPreset).toBe('authoring');
 	});
 
 	test('recovers from malformed, unsupported, and partially invalid payloads', () => {
@@ -82,9 +88,15 @@ describe('versioned UI preferences', () => {
 		expect(malformedProject.projects[project.id]).toMatchObject({
 			...defaults,
 			assetDensity: 'compact',
+			viewportPreset: defaults.viewportPreset,
 			leftDockTab: defaults.leftDockTab,
 			layout: defaults.layout
 		});
+		expect(parseUiPreferences({
+			version: UI_PREFERENCES_VERSION,
+			globalDensity: 'list',
+			projects: { [project.id]: { viewportPreset: 'stale-preset' } }
+		}).projects[project.id]?.viewportPreset).toBe('authoring');
 		expect(parseUiPreferences({ version: 999, projects: {} })).toEqual(defaultUiPreferences());
 		expect(parseUiPreferences({ version: 1, globalDensity: 'thumbnail', projects: {} })).toEqual(defaultUiPreferences());
 		expect(loadUiPreferences(mapStorage('{not-json'))).toEqual(defaultUiPreferences());
@@ -191,7 +203,8 @@ describe('versioned UI preferences', () => {
 			...current,
 			hiddenEntityIds: [fixtureIds.root],
 			collapsedInspectorSections: ['entity-properties'],
-			assetDensity: 'thumbnail'
+			assetDensity: 'thumbnail',
+			viewportPreset: 'visual-preview'
 		}));
 		const exported = await exportProjectArchive(project, new Map([[fixtureIds.asset, sourceBytes]]));
 
