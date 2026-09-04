@@ -7,6 +7,13 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 };
 
 const showAllKeyedTimelineRows = async function showAllKeyedTimelineRows(page: Page): Promise<void> {
+	const trackDetails = page.getByRole('button', { name: 'Track details', exact: true });
+
+	if (await trackDetails.getAttribute('aria-expanded') === 'true') {
+		await page.keyboard.press('Escape');
+		await expect(trackDetails).toBeFocused();
+	}
+
 	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();
 	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true }).selectOption('all-keyed');
 	await page.keyboard.press('Escape');
