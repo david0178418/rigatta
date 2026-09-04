@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { importDirectoryHandle, importDroppedItems } from '../../src/assets/import.ts';
+import { importDirectoryHandle, importDroppedEntries, importDroppedItems } from '../../src/assets/import.ts';
 import type { AssetDropItem, DirectoryHandle } from '../../src/assets/import.ts';
 
 type TestEntry = Readonly<{
@@ -87,5 +87,23 @@ describe('recursive asset import', () => {
 			expect(result.value.map((image) => image.relativePath)).toEqual(['hero.png']);
 			expect(result.skipped?.map((item) => item.relativePath)).toEqual(['notes.txt', 'broken.png']);
 		}
+	});
+
+	test('keeps detailed bulk import outcomes distinct by entry', async () => {
+		const result = await importDroppedEntries([
+			{ getAsFile: function getAsFile(): File { return file('hero.png'); } },
+			{ getAsFile: function getAsFile(): File { return new File(['notes'], 'notes.txt', { type: 'text/plain' }); } },
+			{ getAsFile: function getAsFile(): File { return new File([Uint8Array.from([1, 2, 3])], 'broken.png', { type: 'image/png' }); } },
+			{ relativePath: '../unsafe.png', getAsFile: function getAsFile(): File { return file('unsafe.png'); } },
+			{ getAsFile: function getAsFile(): File | null { return null; } }
+		]);
+
+		expect(result.entries.map((entry) => entry.kind)).toEqual([
+			'imported',
+			'unsupported',
+			'invalid',
+			'invalid',
+			'skipped'
+		]);
 	});
 });

@@ -17,6 +17,16 @@ export type AssetImportSkip = Readonly<{
 	reason: string;
 }>;
 
+export type AssetImportEntry =
+	| Readonly<{ kind: 'imported'; image: ImportedImage }>
+	| Readonly<{ kind: 'skipped'; relativePath: string; reason: string }>
+	| Readonly<{ kind: 'invalid'; relativePath: string; reason: string }>
+	| Readonly<{ kind: 'unsupported'; relativePath: string; reason: string }>;
+
+export type AssetImportEntriesResult = Readonly<{
+	entries: readonly AssetImportEntry[];
+}>;
+
 export type AssetImportResult<TValue = readonly ImportedImage[]> =
 	| Readonly<{ ok: true; value: TValue; skipped?: readonly AssetImportSkip[] }>
 	| Readonly<{ ok: false; error: string }>;
@@ -33,6 +43,7 @@ export type DirectoryHandle = FileSystemHandle & Readonly<{
 
 export type AssetDropItem = Readonly<{
 	getAsFile: () => File | null;
+	relativePath?: string;
 	getAsFileSystemHandle?: () => Promise<FileSystemHandle | null>;
 }>;
 
@@ -177,6 +188,154 @@ const importFiles = async function importFiles(
 		value: results.flatMap(({ result }) => result.ok ? [result.value] : []),
 		...(skipped.length > 0 ? { skipped } : {})
 	};
+};
+
+const skippedEntry = function skippedEntry(
+	relativePath: string,
+	reason: string
+): AssetImportEntry {
+	return { kind: 'skipped', relativePath, reason };
+};
+
+const invalidEntry = function invalidEntry(
+	relativePath: string,
+	reason: string
+): AssetImportEntry {
+	return { kind: 'invalid', relativePath, reason };
+};
+
+const unsupportedEntry = function unsupportedEntry(
+	relativePath: string,
+	reason: string
+): AssetImportEntry {
+	return { kind: 'unsupported', relativePath, reason };
+};
+
+const normalizedPathForEntry = function normalizedPathForEntry(relativePath: string): string {
+	return normalizeRelativePath(relativePath) ?? relativePath;
+};
+
+const duplicatePathsFor = function duplicatePathsFor(
+	paths: readonly string[]
+): ReadonlySet<string> {
+	return new Set(paths.filter((path, index) => paths.indexOf(path) !== index));
+};
+
+const importFileEntry = async function importFileEntry(
+	entry: Readonly<{ file: File; relativePath: string }>,
+	duplicatePaths: ReadonlySet<string>
+): Promise<AssetImportEntry> {
+	const normalizedPath = normalizeRelativePath(entry.relativePath);
+
+	if (!normalizedPath) {
+		return invalidEntry(entry.relativePath, 'The imported path is empty or unsafe.');
+	}
+	if (duplicatePaths.has(normalizedPath)) {
+		return invalidEntry(normalizedPath, 'The import contains a duplicate relative path.');
+	}
+
+	const mimeType = mimeTypeForFile(entry.file, normalizedPath);
+
+	if (!mimeType) {
+		return unsupportedEntry(normalizedPath, 'Unsupported image type.');
+	}
+
+	try {
+		const result = await validateImportedFile(entry.file, normalizedPath);
+
+		return result.ok
+			? { kind: 'imported', image: result.value }
+			: invalidEntry(normalizedPath, result.error);
+	} catch (error: unknown) {
+		return skippedEntry(
+			normalizedPath,
+			error instanceof Error ? `File read failed: ${error.message}` : 'File read failed.'
+		);
+	}
+};
+
+const importFileEntries = async function importFileEntries(
+	files: readonly Readonly<{ file: File; relativePath: string }>[],
+	duplicatePaths: ReadonlySet<string> = duplicatePathsFor(files.map((entry) => normalizedPathForEntry(entry.relativePath)))
+): Promise<readonly AssetImportEntry[]> {
+	return Promise.all(files.map((entry) => importFileEntry(entry, duplicatePaths)));
+};
+
+type CollectedDropItem =
+	| Readonly<{ kind: 'files'; files: readonly Readonly<{ file: File; relativePath: string }>[] }>
+	| Readonly<{ kind: 'issue'; issue: AssetImportEntry }>;
+
+type FileSystemHandleResult =
+	| Readonly<{ ok: true; value: FileSystemHandle | null }>
+	| Readonly<{ ok: false; error: unknown }>;
+
+const fileSystemHandleResultFor = async function fileSystemHandleResultFor(
+	item: AssetDropItem
+): Promise<FileSystemHandleResult> {
+	try {
+		return {
+			ok: true,
+			value: item.getAsFileSystemHandle ? await item.getAsFileSystemHandle() : null
+		};
+	} catch (error: unknown) {
+		return { ok: false, error };
+	}
+};
+
+const collectedDropItemFor = async function collectedDropItemFor(
+	item: AssetDropItem
+): Promise<CollectedDropItem> {
+	const handleResult = await fileSystemHandleResultFor(item);
+
+	if (!handleResult.ok) {
+		return {
+			kind: 'issue',
+			issue: skippedEntry(
+				item.relativePath ?? 'Dropped item',
+				handleResult.error instanceof Error
+					? `Drop handle read failed: ${handleResult.error.message}`
+					: 'Drop handle read failed.'
+			)
+		};
+	}
+
+	const handle = handleResult.value;
+
+	if (isDirectoryHandle(handle)) {
+		try {
+			return { kind: 'files', files: await collectDirectoryFiles(handle) };
+		} catch (error: unknown) {
+			return {
+				kind: 'issue',
+				issue: skippedEntry(
+					handle.name,
+					error instanceof Error ? `Directory traversal failed: ${error.message}` : 'Directory traversal failed.'
+				)
+			};
+		}
+	}
+
+	const file = item.getAsFile();
+
+	return file
+		? { kind: 'files', files: [{ file, relativePath: item.relativePath ?? file.name }] }
+		: {
+				kind: 'issue',
+				issue: skippedEntry(item.relativePath ?? 'Dropped item', 'Dropped item is not a file or directory.')
+			};
+};
+
+export const importDroppedEntries = async function importDroppedEntries(
+	items: readonly AssetDropItem[]
+): Promise<AssetImportEntriesResult> {
+	const collected = await Promise.all(items.map(collectedDropItemFor));
+	const files = collected.flatMap((item) => item.kind === 'files' ? item.files : []);
+	const duplicatePaths = duplicatePathsFor(files.map((entry) => normalizedPathForEntry(entry.relativePath)));
+	const entries = await Promise.all(collected.map((item) => item.kind === 'issue'
+		? Promise.resolve([item.issue])
+		: importFileEntries(item.files, duplicatePaths)));
+
+	return { entries: entries.flat() };
 };
 
 export const importDirectoryHandle = async function importDirectoryHandle(
