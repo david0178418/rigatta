@@ -54,6 +54,10 @@ export type TimelineKeyReference = Readonly<{
 	keyId: EntityId;
 	}>;
 
+export type TimelineSelectableKey = TimelineKeyReference & Readonly<{
+	frameIndex: number;
+}>;
+
 export type KeyDragPlan = Readonly<{
 	deltaFrames: number;
 	changes: readonly Readonly<{ trackId: EntityId; keyId: EntityId; timeSeconds: number }>[];
@@ -421,6 +425,16 @@ export const buildGroupedTimelineRows = function buildGroupedTimelineRows(
 	};
 
 	return [overview, ...groupTrackRows(project, clip, { ...options, pinnedEntityIds }), ...dedicatedRows(clip, options)];
+};
+
+export const selectableTimelineKeysForRows = function selectableTimelineKeysForRows(
+	rows: readonly TimelineRow[]
+): readonly TimelineSelectableKey[] {
+	return rows.flatMap((row) => row.kind === 'property' || row.kind === 'draw-order'
+		? row.keys.flatMap((key) => key.trackId
+			? [{ trackId: key.trackId, keyId: key.id, frameIndex: key.frameIndex }]
+			: [])
+		: []);
 };
 
 const trackForReference = function trackForReference(

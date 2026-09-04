@@ -64,9 +64,13 @@ without reopening a timeline dialog.
 
 Clicking a key selects it and seeks to its frame; Ctrl/Cmd-click toggles it.
 Selected keys can be dragged by whole frames, selected with a two-dimensional
-marquee, copied and pasted at the playhead, deleted, or nudged one frame with
-the arrow keys. Every multi-key operation is validated before dispatch and is
-one recoverable history transaction; collisions, duplicate target frames, and
+marquee from any empty right-hand grid lane, copied and pasted at the playhead,
+deleted, or nudged one frame with the arrow keys. The marquee selects explicit
+numeric, boolean, attachment-swap, and Draw Order keys whose visible rows and
+frame range intersect the drag; Event markers remain outside the key clipboard.
+A click without movement still seeks, and dragging a key marker still retimes
+that key. Every multi-key operation is validated before dispatch and is one
+recoverable history transaction; collisions, duplicate target frames, and
 out-of-range results are rejected atomically. The Properties inspector shows
 exact frame/value/interpolation state. A multi-key selection displays mixed
 values explicitly; entering a common value applies it to every compatible

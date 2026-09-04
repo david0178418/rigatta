@@ -1616,6 +1616,7 @@ h2 {
 	position: relative;
 	min-width: 0;
 	background: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 1px), rgba(111, 212, 189, 0.1) 5%);
+	user-select: none;
 }
 
 .track-key {

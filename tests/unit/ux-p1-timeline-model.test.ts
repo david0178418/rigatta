@@ -16,7 +16,8 @@ import {
 	createTimelineClipboard,
 	planKeyDrag,
 	planPasteTimelineClipboard,
-	selectableEntityForTimelineRow
+	selectableEntityForTimelineRow,
+	selectableTimelineKeysForRows
 } from '../../src/app/timeline-model.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
 
@@ -247,6 +248,16 @@ describe('UX P1-16 grouped timeline model', () => {
 		expect(attachment?.keys[0]?.markerKind).toBe('attachment');
 		expect(drawOrder?.keys[0]?.markerKind).toBe('draw-order');
 		expect(events?.keys[0]?.markerKind).toBe('event');
+	});
+
+	test('exposes copyable property and draw-order keys while excluding event markers', () => {
+		const { project, clip } = timelineFixture();
+		const rows = buildGroupedTimelineRows(project, clip, { mode: 'all-keyed' });
+		const selected = selectableTimelineKeysForRows(rows);
+
+		expect(selected).toHaveLength(9);
+		expect(selected).toContainEqual({ trackId: ids.drawOrderTrack, keyId: ids.drawOrderKey, frameIndex: 9 });
+		expect(selected.some((key) => key.keyId === ids.event)).toBe(false);
 	});
 
 	test('supports selected entities, selected tracks, filtering, and safe malformed targets', () => {

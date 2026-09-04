@@ -5,7 +5,7 @@ import { frameCountForClip, frameTimeSeconds, type PlaybackDirection, type Playb
 import type { Clip, Project, Track } from '../domain/model.ts';
 import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, frameIndexForTime, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
-import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, selectableEntityForTimelineRow, validPinnedTimelineEntityIds, type TimelineClipboard, type TimelineKeyReference, type TimelineMarkerKind, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
+import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, selectableEntityForTimelineRow, selectableTimelineKeysForRows, validPinnedTimelineEntityIds, type TimelineClipboard, type TimelineKeyReference, type TimelineMarkerKind, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
 import { isSelected, type SelectableEntity, type Selection } from './selection.ts';
 import type { InspectorContext } from './inspector-context.ts';
 import type { TransformTool } from './transform-gesture.ts';
@@ -560,14 +560,8 @@ export const AnimateTimeline = function AnimateTimeline({
 
 		onSeekPlayback(targetFrame ?? Math.max(0, Math.min(frameCount - 1, playback.frameIndex + direction)));
 	};
-	const timelinePropertyRows = function timelinePropertyRows(): readonly Readonly<{ trackId: EntityId; frameIndex: number; keyId: EntityId }>[] {
-		return groupedRows.flatMap((row) => {
-			const trackId = row.trackId;
-
-			return row.kind === 'property' && trackId
-				? row.keys.map((key) => ({ trackId, frameIndex: key.frameIndex, keyId: key.id }))
-				: [];
-		});
+	const timelineSelectableKeys = function timelineSelectableKeys(): ReturnType<typeof selectableTimelineKeysForRows> {
+		return selectableTimelineKeysForRows(groupedRows);
 	};
 	const timelineGroupIds = groupedRows.flatMap((row) => row.kind === 'entity' ? [row.id] : []);
 	const toggleTimelineGroup = function toggleTimelineGroup(rowId: string): void {
@@ -722,6 +716,9 @@ export const AnimateTimeline = function AnimateTimeline({
 		if (event.button !== 0 || !activeClip) {
 			return;
 		}
+		if (event.target instanceof HTMLElement && event.target.closest('button')) {
+			return;
+		}
 
 		const container = timelineKeyAreaRef.current;
 
@@ -792,7 +789,7 @@ export const AnimateTimeline = function AnimateTimeline({
 				const maximum = Math.max(startFrame, endFrame);
 				const top = Math.min(session.startY, event.clientY);
 				const bottom = Math.max(session.startY, event.clientY);
-				const selected = timelinePropertyRows()
+				const selected = timelineSelectableKeys()
 					.filter((key) => {
 						const laneElement = session.container.querySelector<HTMLElement>(`[data-timeline-lane="${key.trackId}"]`);
 
@@ -817,6 +814,12 @@ export const AnimateTimeline = function AnimateTimeline({
 		marqueeRef.current = undefined;
 		setTimelineMarquee(undefined);
 	};
+	const timelineMarqueeHandlers = {
+		onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => endTimelineMarquee(event, true),
+		onPointerDown: beginTimelineMarquee,
+		onPointerMove: updateTimelineMarquee,
+		onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => endTimelineMarquee(event, false)
+	} as const;
 	const timelineKeyDown = function timelineKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
 		const target = event.target;
 		const isFormTarget = target instanceof HTMLInputElement
@@ -1163,6 +1166,7 @@ export const AnimateTimeline = function AnimateTimeline({
 																						<div
 																							aria-keyshortcuts="ArrowLeft ArrowRight Home End Enter Space"
 																							aria-label={`Seek ${row.label} timeline; current frame ${playback.frameIndex + 1}`}
+																							{...timelineMarqueeHandlers}
 																							className="track-key-lane timeline-summary-lane"
 																							onClick={seekTimelinePointer}
 																							onKeyDown={timelineLaneKeyDown}
@@ -1191,6 +1195,7 @@ export const AnimateTimeline = function AnimateTimeline({
 																					<div
 																							aria-keyshortcuts="ArrowLeft ArrowRight Home End Enter Space"
 																							aria-label={`Seek ${row.label} timeline; current frame ${playback.frameIndex + 1}`}
+																							{...timelineMarqueeHandlers}
 																							className="track-key-lane timeline-summary-lane"
 																							onClick={seekTimelinePointer}
 																							onKeyDown={timelineLaneKeyDown}
@@ -1214,14 +1219,11 @@ export const AnimateTimeline = function AnimateTimeline({
 																					<div
 																							aria-keyshortcuts="ArrowLeft ArrowRight Home End Enter Space"
 																							aria-label={`Seek ${row.label} timeline; current frame ${playback.frameIndex + 1}`}
+																							{...timelineMarqueeHandlers}
 																							className="track-key-lane"
 																							data-timeline-lane={trackId}
 																							onClick={seekTimelinePointer}
 																							onKeyDown={timelineLaneKeyDown}
-																							onPointerCancel={(event) => endTimelineMarquee(event, true)}
-																							onPointerDown={beginTimelineMarquee}
-																							onPointerMove={updateTimelineMarquee}
-																							onPointerUp={(event) => endTimelineMarquee(event, false)}
 																							tabIndex={0}
 																							role="group"
 																						>
@@ -1239,7 +1241,9 @@ export const AnimateTimeline = function AnimateTimeline({
 																							<div
 																							aria-keyshortcuts="ArrowLeft ArrowRight Home End Enter Space"
 																							aria-label={`Seek ${row.label} timeline; current frame ${playback.frameIndex + 1}`}
+																							{...timelineMarqueeHandlers}
 																							className="track-key-lane timeline-summary-lane"
+																							data-timeline-lane={track.track.id}
 																							onClick={seekTimelinePointer}
 																							onKeyDown={timelineLaneKeyDown}
 																							tabIndex={0}
@@ -1258,6 +1262,7 @@ export const AnimateTimeline = function AnimateTimeline({
 																							<div
 																							aria-keyshortcuts="ArrowLeft ArrowRight Home End Enter Space"
 																							aria-label={`Seek ${row.label} timeline; current frame ${playback.frameIndex + 1}`}
+																							{...timelineMarqueeHandlers}
 																							className="track-key-lane"
 																							onClick={seekTimelinePointer}
 																							onKeyDown={timelineLaneKeyDown}
