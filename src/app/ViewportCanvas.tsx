@@ -28,6 +28,7 @@ import type { Selection } from './selection.ts';
 import { canvasGestureModeFor, type CanvasGestureMode, type TransformModifiers, type TransformPhase, type TransformTool } from './transform-gesture.ts';
 import { isShortcutTypingTarget } from './shortcuts.ts';
 import { Tooltip } from './ui-primitives.tsx';
+import type { DataTransferItemLike } from '../assets/external-drop.ts';
 import {
 	shouldCancelTransformGestureForPresetChange,
 	transformGestureEnabledFor,
@@ -105,11 +106,27 @@ const isViewportControlTarget = function isViewportControlTarget(target: EventTa
 		&& target.closest('button, input, select, textarea, [data-viewport-control]') !== null;
 };
 
+type CanvasDropMode = 'single-image' | 'bulk-import' | 'internal-asset';
+
+const canvasDropModeFor = function canvasDropModeFor(dataTransfer: DataTransfer): CanvasDropMode | undefined {
+	if (dataTransfer.types.includes('application/x-bone-animation-asset')) {
+		return 'internal-asset';
+	}
+	if (!dataTransfer.types.includes('Files')) {
+		return undefined;
+	}
+
+	const hasDirectory = Array.from(dataTransfer.items).some((item) => item.webkitGetAsEntry?.()?.isDirectory === true);
+
+	return dataTransfer.items.length > 1 || hasDirectory ? 'bulk-import' : 'single-image';
+};
+
 export const ViewportCanvas = function ViewportCanvas({
 	project,
 	assets,
 	pose,
 	onAssetDrop,
+	onExternalDrop,
 	onCanvasSelect,
 	onCanvasMarquee,
 	selection,
@@ -126,6 +143,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	assets: ProjectAssetBlobs;
 	pose?: EvaluatedPose;
 	onAssetDrop?: (assetId: string, point: ViewportPoint) => void;
+	onExternalDrop?: (items: readonly DataTransferItemLike[], point: ViewportPoint) => void;
 	onCanvasSelect?: (point: ViewportPoint, additive: boolean) => void;
 	onCanvasMarquee?: (bounds: LogicalBounds, additive: boolean) => void;
 	selection?: Selection;
@@ -157,6 +175,7 @@ export const ViewportCanvas = function ViewportCanvas({
 	const [gestureMode, setGestureMode] = useState<ViewportGestureMode>('idle');
 	const [marquee, setMarquee] = useState<ViewportRectangle | undefined>(undefined);
 	const [pointerPoint, setPointerPoint] = useState<ViewportPoint | undefined>(undefined);
+	const [dropMode, setDropMode] = useState<CanvasDropMode | undefined>(undefined);
 	const cameraRef = useRef(camera);
 	const measurementRef = useRef(measurement);
 	const projectRef = useRef(project);
@@ -695,32 +714,60 @@ export const ViewportCanvas = function ViewportCanvas({
 	};
 
 	const dragOverViewport = function dragOverViewport(event: ReactDragEvent<HTMLDivElement>): void {
-		if (!event.dataTransfer.types.includes('application/x-bone-animation-asset') || isViewportControlTarget(event.target)) {
+		const nextDropMode = canvasDropModeFor(event.dataTransfer);
+
+		if (!nextDropMode || isViewportControlTarget(event.target)) {
+			setDropMode(undefined);
 			return;
 		}
 
 		event.preventDefault();
 		event.dataTransfer.dropEffect = 'copy';
+		setDropMode(nextDropMode);
 	};
 
 	const dropAsset = function dropAsset(event: ReactDragEvent<HTMLDivElement>): void {
-		if (isViewportControlTarget(event.target)) {
+		const nextDropMode = canvasDropModeFor(event.dataTransfer);
+
+		setDropMode(undefined);
+
+		if (!nextDropMode || isViewportControlTarget(event.target)) {
 			return;
 		}
 
 		event.preventDefault();
-		const assetId = event.dataTransfer.getData('application/x-bone-animation-asset');
 		const stage = currentMeasurement();
 
-		if (!assetId || !stage || !onAssetDrop) {
+		if (!stage) {
 			return;
 		}
 
-		onAssetDrop(assetId, logicalPointAt(
+		const point = logicalPointAt(
 			{ x: event.clientX, y: event.clientY },
 			stage,
 			snapToGrid ?? DEFAULT_GRID_SETTINGS.snap
-		));
+		);
+		const items: readonly DataTransferItemLike[] = Array.from(event.dataTransfer.items);
+
+		if (items.length > 0 && onExternalDrop) {
+			onExternalDrop(items, point);
+			return;
+		}
+
+		const assetId = event.dataTransfer.getData('application/x-bone-animation-asset');
+
+		if (assetId && onAssetDrop) {
+			onAssetDrop(assetId, point);
+		}
+	};
+	const dragLeaveViewport = function dragLeaveViewport(event: ReactDragEvent<HTMLDivElement>): void {
+		const relatedTarget = event.relatedTarget;
+
+		if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) {
+			return;
+		}
+
+		setDropMode(undefined);
 	};
 
 	const originScreen = worldToScreenPoint(
@@ -739,6 +786,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			data-camera-scale={String(camera.scale)}
 			data-camera-offset-x={String(camera.offsetX)}
 			data-camera-offset-y={String(camera.offsetY)}
+			data-drop-mode={dropMode ?? 'none'}
 			data-viewport-preset={effectivePresentation.preset}
 			data-transform-enabled={String(effectivePresentation.transformEnabled)}
 			data-gesture-mode={gestureMode}
@@ -750,6 +798,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			onPointerMove={updatePointerPoint}
 			onWheel={zoomWithWheel}
 			onDragOver={dragOverViewport}
+			onDragLeave={dragLeaveViewport}
 			onDrop={dropAsset}
 		>
 			<div
@@ -771,6 +820,9 @@ export const ViewportCanvas = function ViewportCanvas({
 				/>
 			)}
 			<div className="viewport-overlay">
+				{dropMode && <div className="viewport-drop-feedback" role="status" aria-live="polite">
+					{dropMode === 'bulk-import' ? 'Release to import images into Assets.' : dropMode === 'single-image' ? 'Release to import and place one image.' : 'Release to place the image.'}
+				</div>}
 				<div className="viewport-coordinate-readout" aria-label="Canvas coordinate readout" role="status">{formatViewportCoordinate(pointerPoint)}</div>
 				<div className="viewport-controls" aria-label="Viewport controls">
 					<Tooltip label="Zoom out">

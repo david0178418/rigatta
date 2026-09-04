@@ -6,6 +6,7 @@ import { Dialog, MenuButton, type MenuItem } from './ui-primitives.tsx';
 export const ProjectMenu = function ProjectMenu({
 	projectName,
 	canvas,
+	recentOpen,
 	recentProjects,
 	recentProjectsLoading,
 	onNew,
@@ -13,11 +14,13 @@ export const ProjectMenu = function ProjectMenu({
 	onImportArchive,
 	onExportArchive,
 	onOpenRecent,
+	onRecentOpenChange,
 	onRenameProject,
 	onLoadRecent
 }: Readonly<{
 	projectName: string;
 	canvas: Readonly<{ width: number; height: number }>;
+	recentOpen: boolean;
 	recentProjects: readonly RecentProject[];
 	recentProjectsLoading: boolean;
 	onNew: () => void;
@@ -25,12 +28,12 @@ export const ProjectMenu = function ProjectMenu({
 	onImportArchive: (bytes: Uint8Array) => void;
 	onExportArchive: () => void;
 	onOpenRecent: () => void;
+	onRecentOpenChange: (open: boolean) => void;
 	onRenameProject: (name: string) => void;
 	onLoadRecent: (projectId: EntityId) => void;
 }>): ReactElement {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
-	const [recentOpen, setRecentOpen] = useState(false);
 	const [nameDraft, setNameDraft] = useState(projectName);
 	const [nameError, setNameError] = useState<string | undefined>(undefined);
 	const importArchive = async function importArchive(event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -47,7 +50,7 @@ export const ProjectMenu = function ProjectMenu({
 	const items: readonly MenuItem[] = [
 		{ id: 'new', label: 'New project', description: 'Start with an empty fixed canvas', onSelect: onNew },
 		{ id: 'recent', label: 'Open recent', description: recentProjectsLoading ? 'Loading local projects…' : recentProjects.length > 0 ? `${recentProjects.length} local project${recentProjects.length === 1 ? '' : 's'}` : 'No saved projects yet', onSelect: (): void => {
-			setRecentOpen(true);
+			onRecentOpenChange(true);
 			onOpenRecent();
 		} },
 		{ id: 'import', label: 'Import .boneanim', description: 'Replace the current project after validation', onSelect: () => fileInputRef.current?.click() },
@@ -65,14 +68,14 @@ export const ProjectMenu = function ProjectMenu({
 			<MenuButton label="Project" items={items} />
 			<input ref={fileInputRef} accept=".boneanim,application/zip" className="sr-only" type="file" onChange={(event) => void importArchive(event)} />
 			{recentOpen && (
-				<Dialog label="Open recent projects" onClose={() => setRecentOpen(false)}>
+				<Dialog label="Open recent projects" onClose={() => onRecentOpenChange(false)}>
 					{recentProjectsLoading && <p className="muted-copy" role="status">Loading recent projects…</p>}
 					{!recentProjectsLoading && recentProjects.length === 0 && <p className="muted-copy">No saved projects yet.</p>}
 					{!recentProjectsLoading && recentProjects.length > 0 && <div className="recent-project-list">
 						{recentProjects.map((recent) => (
 							<button className="recent-project-row" key={recent.id} type="button" onClick={() => {
 								onLoadRecent(recent.id);
-								setRecentOpen(false);
+								onRecentOpenChange(false);
 							}}>
 								<strong>{recent.name}</strong>
 								<span>{recent.assetCount} asset{recent.assetCount === 1 ? '' : 's'}{recent.isRecovery ? ' · recovery available' : ''}</span>

@@ -19,6 +19,8 @@ export type AssetImportSummary = Readonly<{
 	imported: number;
 	skipped: readonly AssetImportSkip[];
 	conflicts: readonly string[];
+	invalid: readonly AssetImportSkip[];
+	unsupported: readonly AssetImportSkip[];
 }>;
 
 const pluralize = function pluralize(count: number, singular: string, plural = `${singular}s`): string {
@@ -33,6 +35,12 @@ const importSummaryLabel = function importSummaryLabel(summary: AssetImportSumma
 	}
 	if (summary.conflicts.length > 0) {
 		parts.push(pluralize(summary.conflicts.length, 'conflict'));
+	}
+	if (summary.invalid.length > 0) {
+		parts.push(pluralize(summary.invalid.length, 'invalid file'));
+	}
+	if (summary.unsupported.length > 0) {
+		parts.push(pluralize(summary.unsupported.length, 'unsupported file'));
 	}
 
 	return `Imported ${parts.join(' · ')}.`;
@@ -201,14 +209,16 @@ export const AssetBrowser = function AssetBrowser({
 			{importSummary && (
 				<section className="asset-import-summary" aria-label="Asset import summary" aria-live="polite" role="status">
 					<strong>{importSummaryLabel(importSummary)}</strong>
-					{(importSummary.skipped.length > 0 || importSummary.conflicts.length > 0) && (
+					{(importSummary.skipped.length > 0 || importSummary.conflicts.length > 0 || importSummary.invalid.length > 0 || importSummary.unsupported.length > 0) && (
 						<details>
 							<summary>Show import details</summary>
 							<ul>
 								{importSummary.skipped.slice(0, IMPORT_DETAIL_LIMIT).map((item) => <li key={`skipped:${item.relativePath}`}><span>Skipped</span> {item.relativePath}: {item.reason}</li>)}
 								{importSummary.conflicts.slice(0, Math.max(0, IMPORT_DETAIL_LIMIT - importSummary.skipped.length)).map((path) => <li key={`conflict:${path}`}><span>Conflict</span> {path}: an image with this path is already imported.</li>)}
+								{importSummary.invalid.slice(0, Math.max(0, IMPORT_DETAIL_LIMIT - importSummary.skipped.length - importSummary.conflicts.length)).map((item) => <li key={`invalid:${item.relativePath}`}><span>Invalid</span> {item.relativePath}: {item.reason}</li>)}
+								{importSummary.unsupported.slice(0, Math.max(0, IMPORT_DETAIL_LIMIT - importSummary.skipped.length - importSummary.conflicts.length - importSummary.invalid.length)).map((item) => <li key={`unsupported:${item.relativePath}`}><span>Unsupported</span> {item.relativePath}: {item.reason}</li>)}
 							</ul>
-							{importSummary.skipped.length + importSummary.conflicts.length > IMPORT_DETAIL_LIMIT && <small>Showing the first {IMPORT_DETAIL_LIMIT} details.</small>}
+							{importSummary.skipped.length + importSummary.conflicts.length + importSummary.invalid.length + importSummary.unsupported.length > IMPORT_DETAIL_LIMIT && <small>Showing the first {IMPORT_DETAIL_LIMIT} details.</small>}
 						</details>
 					)}
 				</section>

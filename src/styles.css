@@ -583,6 +583,18 @@ h2 {
 	text-align: center;
 }
 
+.canvas-placeholder strong {
+	font-size: 14px;
+}
+
+.canvas-placeholder-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 6px;
+	margin-top: 4px;
+}
+
 .pixi-viewport {
 	position: absolute;
 	inset: 0;
@@ -591,6 +603,18 @@ h2 {
 	overflow: hidden;
 	touch-action: none;
 	overscroll-behavior: contain;
+}
+
+.pixi-viewport[data-drop-mode="single-image"] {
+	box-shadow: inset 0 0 0 2px rgba(111, 212, 189, 0.72);
+}
+
+.pixi-viewport[data-drop-mode="bulk-import"] {
+	box-shadow: inset 0 0 0 2px rgba(240, 184, 109, 0.78);
+}
+
+.pixi-viewport[data-drop-mode="internal-asset"] {
+	box-shadow: inset 0 0 0 2px rgba(130, 170, 240, 0.72);
 }
 
 .pixi-host,
@@ -660,6 +684,10 @@ h2 {
 	pointer-events: none;
 }
 
+.canvas-placeholder button {
+	pointer-events: auto;
+}
+
 .canvas-tool-toolbar {
 	position: absolute;
 	top: 16px;
@@ -712,6 +740,21 @@ h2 {
 	color: var(--muted);
 	font-size: 10px;
 	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.viewport-drop-feedback {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	padding: 9px 12px;
+	border: 1px solid var(--accent);
+	border-radius: 6px;
+	background: rgba(11, 14, 19, 0.92);
+	color: var(--text);
+	font-size: 12px;
+	font-weight: 650;
 	white-space: nowrap;
 }
 

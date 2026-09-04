@@ -23,7 +23,9 @@ import type { DuplicateClipIds, EventKeyInput, EventKeyUpdate, NumberKeyInterpol
 import { advancePlayback, createPlaybackState, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
-import { importDroppedItems, pickImageDirectory, type AssetDropItem, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
+import { adaptDataTransferItems, classifyExternalDrop, INTERNAL_ASSET_DRAG_MIME, type DataTransferItemLike, type ExternalDropDirectory, type ExternalDropFile, type ExternalDropRoute, type ExternalDropUnsupportedItem } from '../assets/external-drop.ts';
+import { importDroppedEntries, pickImageDirectory, type AssetDropItem, type AssetImportEntriesResult, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
+import { planBulkImport, planSingleImageImportAndPlace, type BulkImportPlan } from '../assets/import-planner.ts';
 import { createAutosaveScheduler, type AutosaveStatus } from '../persistence/autosave.ts';
 import { estimateStorage, type StorageReport } from '../persistence/storage.ts';
 import type { ProjectAssetBlobs, RecentProject } from '../persistence/repository.ts';
@@ -74,7 +76,7 @@ type EditorMode = 'setup' | 'animate';
 type SelectionOrigin = 'rig' | 'draw-order' | 'canvas' | 'timeline' | 'asset' | 'command' | 'history';
 
 const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
-const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
+const ASSET_DRAG_MIME = INTERNAL_ASSET_DRAG_MIME;
 const SLOT_DRAG_MIME = 'application/x-bone-animation-slot';
 
 const modeLabels: Record<EditorMode, string> = {
@@ -120,6 +122,75 @@ const blobFromBytes = function blobFromBytes(bytes: Uint8Array, mimeType: string
 	new Uint8Array(buffer).set(bytes);
 
 	return new Blob([buffer], { type: mimeType });
+};
+
+const assetImportSummaryFor = function assetImportSummaryFor(plan: BulkImportPlan): AssetImportSummary {
+	return {
+		imported: plan.imported.length,
+		skipped: plan.skipped,
+		conflicts: plan.conflicting.map((conflict) => conflict.image.relativePath),
+		invalid: plan.invalid,
+		unsupported: plan.unsupported
+	};
+};
+
+const assetImportFailureSummaryFor = function assetImportFailureSummaryFor(
+	input: AssetImportEntriesResult
+): AssetImportSummary {
+	return {
+		imported: 0,
+		skipped: input.entries.flatMap((entry) => entry.kind === 'skipped' ? [{ relativePath: entry.relativePath, reason: entry.reason }] : []),
+		conflicts: [],
+		invalid: input.entries.flatMap((entry) => entry.kind === 'invalid' ? [{ relativePath: entry.relativePath, reason: entry.reason }] : []),
+		unsupported: input.entries.flatMap((entry) => entry.kind === 'unsupported' ? [{ relativePath: entry.relativePath, reason: entry.reason }] : [])
+	};
+};
+
+const assetImportEntriesFor = function assetImportEntriesFor(
+	images: readonly ImportedImage[],
+	skipped: readonly Readonly<{ relativePath: string; reason: string }>[]
+): AssetImportEntriesResult {
+	return {
+		entries: [
+			...images.map((image) => ({ kind: 'imported' as const, image })),
+			...skipped.map((entry) => ({ kind: 'skipped' as const, ...entry }))
+		]
+	};
+};
+
+const unsupportedEntriesFor = function unsupportedEntriesFor(
+	items: readonly ExternalDropUnsupportedItem[]
+): AssetImportEntriesResult {
+	return {
+		entries: items.map((item) => ({
+			kind: 'unsupported' as const,
+			relativePath: item.name,
+			reason: item.reason
+		}))
+	};
+};
+
+const assetDropItemForFile = function assetDropItemForFile(file: ExternalDropFile): AssetDropItem {
+	return {
+		getAsFile: () => file.file,
+		relativePath: file.relativePath
+	};
+};
+
+const assetDropItemForDirectory = function assetDropItemForDirectory(directory: ExternalDropDirectory): AssetDropItem {
+	return {
+		getAsFile: () => null,
+		getAsFileSystemHandle: () => Promise.resolve(directory.directory)
+	};
+};
+
+const assetDropItemsForRoute = function assetDropItemsForRoute(
+	route: Extract<ExternalDropRoute, { kind: 'bulk-external-import' }>
+): readonly AssetDropItem[] {
+	return [
+		...route.files.map(assetDropItemForFile),
+		...route.directories.map(assetDropItemForDirectory)
+	];
 };
 
 const blobsForProject = function blobsForProject(
@@ -565,6 +636,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const [shortcutPanelOpen, setShortcutPanelOpen] = useState(false);
 	const [recentProjects, setRecentProjects] = useState<readonly RecentProject[]>([]);
 	const [recentProjectsLoading, setRecentProjectsLoading] = useState(true);
+	const [recentProjectsOpen, setRecentProjectsOpen] = useState(false);
 	const [rigSearch, setRigSearch] = useState('');
 	const [inlineRenameId, setInlineRenameId] = useState<EntityId | undefined>(undefined);
 	const [constraintStatus, setConstraintStatus] = useState<string | undefined>(undefined);
@@ -573,6 +645,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const transformSessionRef = useRef<CanvasTransformSession | undefined>(undefined);
 	const [isImporting, setIsImporting] = useState(false);
 	const [assetImportSummary, setAssetImportSummary] = useState<AssetImportSummary | undefined>(undefined);
+	const [assetImportMessage, setAssetImportMessage] = useState<string | undefined>(undefined);
 	const [assetQuery, setAssetQuery] = useState('');
 	const [assetBlobs, setAssetBlobs] = useState<ProjectAssetBlobs>(startup.assets);
 	const autosave = useMemo(() => createAutosaveScheduler(startup.repository, {
@@ -950,6 +1023,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 			setPersistenceError(result.error.message);
 		});
+	};
+	const openRecentFromEmptyCanvas = function openRecentFromEmptyCanvas(): void {
+		setRecentProjectsOpen(true);
+		openRecentProjects();
 	};
 	const loadRecentProject = function loadRecentProject(projectId: EntityId): void {
 		const recent = recentProjects.find((candidate) => candidate.id === projectId);
@@ -1705,64 +1782,19 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		if (!result.ok) {
 			setAssetImportSummary(undefined);
 			setAssetError(result.error);
+			setAssetImportMessage(undefined);
 			updatePresentation((current) => ({ ...current, rightDockTab: 'assets' }));
 			return;
 		}
 
-		const existingPaths = new Set(project.assets.map((asset) => asset.relativePath));
-		const conflicts = result.value.flatMap((image) => existingPaths.has(image.relativePath) ? [image.relativePath] : []);
-		const candidates = result.value.filter((image) => !existingPaths.has(image.relativePath)).map((image) => {
-			const id = createEntityId();
-
-			return {
-				id,
-				asset: {
-					name: image.name,
-					relativePath: image.relativePath,
-					mimeType: image.mimeType,
-					width: image.width,
-					height: image.height
-				},
-				blob: blobForImage(image)
-			};
-		});
-		const summary: AssetImportSummary = {
-			imported: candidates.length,
-			skipped: result.skipped ?? [],
-			conflicts
-		};
-
-		setAssetImportSummary(summary);
-		updatePresentation((current) => ({ ...current, rightDockTab: 'assets' }));
-
-		if (candidates.length === 0) {
-			setAssetError(undefined);
-			return;
-		}
-		const nextProject = dispatchCommand(history, {
-			kind: 'add-image-assets',
-			assets: candidates.map(({ id, asset }) => ({ id, asset }))
-		});
-
-		if (!nextProject.ok) {
-			setCommandError(nextProject.error.message);
-			return;
-		}
-
-		const nextAssets = new Map([
-			...assetBlobs,
-			...candidates.map(({ id, blob }) => [id, blob] as const)
-		]);
-
-		setAssetBlobs(nextAssets);
-		setAssetError(undefined);
-		commitHistory(nextProject.value, nextAssets);
+		commitBulkImport(assetImportEntriesFor(result.value, result.skipped ?? []));
 	};
 
 	const importDirectory = async function importDirectory(): Promise<void> {
 		setIsImporting(true);
 		setAssetError(undefined);
 		setAssetImportSummary(undefined);
+		setAssetImportMessage(undefined);
 
 		try {
 			addImportedImages(await pickImageDirectory());
@@ -1797,8 +1829,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		setIsImporting(true);
 		setAssetError(undefined);
 		setAssetImportSummary(undefined);
-		void importDroppedItems(items)
-			.then(addImportedImages)
+		setAssetImportMessage(undefined);
+		void importDroppedEntries(items)
+			.then(commitBulkImport)
 			.catch((error: unknown) => setAssetError(errorMessage(error)))
 			.finally(() => setIsImporting(false));
 	};
@@ -1850,6 +1883,90 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		commitHistory(commitTransaction(result.value), nextAssets);
 		return true;
 	};
+	const commitBulkImport = function commitBulkImport(input: AssetImportEntriesResult): void {
+		const plan = planBulkImport(projectRef.current, input, createEntityId);
+
+		if (!plan.ok) {
+			setAssetImportSummary(undefined);
+			setAssetImportMessage(undefined);
+			setAssetError(plan.error.message);
+			updatePresentation((current) => ({ ...current, rightDockTab: 'assets' }));
+			return;
+		}
+
+		const nextAssets = new Map([
+			...assetBlobs,
+			...plan.value.imported.map((entry) => [entry.assetId, blobForImage(entry.image)] as const)
+		]);
+		const applied = plan.value.commands.length === 0
+			|| applyCommandSequence(plan.value.commands, nextAssets);
+
+		if (!applied) {
+			setAssetImportSummary(undefined);
+			setAssetImportMessage(undefined);
+			setAssetError('The validated image import could not be committed. No assets were changed.');
+			return;
+		}
+
+		setAssetBlobs(nextAssets);
+		setAssetImportSummary(assetImportSummaryFor(plan.value));
+		setAssetError(undefined);
+		setAssetImportMessage(plan.value.imported.length > 0
+			? `Imported ${plan.value.imported.length} image${plan.value.imported.length === 1 ? '' : 's'} into Assets. Drag an imported image onto a selected bone or slot to place it.`
+			: 'No new images were imported. Review the import summary for skipped, invalid, unsupported, or conflicting entries.');
+		updatePresentation((current) => ({
+			...current,
+			rightDockTab: 'assets',
+			layout: { ...current.layout, rightDockCollapsed: false }
+		}));
+
+		if (plan.value.eligibleAssetIds.length > 0) {
+			setSelection(plan.value.eligibleAssetIds.map((id) => ({ kind: 'asset' as const, id })), 'asset');
+		}
+	};
+
+	const importAndPlaceExternalImage = async function importAndPlaceExternalImage(
+		file: ExternalDropFile,
+		point: ViewportPoint
+	): Promise<void> {
+		const imported = await importDroppedEntries([assetDropItemForFile(file)]);
+		const image = imported.entries.flatMap((entry) => entry.kind === 'imported' ? [entry.image] : [])[0];
+
+		if (!image) {
+			setAssetImportSummary(assetImportFailureSummaryFor(imported));
+			setAssetError('The dropped file could not be decoded as a supported image.');
+			setAssetImportMessage(undefined);
+			updatePresentation((current) => ({ ...current, rightDockTab: 'assets' }));
+			return;
+		}
+
+		const selectedForDrop = selection.at(-1);
+		const selectedBoneId = selectedForDrop?.kind === 'bone' ? selectedForDrop.id : undefined;
+		const plan = planSingleImageImportAndPlace(projectRef.current, image, point, selectedBoneId, createEntityId);
+
+		if (!plan.ok) {
+			setAssetImportSummary(undefined);
+			setAssetError(plan.error.message);
+			setAssetImportMessage(undefined);
+			return;
+		}
+
+		const nextAssets = new Map([...assetBlobs, [plan.value.assetId, blobForImage(image)] as const]);
+
+		if (!applyCommandSequence(plan.value.commands, nextAssets)) {
+			setAssetImportSummary(undefined);
+			setAssetError('The validated image could not be placed. No project or asset changes were made.');
+			setAssetImportMessage(undefined);
+			return;
+		}
+
+		setAssetBlobs(nextAssets);
+		setAssetImportSummary({ imported: 1, skipped: [], conflicts: [], invalid: [], unsupported: [] });
+		setAssetError(undefined);
+		setAssetImportMessage(`Imported and placed ${image.name} at ${Math.round(point.x)}, ${Math.round(point.y)}.`);
+		setSelection([{ kind: 'attachment', id: plan.value.attachmentId }], 'canvas');
+	};
+
 	const copyPose = function copyPose(): void {
 		if (modeRef.current !== 'animate') {
 			return;
@@ -1965,6 +2082,59 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		setAssetError(undefined);
 		applyCommandSequence(commands);
+	};
+
+	const handleExternalCanvasDrop = async function handleExternalCanvasDrop(
+		items: readonly DataTransferItemLike[],
+		point: ViewportPoint
+	): Promise<void> {
+		if (isImporting) {
+			return;
+		}
+
+		setIsImporting(true);
+		setAssetError(undefined);
+		setAssetImportMessage(undefined);
+		setAssetImportSummary(undefined);
+
+		try {
+			const route = classifyExternalDrop(await adaptDataTransferItems(items));
+
+			if (route.kind === 'empty') {
+				return;
+			}
+			if (route.kind === 'internal-placement') {
+				dropAssetOnCanvas(route.assetId, point);
+				return;
+			}
+			if (route.kind === 'single-external-import-and-place') {
+				await importAndPlaceExternalImage(route.file, point);
+				return;
+			}
+			if (route.kind === 'bulk-external-import') {
+				const imported = await importDroppedEntries(assetDropItemsForRoute(route));
+				const input: AssetImportEntriesResult = {
+					entries: [...unsupportedEntriesFor(route.unsupported).entries, ...imported.entries]
+				};
+
+				commitBulkImport(input);
+				return;
+			}
+
+			const unsupported = route.items.flatMap((item) => item.kind === 'unsupported-item' ? [item] : []);
+
+			setAssetImportSummary(assetImportFailureSummaryFor(unsupportedEntriesFor(unsupported)));
+			setAssetError(route.reason);
+			updatePresentation((current) => ({
+				...current,
+				rightDockTab: 'assets',
+				layout: { ...current.layout, rightDockCollapsed: false }
+			}));
+		} catch (error: unknown) {
+			setAssetError(errorMessage(error));
+		} finally {
+			setIsImporting(false);
+		}
 	};
 
 	const dragOverSlot = function dragOverSlot(event: DragEvent<HTMLElement>, slotId: EntityId): void {
@@ -3045,7 +3215,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 	const assetBrowserProps: WorkspaceDocksProps['assetBrowserProps'] = {
 		assets: assetBlobs,
 		density: presentation.assetDensity,
-		importMessage: assetError,
+		importMessage: assetError ?? assetImportMessage,
 		importSummary: assetImportSummary,
 		isImporting,
 		project,
@@ -3121,7 +3291,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		},
 		showSharedInspector: presentation.rightDockTab === 'properties'
 	};
-	const statusMessage = commandError ?? persistenceError ?? assetError;
+	const statusMessage = commandError ?? persistenceError ?? assetError ?? assetImportMessage;
 
 	return (
 		<div className="app-shell" style={shellStyle}>
@@ -3136,6 +3306,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				<ProjectMenu
 					canvas={project.logicalCanvas}
 					projectName={project.name}
+					recentOpen={recentProjectsOpen}
 					recentProjects={recentProjects}
 					recentProjectsLoading={recentProjectsLoading}
 					onExportArchive={() => void exportArchive()}
@@ -3144,6 +3315,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					onLoadRecent={loadRecentProject}
 					onNew={createNewProject}
 					onOpenRecent={openRecentProjects}
+					onRecentOpenChange={setRecentProjectsOpen}
 					onRenameProject={(name) => applyCommand({ kind: 'rename-project', name })}
 				/>
 				<nav className="mode-switcher" aria-label="Editor mode">
@@ -3241,6 +3413,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										assets={assetBlobs}
 										pose={activePose}
 										onAssetDrop={dropAssetOnCanvas}
+										onExternalDrop={(items, point) => void handleExternalCanvasDrop(items, point)}
 										onCanvasSelect={selectCanvasPoint}
 										onCanvasMarquee={selectCanvasMarquee}
 										selection={selection}
@@ -3253,11 +3426,24 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										onCanvasTransformStart={beginCanvasTransform}
 										onCanvasTransform={updateCanvasTransform}
 									/>
-									{project.bones.length === 0 && project.assets.length === 0 && (
-										<div className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`}>
-											<span>Drop image parts here</span>
+									{project.bones.length === 0 && project.attachments.length === 0 && (
+										<section className="canvas-placeholder" aria-label={`Empty ${project.logicalCanvas.width} by ${project.logicalCanvas.height} canvas`} role="region">
+											<span className="empty-glyph" aria-hidden="true">◌</span>
+											<strong>{project.assets.length === 0 ? 'Start with an image' : 'Place an imported image'}</strong>
+											{project.assets.length === 0 ? <>
+												<span>Drop one supported image here to import and place it.</span>
+												<span>Drop multiple images or a folder to import them into Assets.</span>
+												<div className="canvas-placeholder-actions">
+													<button data-viewport-control className="secondary-button" disabled={isImporting} type="button" onClick={() => void importDirectory()}>Import image directory</button>
+													<button data-viewport-control className="secondary-button" type="button" onClick={openRecentFromEmptyCanvas}>Open recent</button>
+													<button data-viewport-control className="secondary-button" type="button" onClick={loadExampleProject}>Load example</button>
+												</div>
+											</> : <>
+												<span>Drag an imported image from Assets onto this canvas to create the root, slot, and attachment.</span>
+												<span>External drops import into Assets; internal Assets drags place images in the rig.</span>
+											</>}
 											<small>Fixed logical canvas · {project.logicalCanvas.width} × {project.logicalCanvas.height}</small>
-										</div>
+										</section>
 									)}
 								</div>
 							</div>
