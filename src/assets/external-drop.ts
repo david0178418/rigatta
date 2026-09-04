@@ -5,6 +5,69 @@ import type { DirectoryHandle } from './import.ts';
 
 export const INTERNAL_ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
 
+export type CurrentDropSource =
+	| 'os-single-file'
+	| 'os-multiple-files'
+	| 'os-folder'
+	| 'internal-asset-row'
+	| 'internal-slot-row'
+	| 'internal-bone-row';
+
+export type CurrentDropTarget =
+	| 'assets-panel'
+	| 'canvas-pasteboard'
+	| 'canvas-bounds'
+	| 'slot-row'
+	| 'viewport-controls'
+	| 'bone-row'
+	| 'draw-order-row';
+
+export type CurrentDropBehavior =
+	| 'asset-import'
+	| 'internal-asset-placement'
+	| 'internal-slot-assignment'
+	| 'slot-reorder'
+	| 'bone-reparent'
+	| 'no-op'
+	| 'excluded'
+	| 'rejected';
+
+export type CurrentDropSurfaceCharacterization = Readonly<{
+	source: CurrentDropSource;
+	target: CurrentDropTarget;
+	behavior: CurrentDropBehavior;
+}>;
+
+export const CURRENT_DROP_SURFACE_CHARACTERIZATION = [
+	{ source: 'os-single-file', target: 'assets-panel', behavior: 'asset-import' },
+	{ source: 'os-multiple-files', target: 'assets-panel', behavior: 'asset-import' },
+	{ source: 'os-folder', target: 'assets-panel', behavior: 'asset-import' },
+	{ source: 'os-single-file', target: 'canvas-pasteboard', behavior: 'no-op' },
+	{ source: 'os-multiple-files', target: 'canvas-pasteboard', behavior: 'no-op' },
+	{ source: 'os-folder', target: 'canvas-pasteboard', behavior: 'no-op' },
+	{ source: 'os-single-file', target: 'canvas-bounds', behavior: 'no-op' },
+	{ source: 'os-multiple-files', target: 'canvas-bounds', behavior: 'no-op' },
+	{ source: 'os-folder', target: 'canvas-bounds', behavior: 'no-op' },
+	{ source: 'os-single-file', target: 'slot-row', behavior: 'rejected' },
+	{ source: 'os-multiple-files', target: 'slot-row', behavior: 'rejected' },
+	{ source: 'os-folder', target: 'slot-row', behavior: 'rejected' },
+	{ source: 'os-single-file', target: 'viewport-controls', behavior: 'excluded' },
+	{ source: 'os-multiple-files', target: 'viewport-controls', behavior: 'excluded' },
+	{ source: 'os-folder', target: 'viewport-controls', behavior: 'excluded' },
+	{ source: 'internal-asset-row', target: 'assets-panel', behavior: 'rejected' },
+	{ source: 'internal-asset-row', target: 'canvas-pasteboard', behavior: 'internal-asset-placement' },
+	{ source: 'internal-asset-row', target: 'canvas-bounds', behavior: 'internal-asset-placement' },
+	{ source: 'internal-asset-row', target: 'slot-row', behavior: 'internal-slot-assignment' },
+	{ source: 'internal-asset-row', target: 'viewport-controls', behavior: 'excluded' },
+	{ source: 'internal-slot-row', target: 'slot-row', behavior: 'slot-reorder' },
+	{ source: 'internal-slot-row', target: 'draw-order-row', behavior: 'slot-reorder' },
+	{ source: 'internal-slot-row', target: 'canvas-pasteboard', behavior: 'no-op' },
+	{ source: 'internal-slot-row', target: 'canvas-bounds', behavior: 'no-op' },
+	{ source: 'internal-bone-row', target: 'bone-row', behavior: 'bone-reparent' },
+	{ source: 'internal-bone-row', target: 'canvas-pasteboard', behavior: 'no-op' },
+	{ source: 'internal-bone-row', target: 'canvas-bounds', behavior: 'no-op' }
+] as const satisfies readonly CurrentDropSurfaceCharacterization[];
+
 export type DataTransferItemLike = Readonly<{
 	kind: DataTransferItem['kind'];
 	type: string;

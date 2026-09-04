@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
 	adaptDataTransferItems,
 	classifyExternalDrop,
+	CURRENT_DROP_SURFACE_CHARACTERIZATION,
 	INTERNAL_ASSET_DRAG_MIME
 } from '../../src/assets/external-drop.ts';
 import type { DataTransferItemLike } from '../../src/assets/external-drop.ts';
@@ -111,5 +112,22 @@ describe('external drop adapter and classifier', () => {
 			expect(route.files.map((entry) => entry.relativePath)).toEqual(['hero.png', 'notes.txt']);
 			expect(route.files.find((entry) => entry.relativePath === 'notes.txt')?.supportedMimeType).toBeUndefined();
 		}
+	});
+
+	test('records current target behavior, including the external canvas no-op', () => {
+		const behaviorFor = function behaviorFor(
+			source: 'os-single-file' | 'internal-asset-row' | 'internal-slot-row',
+			target: 'assets-panel' | 'canvas-pasteboard' | 'canvas-bounds' | 'slot-row' | 'viewport-controls' | 'draw-order-row'
+		): string | undefined {
+			return CURRENT_DROP_SURFACE_CHARACTERIZATION.find((entry) => entry.source === source && entry.target === target)?.behavior;
+		};
+
+		expect(behaviorFor('os-single-file', 'assets-panel')).toBe('asset-import');
+		expect(behaviorFor('os-single-file', 'canvas-pasteboard')).toBe('no-op');
+		expect(behaviorFor('os-single-file', 'canvas-bounds')).toBe('no-op');
+		expect(behaviorFor('os-single-file', 'viewport-controls')).toBe('excluded');
+		expect(behaviorFor('internal-asset-row', 'canvas-pasteboard')).toBe('internal-asset-placement');
+		expect(behaviorFor('internal-asset-row', 'slot-row')).toBe('internal-slot-assignment');
+		expect(behaviorFor('internal-slot-row', 'draw-order-row')).toBe('slot-reorder');
 	});
 });
