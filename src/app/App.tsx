@@ -57,6 +57,8 @@ import { Dialog, Tooltip } from './ui-primitives.tsx';
 import { buildRigTreeViewModel, revealAncestors, selectableEntityForRigNode, type RigTreeNode } from './rig-tree.ts';
 import { CanvasToolbar } from './canvas-toolbar.tsx';
 import { loadUiPreferences, projectUiPreferencesFor, saveUiPreferences, updateProjectUiPreferences, type ProjectUiPreferences, type UiPreferences } from './ui-preferences.ts';
+import { viewportPresentationFor, type ViewportPreset } from './viewport-presentation.ts';
+import { ViewportPresetControl } from './viewport-preset-control.tsx';
 import { clampWorkspaceLayout } from './workspace-layout.ts';
 import { numericPropertySpecs, type NumericProperty } from './property-drafts.ts';
 import { autoKeyCommandsForProperty, planPropertyKeyToggle, propertyKeyState, type KeyableProperty, type PropertyKeyState } from './keying.ts';
@@ -619,6 +621,10 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 
 		return evaluatePose(project, activeClip.id, frameTimeSeconds(activePlayback, activeClip), overrides).pose;
 	}, [activeClip?.durationSeconds, activeClip?.fps, activeClip?.id, activeClip?.loop, activePlayback.frameIndex, mode, pendingAnimationValues, project]);
+	const viewportPresentation = useMemo(
+		() => viewportPresentationFor(presentation.viewportPreset, mode),
+		[mode, presentation.viewportPreset]
+	);
 	const modeRef = useRef(mode);
 	modeRef.current = mode;
 	const activePoseRef = useRef(activePose);
@@ -634,6 +640,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		presentationRef.current = nextPresentation;
 		uiPreferencesRef.current = nextPreferences;
 		setPresentation(nextPresentation);
+	};
+	const setViewportPreset = function setViewportPreset(viewportPreset: ViewportPreset): void {
+		updatePresentation((current) => ({ ...current, viewportPreset }));
 	};
 	const toggleInspectorSection = function toggleInspectorSection(sectionId: string): void {
 		updatePresentation((current) => ({
@@ -3212,6 +3221,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 							<span className="context-label">{modeLabels[mode]} mode</span>
 							{constraintStatus && <span className="constraint-status" role="status">{constraintStatus}</span>}
 							<span className="viewport-readout">Canvas {project.logicalCanvas.width} × {project.logicalCanvas.height}</span>
+							<ViewportPresetControl preset={presentation.viewportPreset} onChange={setViewportPreset} />
 						</div>
 						<div className="viewport-body">
 							<div className="viewport-stage">
@@ -3234,6 +3244,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 										onCanvasSelect={selectCanvasPoint}
 										onCanvasMarquee={selectCanvasMarquee}
 										selection={selection}
+										viewportPresentation={viewportPresentation}
 										transformTool={transformTool}
 										gridVisible={gridSettings.visible}
 										gridSpacing={gridSettings.spacing}

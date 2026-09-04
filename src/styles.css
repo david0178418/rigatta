@@ -447,6 +447,8 @@ h2 {
 
 .viewport-toolbar {
 	justify-content: space-between;
+	gap: 8px;
+	min-width: 0;
 	padding: 0 17px;
 	border-bottom: 1px solid var(--border);
 	font-size: 11px;
@@ -458,7 +460,58 @@ h2 {
 }
 
 .viewport-readout {
+	min-width: 0;
+	overflow: hidden;
 	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.viewport-preset-control {
+	display: flex;
+	align-items: center;
+	flex: 0 1 auto;
+	gap: 6px;
+	min-width: 0;
+	margin-left: auto;
+}
+
+.viewport-preset-label {
+	color: var(--muted);
+	font-size: 9px;
+	white-space: nowrap;
+}
+
+.viewport-preset-options {
+	display: flex;
+	flex: 0 1 auto;
+	gap: 2px;
+	min-width: 0;
+	padding: 2px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: rgba(11, 14, 19, 0.42);
+}
+
+.viewport-preset-button {
+	min-width: 0;
+	padding: 4px 5px;
+	border: 1px solid transparent;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--muted);
+	font-size: 9px;
+	line-height: 1.1;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.viewport-preset-button:hover,
+.viewport-preset-button.is-active,
+.viewport-preset-button:focus-visible {
+	border-color: rgba(111, 212, 189, 0.55);
+	background: rgba(111, 212, 189, 0.12);
+	color: var(--accent-strong);
 }
 
 .grid-controls {
