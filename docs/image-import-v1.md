@@ -30,3 +30,11 @@ image attachment at the logical drop point; an empty project receives its
 root bone in the same undoable transaction. A bulk import is one immutable
 project command, allowing one undo entry and one debounced recovery snapshot
 for the whole drop.
+
+## Focused browser evidence
+
+`tests/e2e/external-drop.spec.ts` reports 10/10 Chromium tests. The workflow
+covers one-image atomic placement with undo/redo and reload recovery, bulk-file
+and folder handoff to Assets without automatic placement, unsupported/mixed
+and decode-failure summaries, duplicate-path rejection, existing-rig guidance,
+and keyboard operation of the empty-canvas actions.

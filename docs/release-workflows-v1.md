@@ -39,6 +39,25 @@ elements.
    `bunx playwright test tests/e2e/viewport-presets.spec.ts --project=chromium --workers=1`
 
    The proof writes inspectable screenshots to `/tmp/bone-animation-v1-<width>-<preset>.png`.
+   The committed viewport evidence is `f09f43d`.
+
+## Focused export and import evidence
+
+The Export workflow opens the built-in example, validates combined and
+per-clip grid ZIPs, packed output, and forced multipage packed output, then
+checks cancellation plus render, composition, packaging, and download failure
+recovery. `tests/e2e/export.spec.ts` reports 9/9 Chromium tests.
+
+The external-drop workflow places one PNG atomically at its logical canvas
+point, verifies undo/redo and reload recovery, routes multiple files and
+folders to Assets without placement, and reports unsupported, invalid, and
+duplicate-file failures with keyboard-accessible empty-canvas actions.
+`tests/e2e/external-drop.spec.ts` reports 10/10 Chromium tests.
+
+The focused timeline proof covers the default 260 px Animate timeline at
+1120x720 and 1440x900, including no selection, selected-bone, and All keyed
+states, sticky containment, scrolling, and at least three visible data rows.
+See `tests/e2e/timeline-layout-proof.spec.ts`.
 
 ## Recovery workflow
 

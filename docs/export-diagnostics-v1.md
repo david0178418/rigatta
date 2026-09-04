@@ -14,3 +14,8 @@ settings before frame work begins.
 Diagnostics carry `warning` or `error` severity and a path identifying the
 setting or browser capability involved. The export panel shows the diagnostics
 and the estimated peak before the export pipeline is allowed to proceed.
+
+The focused browser evidence in `tests/e2e/export.spec.ts` reports 9/9
+Chromium tests and covers render, composition, packaging, and browser-download
+failures. Each failure path verifies that no partial download is created before
+the later retry succeeds.

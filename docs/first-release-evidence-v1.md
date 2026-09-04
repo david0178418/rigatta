@@ -32,7 +32,7 @@ Playwright tests exercise the supported Chrome editor workflow.
 
 | Requirement | Evidence |
 | --- | --- |
-| Directory picker and directory drag/drop import | `tests/unit/import.test.ts` covers recursive handles and dropped files; the import browser flow is in `tests/e2e/smoke.spec.ts`. |
+| Directory picker and directory drag/drop import | `tests/unit/import.test.ts` covers recursive handles and dropped files; the import browser flow is in `tests/e2e/smoke.spec.ts`; the focused external-drop browser proof reports 10/10 Chromium tests in `tests/e2e/external-drop.spec.ts`. |
 | Preserve relative folders in the library | `tests/unit/import.test.ts` and `tests/unit/asset-library.test.ts` cover path traversal and deterministic folder entries. |
 | PNG, JPEG, and WebP support | `tests/unit/images.test.ts` covers supported signatures, dimensions, and MIME validation. |
 | Copy source images into local project storage | `tests/unit/repository.test.ts` covers separate image-blob persistence; `tests/unit/archive.test.ts` covers self-contained archive bytes. |
@@ -82,8 +82,12 @@ Playwright tests exercise the supported Chrome editor workflow.
 | Uniform grid sheets with full-size cells | `tests/unit/grid.test.ts` and `tests/unit/grid-output.test.ts` cover layout, PNG composition, and standard Pixi frame data. |
 | Packed, trimmed atlas regions with Pixi source and trim metadata | `tests/unit/trim.test.ts`, `tests/unit/packed-atlas.test.ts`, and `tests/unit/packed-output.test.ts` cover trimming, composition, and metadata. |
 | Multipage output at texture-size limits | `tests/unit/multipage.test.ts` and `tests/unit/export-integration.test.ts` cover deterministic page partitioning and multipage packed output. |
-| PixiJS-compatible frames, animations, and atlas metadata | `tests/unit/grid-output.test.ts`, `tests/unit/packed-output.test.ts`, and `tests/e2e/atlas.spec.ts` cover generation and reload through real PixiJS. |
+| PixiJS-compatible frames, animations, and atlas metadata | `tests/unit/grid-output.test.ts`, `tests/unit/packed-output.test.ts`, and `tests/e2e/atlas.spec.ts` cover generation and reload through real PixiJS; the focused downloaded-ZIP proof reports 9/9 Chromium tests in `tests/e2e/export.spec.ts`. |
 | Companion metadata for events and gameplay geometry | `tests/unit/metadata.test.ts` and the combined grid integration flow in `tests/unit/export-integration.test.ts` cover frame-indexed companion output. |
 
 The audit found no first-release requirement without executable evidence. The
 clean-checkout result is recorded in [`release-regression-v1.md`](release-regression-v1.md).
+
+The focused follow-up evidence also includes the default-height Animate layout
+proof in `tests/e2e/timeline-layout-proof.spec.ts` and the viewport presentation
+proof committed as `f09f43d` in `tests/e2e/viewport-presets.spec.ts`.
