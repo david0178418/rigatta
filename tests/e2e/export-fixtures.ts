@@ -2,6 +2,7 @@ import { expect, type Download, type Locator, type Page } from '@playwright/test
 import { strFromU8, unzlibSync, unzipSync } from 'fflate';
 import { readFile } from 'node:fs/promises';
 import type { SpritesheetData, SpritesheetFrameData } from 'pixi.js';
+import type { AtlasValidationHook } from '../../src/export/atlas-validation-page.ts';
 import {
 	EXAMPLE_CLIP_ID,
 	EXAMPLE_EVENT_ID,
@@ -23,6 +24,7 @@ export type ExportProofControl = {
 declare global {
 	interface Window {
 		__boneAnimationExportProof?: ExportProofControl;
+		__boneAnimationValidateAtlas?: AtlasValidationHook;
 	}
 }
 
@@ -300,31 +302,16 @@ const reloadPixiAtlasPage = async function reloadPixiAtlasPage(
 	atlas: SpritesheetData,
 	frameKeys: readonly string[]
 ): Promise<void> {
+	await page.goto('/?atlas-validation');
+	await expect(page.locator('#atlas-validation-result')).toContainText('"ok":true');
 	const validation = await page.evaluate(async ({ pngBytes, atlasData, keys }) => {
-		const atlasModuleUrl = `${location.origin}/src/export/pixi-atlas-validation.ts`;
-		const atlasModule = await import(atlasModuleUrl).catch(async (error: unknown) => {
-			const response = await fetch(atlasModuleUrl);
-			const body = await response.text();
-			throw new Error(`${error instanceof Error ? error.message : 'Atlas module import failed.'} (${response.status}) ${body.slice(0, 240)}`);
-		}) as typeof import('../../src/export/pixi-atlas-validation.ts');
-		const image = await createImageBitmap(new Blob([Uint8Array.from(pngBytes)], { type: 'image/png' }));
+		const validateAtlas = window.__boneAnimationValidateAtlas;
 
-		try {
-			const canvas = document.createElement('canvas');
-			canvas.width = image.width;
-			canvas.height = image.height;
-			const context = canvas.getContext('2d');
-
-			if (!context) {
-				throw new Error('The browser could not create an atlas validation context.');
-			}
-
-			context.drawImage(image, 0, 0);
-
-			return atlasModule.reloadPixiAtlasFrames(canvas, atlasData, keys);
-		} finally {
-			image.close();
+		if (!validateAtlas) {
+			throw new Error('The bundled atlas validation hook is unavailable.');
 		}
+
+		return validateAtlas({ pngBytes, atlasData, frameKeys: keys });
 	}, { pngBytes: Array.from(png), atlasData: atlas, keys: frameKeys });
 
 	if (!validation.ok) {
@@ -462,7 +449,7 @@ export const exportZip = async function exportZip(page: Page, dialog: Locator): 
 
 	await dialog.getByRole('button', { name: 'Export ZIP', exact: true }).click();
 	const download = await downloadPromise;
-const downloadPath = await download.path();
+	const downloadPath = await download.path();
 
 	if (!downloadPath) {
 		throw new Error('The export ZIP download path is unavailable.');
@@ -478,7 +465,7 @@ export const retryZip = async function retryZip(page: Page, dialog: Locator): Pr
 
 	await dialog.getByRole('button', { name: 'Retry', exact: true }).click();
 	const download = await downloadPromise;
-const downloadPath = await download.path();
+	const downloadPath = await download.path();
 
 	if (!downloadPath) {
 		throw new Error('The retry export ZIP download path is unavailable.');

@@ -28,6 +28,16 @@ const framesFailure = function framesFailure(error: string): PixiAtlasFramesVali
 };
 
 const readFrame = function readFrame(texture: Texture): ReloadedPixiFrame {
+	const trim = texture.trim;
+	const spriteSourceSize: FrameBounds = trim
+		? {
+			x: trim.x,
+			y: trim.y,
+			w: trim.width,
+			h: trim.height
+		}
+		: { x: 0, y: 0, w: texture.orig.width, h: texture.orig.height };
+
 	return {
 		frame: {
 			x: texture.frame.x,
@@ -36,12 +46,7 @@ const readFrame = function readFrame(texture: Texture): ReloadedPixiFrame {
 			h: texture.frame.height
 		},
 		sourceSize: { w: texture.orig.width, h: texture.orig.height },
-		spriteSourceSize: {
-			x: texture.trim.x,
-			y: texture.trim.y,
-			w: texture.trim.width,
-			h: texture.trim.height
-		}
+		spriteSourceSize
 	};
 };
 

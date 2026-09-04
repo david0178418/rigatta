@@ -76,7 +76,7 @@ test('downloads and validates the built-in example as combined packed output', a
 
 test('downloads and validates every page in a forced multipage packed export', async ({ page }) => {
 	await installExportProofControls(page);
-	await importProjectFixture(page, packedExampleProject(64));
+	await importProjectFixture(page, packedExampleProject(256));
 	const dialog = await exportDialogFor(page);
 	const result = await exportZip(page, dialog);
 
@@ -86,7 +86,7 @@ test('downloads and validates every page in a forced multipage packed export', a
 		clipNames: ['walk'],
 		frameCount: 12,
 		atlasMode: 'packed',
-		maxTextureSize: 64,
+		maxTextureSize: 256,
 		expectedPageCount: 'multiple'
 	});
 });

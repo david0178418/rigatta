@@ -1,6 +1,26 @@
 import { createPixiAtlasData } from './atlas.ts';
-import { reloadPixiAtlasFrames } from './pixi-atlas-validation.ts';
+import {
+	reloadPixiAtlasFrames,
+	type PixiAtlasFramesValidationResult
+} from './pixi-atlas-validation.ts';
+import type { SpritesheetData } from 'pixi.js';
 import { trimRgbaFrame } from './trim.ts';
+
+export type AtlasValidationRequest = Readonly<{
+	pngBytes: readonly number[];
+	atlasData: SpritesheetData;
+	frameKeys: readonly string[];
+}>;
+
+export type AtlasValidationHook = (
+	request: AtlasValidationRequest
+) => Promise<PixiAtlasFramesValidationResult>;
+
+declare global {
+	interface Window {
+		__boneAnimationValidateAtlas?: AtlasValidationHook;
+	}
+}
 
 const validationFrame = {
 	width: 4,
@@ -12,10 +32,36 @@ const validationFrame = {
 	])
 };
 
+const validateAtlasRequest = async function validateAtlasRequest(
+	request: AtlasValidationRequest
+): Promise<PixiAtlasFramesValidationResult> {
+	let image: ImageBitmap | undefined;
+
+	try {
+		image = await createImageBitmap(new Blob([Uint8Array.from(request.pngBytes)], { type: 'image/png' }));
+		const canvas = document.createElement('canvas');
+		canvas.width = image.width;
+		canvas.height = image.height;
+		const context = canvas.getContext('2d');
+
+		if (!context) {
+			return { ok: false, error: 'The atlas validation canvas could not be created.' };
+		}
+
+		context.drawImage(image, 0, 0);
+		return reloadPixiAtlasFrames(canvas, request.atlasData, request.frameKeys);
+	} catch (error: unknown) {
+		return { ok: false, error: error instanceof Error ? error.message : 'Atlas validation failed.' };
+	} finally {
+		image?.close();
+	}
+};
+
 export const runAtlasValidationPage = async function runAtlasValidationPage(): Promise<void> {
 	const output = document.createElement('pre');
 	output.id = 'atlas-validation-result';
 	document.body.replaceChildren(output);
+	window.__boneAnimationValidateAtlas = validateAtlasRequest;
 
 	try {
 		const trimmed = trimRgbaFrame(validationFrame);
