@@ -747,14 +747,19 @@ export const ViewportCanvas = function ViewportCanvas({
 			stage,
 			snapToGrid ?? DEFAULT_GRID_SETTINGS.snap
 		);
+		const assetId = event.dataTransfer.getData('application/x-bone-animation-asset');
+
+		if (nextDropMode === 'internal-asset' && assetId && onAssetDrop) {
+			onAssetDrop(assetId, point);
+			return;
+		}
+
 		const items: readonly DataTransferItemLike[] = Array.from(event.dataTransfer.items);
 
 		if (items.length > 0 && onExternalDrop) {
 			onExternalDrop(items, point);
 			return;
 		}
-
-		const assetId = event.dataTransfer.getData('application/x-bone-animation-asset');
 
 		if (assetId && onAssetDrop) {
 			onAssetDrop(assetId, point);

@@ -170,7 +170,7 @@ test('marks every thumbnail for lazy offscreen decoding while retaining folder c
 	});
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Import image directory' }).click();
+	await page.getByRole('region', { name: /Empty 1024 by 1024 canvas/ }).getByRole('button', { name: 'Import image directory', exact: true }).click();
 
 	const browser = page.locator('.asset-browser');
 	await expect(browser).toBeVisible();

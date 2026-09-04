@@ -26,7 +26,6 @@ export type WorkspaceDocksProps = Readonly<{
 	rigSearch: string;
 	selectedBone?: Project['bones'][number];
 	selectedSlot?: Project['slots'][number];
-	isImporting: boolean;
 	onLayoutChange: (layout: WorkspaceLayout) => void;
 	onLeftDockTabChange: (tab: LeftDockTab) => void;
 	onRightDockTabChange: (tab: RightDockTab) => void;
@@ -39,7 +38,6 @@ export type WorkspaceDocksProps = Readonly<{
 	onAddPointAttachment: () => void;
 	onAddRectangleAttachment: () => void;
 	onOpenImageAttachmentWorkflow: () => void;
-	onImportDirectory: () => void;
 	rigTreeProps: RigTreeViewProps;
 	drawOrderProps: DrawOrderPanelProps;
 	assetBrowserProps: AssetBrowserProps;
@@ -57,7 +55,6 @@ export const WorkspaceDocks = function WorkspaceDocks({
 	rigSearch,
 	selectedBone,
 	selectedSlot,
-	isImporting,
 	onLayoutChange,
 	onLeftDockTabChange,
 	onRightDockTabChange,
@@ -70,7 +67,6 @@ export const WorkspaceDocks = function WorkspaceDocks({
 	onAddPointAttachment,
 	onAddRectangleAttachment,
 	onOpenImageAttachmentWorkflow,
-	onImportDirectory,
 	rigTreeProps,
 	drawOrderProps,
 	assetBrowserProps,
@@ -147,9 +143,6 @@ export const WorkspaceDocks = function WorkspaceDocks({
 			{!layout.rightDockCollapsed && <>
 				<div aria-labelledby="right-dock-properties-tab" className="dock-tabpanel" hidden={rightDockTab !== 'properties'} id="right-dock-properties-panel" role="tabpanel" tabIndex={0}>
 					{rightDockTab === 'properties' && <>
-						<button className="secondary-button asset-import-shortcut" type="button" disabled={isImporting} onClick={onImportDirectory}>
-							Import image directory
-						</button>
 						<PropertiesInspector {...propertiesProps} showSharedInspector />
 					</>}
 				</div>

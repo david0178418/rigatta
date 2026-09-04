@@ -6,7 +6,12 @@ test('opens the empty editor shell', async ({ page }) => {
 	await expect(page).toHaveTitle('Bone Animation Utility');
 	await expect(page.getByRole('heading', { name: 'Untitled project' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Animate' })).toBeVisible();
-	await expect(page.getByText('Drop image parts here')).toBeVisible();
+	const emptyCanvas = page.getByRole('region', { name: /Empty 1024 by 1024 canvas/ });
+
+	await expect(emptyCanvas).toBeVisible();
+	await expect(emptyCanvas).toContainText('Start with an image');
+	await expect(emptyCanvas).toContainText('Drop one supported image here to import and place it.');
+	await expect(emptyCanvas.getByRole('button', { name: 'Load example', exact: true })).toBeVisible();
 });
 
 test('loads the built-in example project', async ({ page }) => {
@@ -362,12 +367,14 @@ test('keys rectangle rotation, dimensions, and enabled state', async ({ page }) 
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await expect(page.getByText('Rectangle size · width · rectangle', { exact: true })).toBeVisible();
 	await page.getByText('Rectangle size · width · rectangle', { exact: true }).click();
+	await page.getByRole('button', { name: 'Track details', exact: true }).click();
 	await expect(page.getByText('Selected: Rectangle size · width · rectangle', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Add key' }).click();
 	await page.getByRole('combobox', { name: 'New track' }).selectOption({ label: 'rectangle · Rectangle · enabled' });
 	await page.getByRole('button', { name: 'Add track' }).click();
 	await expect(page.getByText('Rectangle enabled · rectangle', { exact: true })).toBeVisible();
 	await page.getByText('Rectangle enabled · rectangle', { exact: true }).click();
+	await page.getByRole('button', { name: 'Track details', exact: true }).click();
 	await page.getByRole('button', { name: 'Add key' }).click();
 
 	await expect(page.getByRole('button', { name: 'Key frame 1' })).toHaveCount(3);
@@ -562,12 +569,13 @@ test('imports an image directory and creates a dropped image part', async ({ pag
 	});
 	await page.goto('/');
 
-	await page.getByRole('button', { name: 'Import image directory' }).click();
-	await expect(page.getByText('hero.png', { exact: true })).toBeVisible();
-	await expect(page.getByText('alt.png', { exact: true })).toBeVisible();
+	await page.getByRole('region', { name: /Empty 1024 by 1024 canvas/ }).getByRole('button', { name: 'Import image directory', exact: true }).click();
+	const browser = page.locator('.asset-browser');
+	await expect(browser.locator('.asset-row').filter({ hasText: 'hero.png' })).toBeVisible();
+	await expect(browser.locator('.asset-row').filter({ hasText: 'alt.png' })).toBeVisible();
 	await expect(page.getByText('Imported 2 images.', { exact: true })).toBeVisible();
-	await expect(page.getByText('Drop on the canvas to create a root bone, slot, and attachment.', { exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Import image directory' }).click();
+	await expect(page.getByText('Drag an imported image from Assets onto this canvas to create the root, slot, and attachment.', { exact: true })).toBeVisible();
+	await browser.getByRole('button', { name: 'Import image directory', exact: true }).click();
 	await expect(page.getByText('Imported 0 images · 2 conflicts.', { exact: true })).toBeVisible();
 	await page.getByText('Show import details', { exact: true }).click();
 	await expect(page.getByText('Conflict', { exact: true }).first()).toBeVisible();

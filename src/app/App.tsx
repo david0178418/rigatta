@@ -23,7 +23,7 @@ import type { DuplicateClipIds, EventKeyInput, EventKeyUpdate, NumberKeyInterpol
 import { advancePlayback, createPlaybackState, frameTimeSeconds, seekPlayback, stepPlayback, togglePlayback, type PlaybackDirection, type PlaybackState } from '../domain/playback.ts';
 import { localPointForBone, evaluateBoneWorldMatrices } from '../domain/transforms.ts';
 import type { OperationResult } from '../domain/operations.ts';
-import { adaptDataTransferItems, classifyExternalDrop, INTERNAL_ASSET_DRAG_MIME, type DataTransferItemLike, type ExternalDropDirectory, type ExternalDropFile, type ExternalDropRoute, type ExternalDropUnsupportedItem } from '../assets/external-drop.ts';
+import { adaptDataTransferItems, classifyExternalDrop, INTERNAL_ASSET_DRAG_MIME, type DataTransferItemLike, type ExternalDropDirectory, type ExternalDropFile, type ExternalDropItem, type ExternalDropRoute } from '../assets/external-drop.ts';
 import { importDroppedEntries, pickImageDirectory, type AssetDropItem, type AssetImportEntriesResult, type AssetImportResult, type ImportedImage } from '../assets/import.ts';
 import { planBulkImport, planSingleImageImportAndPlace, type BulkImportPlan } from '../assets/import-planner.ts';
 import { createAutosaveScheduler, type AutosaveStatus } from '../persistence/autosave.ts';
@@ -159,14 +159,27 @@ const assetImportEntriesFor = function assetImportEntriesFor(
 };
 
 const unsupportedEntriesFor = function unsupportedEntriesFor(
-	items: readonly ExternalDropUnsupportedItem[]
+	items: readonly ExternalDropItem[]
 ): AssetImportEntriesResult {
 	return {
-		entries: items.map((item) => ({
-			kind: 'unsupported' as const,
-			relativePath: item.name,
-			reason: item.reason
-		}))
+		entries: items.flatMap((item) => {
+			if (item.kind === 'unsupported-item') {
+				return [{
+					kind: 'unsupported' as const,
+					relativePath: item.name,
+					reason: item.reason
+				}];
+			}
+			if (item.kind === 'external-file' && !item.supportedMimeType) {
+				return [{
+					kind: 'unsupported' as const,
+					relativePath: item.relativePath,
+					reason: 'Unsupported image type.'
+				}];
+			}
+
+			return [];
+		})
 	};
 };
 
@@ -2121,9 +2134,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 				return;
 			}
 
-			const unsupported = route.items.flatMap((item) => item.kind === 'unsupported-item' ? [item] : []);
-
-			setAssetImportSummary(assetImportFailureSummaryFor(unsupportedEntriesFor(unsupported)));
+			setAssetImportSummary(assetImportFailureSummaryFor(unsupportedEntriesFor(route.items)));
 			setAssetError(route.reason);
 			updatePresentation((current) => ({
 				...current,
@@ -3362,7 +3373,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 <WorkspaceDocks
 	assetBrowserProps={assetBrowserProps}
 	drawOrderProps={drawOrderProps}
-					isImporting={isImporting}
 					leftDockTab={presentation.leftDockTab}
 					layout={presentation.layout}
 					mode={mode}
@@ -3372,7 +3382,6 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 					onAddSlot={addSlot}
 					onCreateRootBone={createRootBone}
 					onOpenImageAttachmentWorkflow={openImageAttachmentWorkflow}
-					onImportDirectory={() => void importDirectory()}
 					onLayoutChange={(layout) => updatePresentation((current) => ({ ...current, layout }))}
 					onLeftDockTabChange={(leftDockTab) => updatePresentation((current) => ({ ...current, leftDockTab }))}
 					onRigSearchChange={setRigSearch}

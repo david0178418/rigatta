@@ -15,7 +15,7 @@ test('shows action tooltips for compact workspace and viewport controls', async 
 	await expect(tooltipFor(leftDockToggle)).toHaveText('Collapse left dock');
 
 	await page.getByRole('tab', { name: 'Assets', exact: true }).click();
-	const importImages = page.getByRole('button', { name: 'Import image directory', exact: true });
+	const importImages = page.locator('.asset-browser').getByRole('button', { name: 'Import image directory', exact: true });
 	await importImages.focus();
 	await expect(tooltipFor(importImages)).toBeVisible();
 	await expect(tooltipFor(importImages)).toHaveText('Import image directory');

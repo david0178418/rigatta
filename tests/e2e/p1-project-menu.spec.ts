@@ -21,7 +21,7 @@ test('organizes project lifecycle actions and fixed project settings in the Proj
 	await expect(menu.getByRole('menuitem', { name: 'Export project archive', exact: true })).toBeVisible();
 	await expect(menu.getByRole('menuitem', { name: 'Load example', exact: true })).toBeVisible();
 	await expect(menu.getByRole('menuitem', { name: 'Project settings', exact: true })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Load example', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Load example', exact: true })).toHaveCount(1);
 	await expect(page.getByRole('button', { name: 'Export', exact: true })).toHaveAttribute('title', 'Export sprite sheet');
 
 	await menu.getByRole('menuitem', { name: 'Project settings', exact: true }).click();
