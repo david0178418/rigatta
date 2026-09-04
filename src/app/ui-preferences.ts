@@ -1,7 +1,7 @@
 import { isEntityId, type EntityId } from '../domain/ids.ts';
 import type { Project } from '../domain/model.ts';
 import { DEFAULT_WORKSPACE_LAYOUT, type WorkspaceLayout } from './workspace-layout.ts';
-import { timelineEntityIdsForProject, type TimelineRowMode } from './timeline-model.ts';
+import { normalizeTimelineRowMode, timelineEntityIdsForProject, type TimelineRowMode } from './timeline-model.ts';
 import type { SelectableEntity, Selection } from './selection.ts';
 import { SELECTION_HISTORY_LIMIT } from './selection-history.ts';
 import { DEFAULT_VIEWPORT_PRESET, isViewportPreset, type ViewportPreset } from './viewport-presentation.ts';
@@ -47,7 +47,7 @@ export const defaultProjectUiPreferences = function defaultProjectUiPreferences(
 		rigExpandedIds: [],
 		hiddenEntityIds: [],
 		selectionHistory: [],
-		timelineRowMode: 'selection',
+		timelineRowMode: 'auto',
 		timelineExpandedIds: [],
 		pinnedTimelineEntityIds: [],
 		collapsedInspectorSections: []
@@ -118,10 +118,6 @@ const isAssetDensity = function isAssetDensity(value: unknown): value is AssetDe
 	return value === 'list' || value === 'compact' || value === 'thumbnail';
 };
 
-const isTimelineRowMode = function isTimelineRowMode(value: unknown): value is TimelineRowMode {
-	return value === 'selection' || value === 'all-keyed';
-};
-
 const isLeftDockTab = function isLeftDockTab(value: unknown): value is LeftDockTab {
 	return value === 'rig' || value === 'draw-order';
 };
@@ -171,7 +167,7 @@ const parseProjectPreferences = function parseProjectPreferences(
 		rigExpandedIds: isIdArray(value.rigExpandedIds) ? [...value.rigExpandedIds] : defaults.rigExpandedIds,
 		hiddenEntityIds: isIdArray(value.hiddenEntityIds) ? [...value.hiddenEntityIds] : defaults.hiddenEntityIds,
 		selectionHistory: selectionHistoryForStoredValue(value.selectionHistory),
-		timelineRowMode: isTimelineRowMode(value.timelineRowMode) ? value.timelineRowMode : defaults.timelineRowMode,
+		timelineRowMode: normalizeTimelineRowMode(value.timelineRowMode),
 		timelineExpandedIds: isStringArray(value.timelineExpandedIds) ? [...value.timelineExpandedIds] : defaults.timelineExpandedIds,
 		pinnedTimelineEntityIds: isIdArray(value.pinnedTimelineEntityIds) ? [...value.pinnedTimelineEntityIds] : defaults.pinnedTimelineEntityIds,
 		collapsedInspectorSections: isStringArray(value.collapsedInspectorSections) ? [...value.collapsedInspectorSections] : defaults.collapsedInspectorSections

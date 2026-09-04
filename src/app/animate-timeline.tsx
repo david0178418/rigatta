@@ -5,7 +5,7 @@ import { frameCountForClip, frameTimeSeconds, type PlaybackDirection, type Playb
 import type { Clip, Project, Track } from '../domain/model.ts';
 import { availableTrackDefinitions, buildTimelineTrackRows, createTimelineViewport, frameIndexForTime, panTimeline, resetTimelineViewport, timelineFrameRange, visibleFrameCount, zoomTimeline, type TimelineViewport } from './timeline.ts';
 import { timelineHeightBounds, timelineHeightFromKeyboard, timelineHeightFromPointer } from './timeline-layout.ts';
-import { buildGroupedTimelineRows, createTimelineClipboard, planKeyDrag, planNudgeKeys, selectableEntityForTimelineRow, selectableTimelineKeysForRows, validPinnedTimelineEntityIds, type TimelineClipboard, type TimelineKeyReference, type TimelineMarkerKind, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
+import { createTimelineClipboard, planKeyDrag, planNudgeKeys, resolveEffectiveTimelineRows, selectableEntityForTimelineRow, selectableTimelineKeysForRows, validPinnedTimelineEntityIds, type TimelineClipboard, type TimelineKeyReference, type TimelineMarkerKind, type TimelineRow, type TimelineRowMode } from './timeline-model.ts';
 import { isSelected, type SelectableEntity, type Selection } from './selection.ts';
 import type { InspectorContext } from './inspector-context.ts';
 import type { TransformTool } from './transform-gesture.ts';
@@ -358,7 +358,11 @@ export const AnimateTimeline = function AnimateTimeline({
 			.filter((row) => row.track.id === selectedTrackId)
 			.flatMap((row) => 'targetId' in row.track ? [row.track.targetId] : []))
 		: new Set<EntityId>();
-	const groupedRows = activeClip ? buildGroupedTimelineRows(project, activeClip, {
+	const trackOptions = activeClip ? availableTrackDefinitions(project, activeClip) : [];
+	const selectedTrackOption = trackOptions.find((candidate) => candidate.value === trackDefinitionValue) ?? trackOptions[0];
+	const selectedRow = trackRows.find((row) => row.track.id === selectedTrackId) ?? trackRows[0];
+	const selectedTrack = selectedRow?.track;
+	const effectiveTimelineRows = activeClip ? resolveEffectiveTimelineRows(project, activeClip, {
 		mode: rowMode,
 		filter: trackFilter,
 		expandedIds: expandedRowIds,
@@ -366,11 +370,9 @@ export const AnimateTimeline = function AnimateTimeline({
 		selection,
 		selectedTrackIds: selectedTrackId ? new Set([selectedTrackId]) : new Set<EntityId>(),
 		selectedEntityIds: selectedTrackEntityIds
-	}) : [];
-	const trackOptions = activeClip ? availableTrackDefinitions(project, activeClip) : [];
-	const selectedTrackOption = trackOptions.find((candidate) => candidate.value === trackDefinitionValue) ?? trackOptions[0];
-	const selectedRow = trackRows.find((row) => row.track.id === selectedTrackId) ?? trackRows[0];
-	const selectedTrack = selectedRow?.track;
+	}) : undefined;
+	const visibleTrackCount = effectiveTimelineRows?.trackCount ?? 0;
+	const groupedRows = effectiveTimelineRows?.rows ?? [];
 	const selectedKeyMarkers = selectedKeys.flatMap((reference) => {
 		const row = trackRows.find((candidate) => candidate.track.id === reference.trackId);
 		const key = row?.keys.find((candidate) => candidate.id === reference.keyId);
@@ -1115,11 +1117,11 @@ export const AnimateTimeline = function AnimateTimeline({
 										<select aria-label="Timeline rows" value={rowMode} onChange={(event) => {
 											const nextMode = event.target.value;
 
-											if (nextMode === 'selection' || nextMode === 'all-keyed') {
+											if (nextMode === 'auto' || nextMode === 'all-keyed') {
 												onRowModeChange(nextMode);
 											}
 										}}>
-											<option value="selection">Selection</option>
+											<option value="auto">Auto</option>
 											<option value="all-keyed">All keyed</option>
 										</select>
 									</label>
@@ -1130,7 +1132,7 @@ export const AnimateTimeline = function AnimateTimeline({
 							<div className="timeline-content" id="animation-timeline-pane" data-testid="timeline-scroll-region">
 								<div className="timeline-ruler-meta">
 									<span aria-label="Timeline frame range">Frames {timelineRange.startFrame + 1}–{timelineRange.endFrame + 1} of {frameCount}</span>
-									<span className="muted-copy">{trackRows.length} matching track{trackRows.length === 1 ? '' : 's'}</span>
+										<span className="muted-copy">{visibleTrackCount} matching track{visibleTrackCount === 1 ? '' : 's'}</span>
 									{timelineNotice && <span className="timeline-notice" role="status">{timelineNotice}</span>}
 									{poseClipboardNotice && <span className="pose-clipboard-notice" role="status" aria-live="polite">{poseClipboardNotice}</span>}
 								</div>
@@ -1154,7 +1156,7 @@ export const AnimateTimeline = function AnimateTimeline({
 											))}
 										</div>
 									</div>
-									{trackRows.length === 0 && !groupedRows.some((row) => row.kind === 'draw-order' || row.kind === 'events') ? (
+									{visibleTrackCount === 0 && !groupedRows.some((row) => row.kind === 'draw-order' || row.kind === 'events') ? (
 										<div className="dopesheet-empty">No typed tracks match this filter.</div>
 										) : (
 											<div className="dopesheet-body" ref={timelineKeyAreaRef}>
@@ -1190,7 +1192,7 @@ export const AnimateTimeline = function AnimateTimeline({
 																				<button className="timeline-row-expander" type="button" aria-expanded={row.expanded} aria-label={`${row.expanded ? 'Collapse' : 'Expand'} ${row.label}`} onClick={() => toggleTimelineGroup(row.id)}>{row.expanded ? '▾' : '▸'}</button>
 																			</Tooltip>
 																			<button className="timeline-row-select" type="button" aria-pressed={row.selected} onClick={(event) => selectTimelineRow(row, event.metaKey || event.ctrlKey)}><span>{row.label}</span><small>{row.subLabel}</small></button>
-																			{rowMode === 'selection' && <Tooltip label={`${visiblePinnedEntityIds.has(entityId) ? 'Unpin' : 'Pin'} ${row.label} timeline rows`}><button className={visiblePinnedEntityIds.has(entityId) ? 'timeline-pin is-pinned' : 'timeline-pin'} type="button" aria-pressed={visiblePinnedEntityIds.has(entityId)} aria-label={`${visiblePinnedEntityIds.has(entityId) ? 'Unpin' : 'Pin'} ${row.label} timeline rows`} onClick={(event) => { event.stopPropagation(); onTogglePinnedEntity(entityId); }}>{visiblePinnedEntityIds.has(entityId) ? '●' : '○'}</button></Tooltip>}
+																		{rowMode === 'auto' && <Tooltip label={`${visiblePinnedEntityIds.has(entityId) ? 'Unpin' : 'Pin'} ${row.label} timeline rows`}><button className={visiblePinnedEntityIds.has(entityId) ? 'timeline-pin is-pinned' : 'timeline-pin'} type="button" aria-pressed={visiblePinnedEntityIds.has(entityId)} aria-label={`${visiblePinnedEntityIds.has(entityId) ? 'Unpin' : 'Pin'} ${row.label} timeline rows`} onClick={(event) => { event.stopPropagation(); onTogglePinnedEntity(entityId); }}>{visiblePinnedEntityIds.has(entityId) ? '●' : '○'}</button></Tooltip>}
 																</div>
 																					<div
 																							aria-keyshortcuts="ArrowLeft ArrowRight Home End Enter Space"

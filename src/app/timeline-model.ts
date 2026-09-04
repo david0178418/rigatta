@@ -6,7 +6,8 @@ import type { SelectableEntity, Selection } from './selection.ts';
 import { trackLabel } from './timeline.ts';
 
 export type TimelineRowKind = 'overview' | 'entity' | 'property' | 'draw-order' | 'events';
-export type TimelineRowMode = 'selection' | 'all-keyed';
+export type TimelineRowMode = 'auto' | 'all-keyed';
+export type TimelineRowModeInput = TimelineRowMode | 'selection';
 
 export type TimelineMarkerKind =
 	| 'continuous-stepped'
@@ -39,8 +40,19 @@ export type TimelineRow = Readonly<{
 	keys: readonly TimelineKeyMarker[];
 	}>;
 
+export type EffectiveTimelineRows = Readonly<{
+	mode: TimelineRowMode;
+	selectedEntityIds: readonly EntityId[];
+	pinnedEntityIds: readonly EntityId[];
+	entityIds: readonly EntityId[];
+	tracks: readonly Track[];
+	trackCount: number;
+	keyedTrackCount: number;
+	rows: readonly TimelineRow[];
+}>;
+
 export type TimelineModelOptions = Readonly<{
-	mode?: TimelineRowMode;
+	mode?: TimelineRowModeInput;
 	filter?: string;
 	expandedIds?: ReadonlySet<string>;
 	pinnedEntityIds?: ReadonlySet<EntityId>;
@@ -84,11 +96,8 @@ export type TimelineEditResult<TValue> =
 	| Readonly<{ ok: true; value: TValue }>
 	| Readonly<{ ok: false; error: string }>;
 
-const isSelectedId = function isSelectedId(
-	selection: Selection | undefined,
-	entityId: EntityId
-): boolean {
-	return selection?.some((entity) => entity.id === entityId) ?? false;
+export const normalizeTimelineRowMode = function normalizeTimelineRowMode(value: unknown): TimelineRowMode {
+	return value === 'all-keyed' ? 'all-keyed' : 'auto';
 };
 
 const frameCountForClip = function frameCountForClip(clip: Clip): number | undefined {
@@ -170,6 +179,97 @@ const trackEntityId = function trackEntityId(track: Track): EntityId | undefined
 	return 'targetId' in track ? track.targetId : undefined;
 };
 
+const uniqueEntityIds = function uniqueEntityIds(ids: readonly EntityId[]): readonly EntityId[] {
+	return ids.filter((id, index) => ids.indexOf(id) === index);
+};
+
+const selectionEntityIsValid = function selectionEntityIsValid(
+	project: Project,
+	entity: SelectableEntity
+): boolean {
+	if (entity.kind === 'asset') {
+		return false;
+	}
+	if (entity.kind === 'bone') {
+		return project.bones.some((bone) => bone.id === entity.id);
+	}
+	if (entity.kind === 'slot') {
+		return project.slots.some((slot) => slot.id === entity.id);
+	}
+
+	return project.attachments.some((attachment) => attachment.id === entity.id);
+};
+
+export const selectedTimelineEntityIdsForProject = function selectedTimelineEntityIdsForProject(
+	project: Project,
+	selection: Selection | undefined
+): readonly EntityId[] {
+	return uniqueEntityIds((selection ?? []).flatMap((entity) => (
+		selectionEntityIsValid(project, entity) ? [entity.id] : []
+	)));
+};
+
+export const isTimelineTrackValidForProject = function isTimelineTrackValidForProject(
+	project: Project,
+	track: Track
+): boolean {
+	if (track.kind === 'slot-draw-order') {
+		return true;
+	}
+	if (track.kind === 'bone-transform') {
+		return project.bones.some((bone) => bone.id === track.targetId);
+	}
+	if (track.kind === 'slot-attachment') {
+		return project.slots.some((slot) => slot.id === track.targetId);
+	}
+
+	return project.attachments.some((attachment) => attachment.id === track.targetId);
+};
+
+const keyedTimelineEntityIds = function keyedTimelineEntityIds(
+	project: Project,
+	clip: Clip
+): readonly EntityId[] {
+	return uniqueEntityIds(clip.tracks.flatMap((track) => {
+		const targetId = trackEntityId(track);
+
+		return isTimelineTrackValidForProject(project, track) && track.keys.length > 0 && targetId
+			? [targetId]
+			: [];
+	}));
+};
+
+export const effectiveTimelineEntityIds = function effectiveTimelineEntityIds(
+	project: Project,
+	clip: Clip,
+	options: TimelineModelOptions = {}
+): readonly EntityId[] {
+	const mode = normalizeTimelineRowMode(options.mode);
+	const selectedEntityIds = uniqueEntityIds([
+		...selectedTimelineEntityIdsForProject(project, options.selection),
+		...[...(options.selectedEntityIds ?? [])].filter((entityId) => timelineEntityIdsForProject(project).has(entityId))
+	]);
+	const pinnedEntityIds = [...validPinnedTimelineEntityIds(project, options.pinnedEntityIds)];
+	const keyedEntityIds = keyedTimelineEntityIds(project, clip);
+	const baseEntityIds = mode === 'all-keyed'
+		? keyedEntityIds
+		: selectedEntityIds.length > 0
+			? selectedEntityIds
+			: keyedEntityIds;
+
+	return uniqueEntityIds(mode === 'auto' ? [...baseEntityIds, ...pinnedEntityIds] : baseEntityIds);
+};
+
+const trackMatchesFilter = function trackMatchesFilter(
+	project: Project,
+	track: Track,
+	filter: string
+): boolean {
+	const query = filter.trim().toLowerCase();
+
+	return query.length === 0 || `${trackLabel(project, track)} ${track.kind}`.toLowerCase().includes(query);
+};
+
 const trackDefinition = function trackDefinition(track: Track): TrackDefinition {
 	if (track.kind === 'slot-draw-order') {
 		return { kind: 'slot-draw-order' };
@@ -248,35 +348,41 @@ const rowMatchesFilter = function rowMatchesFilter(row: TimelineRow, filter: str
 };
 
 const trackIsVisible = function trackIsVisible(
+	project: Project,
 	track: Track,
 	mode: TimelineRowMode,
-	selection: Selection | undefined,
-	pinnedEntityIds: ReadonlySet<EntityId>,
+	effectiveEntityIds: ReadonlySet<EntityId>,
 	selectedTrackIds: ReadonlySet<EntityId>,
-	selectedEntityIds: ReadonlySet<EntityId>
+	filter: string
 ): boolean {
+	if (!isTimelineTrackValidForProject(project, track) || !trackMatchesFilter(project, track, filter)) {
+		return false;
+	}
 	if (mode === 'all-keyed') {
 		return track.keys.length > 0;
 	}
 
 	const targetId = trackEntityId(track);
 
-	return targetId === undefined || isSelectedId(selection, targetId) || pinnedEntityIds.has(targetId) || selectedTrackIds.has(track.id) || targetId !== undefined && selectedEntityIds.has(targetId);
+	return targetId === undefined
+		? track.keys.length > 0
+		: effectiveEntityIds.has(targetId) || selectedTrackIds.has(track.id);
 };
 
 const groupTrackRows = function groupTrackRows(
 	project: Project,
 	clip: Clip,
-	options: TimelineModelOptions
+	options: TimelineModelOptions,
+	tracks: readonly Track[]
 ): readonly TimelineRow[] {
-	const mode = options.mode ?? 'selection';
 	const selection = options.selection ?? [];
-	const pinnedEntityIds = validPinnedTimelineEntityIds(project, options.pinnedEntityIds);
 	const selectedTrackIds = options.selectedTrackIds ?? new Set<EntityId>();
-	const selectedEntityIds = options.selectedEntityIds ?? new Set<EntityId>();
+	const selectedEntityIds = new Set([
+		...selectedTimelineEntityIdsForProject(project, selection),
+		...[...(options.selectedEntityIds ?? [])].filter((entityId) => timelineEntityIdsForProject(project).has(entityId))
+	]);
 	const expandedIds = options.expandedIds ?? new Set<string>();
 	const query = options.filter ?? '';
-	const tracks = clip.tracks.filter((track) => trackIsVisible(track, mode, selection, pinnedEntityIds, selectedTrackIds, selectedEntityIds));
 	const grouped = tracks.reduce<ReadonlyMap<EntityId, readonly Track[]>>((groups, track) => {
 		const targetId = trackEntityId(track);
 
@@ -306,24 +412,12 @@ const groupTrackRows = function groupTrackRows(
 			entityId,
 			expandable: true,
 			expanded: false,
-			selected: isSelectedId(selection, entityId)
-				|| selectedEntityIds.has(entityId)
+			selected: selectedEntityIds.has(entityId)
 				|| entityTracks.some((track) => selectedTrackIds.has(track.id)),
 			keyed: entityTracks.some((track) => track.keys.length > 0),
 			keys: keysForTracks(clip, entityTracks)
 		};
-		const matchingTracks = entityTracks.filter((track) => rowMatchesFilter({
-			id: track.id,
-			kind: 'property',
-			depth: 1,
-			label: trackLabel(project, track),
-			trackId: track.id,
-			expandable: false,
-			expanded: false,
-			selected: false,
-			keyed: track.keys.length > 0,
-			keys: markersForTrack(clip, track)
-		}, query));
+		const matchingTracks = entityTracks;
 		const expandsByDefault = expandedIds.size === 0;
 		const expandsForFilter = query.trim().length > 0 && matchingTracks.length > 0;
 		const group: TimelineRow = {
@@ -358,10 +452,11 @@ const groupTrackRows = function groupTrackRows(
 
 const dedicatedRows = function dedicatedRows(
 	clip: Clip,
-	options: TimelineModelOptions
+	options: TimelineModelOptions,
+	tracks: readonly Track[]
 ): readonly TimelineRow[] {
 	const query = options.filter ?? '';
-	const drawOrderTracks = clip.tracks.filter((track) => track.kind === 'slot-draw-order');
+	const drawOrderTracks = tracks.filter((track) => track.kind === 'slot-draw-order');
 	const drawOrder: TimelineRow | undefined = drawOrderTracks.length > 0
 		? {
 			id: 'draw-order',
@@ -397,34 +492,76 @@ const dedicatedRows = function dedicatedRows(
 	];
 };
 
-export const buildGroupedTimelineRows = function buildGroupedTimelineRows(
+const buildGroupedTimelineRowsForTracks = function buildGroupedTimelineRowsForTracks(
 	project: Project,
 	clip: Clip,
-	options: TimelineModelOptions = {}
+	options: TimelineModelOptions,
+	tracks: readonly Track[]
 ): readonly TimelineRow[] {
-	const pinnedEntityIds = validPinnedTimelineEntityIds(project, options.pinnedEntityIds);
-	const visibleTracks = clip.tracks.filter((track) => trackIsVisible(
-		track,
-		options.mode ?? 'selection',
-		options.selection,
-		pinnedEntityIds,
-		options.selectedTrackIds ?? new Set<EntityId>(),
-		options.selectedEntityIds ?? new Set<EntityId>()
-	));
 	const overview: TimelineRow = {
 		id: 'overview',
 		kind: 'overview',
 		depth: 0,
 		label: clip.name,
-		subLabel: `${visibleTracks.length} track${visibleTracks.length === 1 ? '' : 's'}`,
+		subLabel: `${tracks.length} track${tracks.length === 1 ? '' : 's'}`,
 		expandable: false,
 		expanded: false,
 		selected: false,
-		keyed: visibleTracks.some((track) => track.keys.length > 0),
-		keys: keysForTracks(clip, visibleTracks)
+		keyed: tracks.some((track) => track.keys.length > 0),
+		keys: keysForTracks(clip, tracks)
 	};
 
-	return [overview, ...groupTrackRows(project, clip, { ...options, pinnedEntityIds }), ...dedicatedRows(clip, options)];
+	return [overview, ...groupTrackRows(project, clip, options, tracks), ...dedicatedRows(clip, options, tracks)];
+};
+
+export const resolveEffectiveTimelineRows = function resolveEffectiveTimelineRows(
+	project: Project,
+	clip: Clip,
+	options: TimelineModelOptions = {}
+): EffectiveTimelineRows {
+	const mode = normalizeTimelineRowMode(options.mode);
+	const validEntityIds = timelineEntityIdsForProject(project);
+	const selectedEntityIds = uniqueEntityIds([
+		...selectedTimelineEntityIdsForProject(project, options.selection),
+		...[...(options.selectedEntityIds ?? [])].filter((entityId) => validEntityIds.has(entityId))
+	]);
+	const pinnedEntityIds = [...validPinnedTimelineEntityIds(project, options.pinnedEntityIds)];
+	const entityIds = effectiveTimelineEntityIds(project, clip, { ...options, mode, selectedEntityIds: new Set(selectedEntityIds) });
+	const effectiveEntityIdSet = new Set(entityIds);
+	const selectedTrackIds = options.selectedTrackIds ?? new Set<EntityId>();
+	const tracks = clip.tracks.filter((track) => trackIsVisible(
+		project,
+		track,
+		mode,
+		effectiveEntityIdSet,
+		selectedTrackIds,
+		options.filter ?? ''
+	));
+	const rows = buildGroupedTimelineRowsForTracks(project, clip, {
+		...options,
+		mode,
+		selection: options.selection,
+		selectedEntityIds: new Set(selectedEntityIds)
+	}, tracks);
+
+	return {
+		mode,
+		selectedEntityIds,
+		pinnedEntityIds,
+		entityIds,
+		tracks,
+		trackCount: tracks.length,
+		keyedTrackCount: tracks.filter((track) => track.keys.length > 0).length,
+		rows
+	};
+};
+
+export const buildGroupedTimelineRows = function buildGroupedTimelineRows(
+	project: Project,
+	clip: Clip,
+	options: TimelineModelOptions = {}
+): readonly TimelineRow[] {
+	return resolveEffectiveTimelineRows(project, clip, options).rows;
 };
 
 export const selectableTimelineKeysForRows = function selectableTimelineKeysForRows(

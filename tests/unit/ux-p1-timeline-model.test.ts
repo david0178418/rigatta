@@ -16,7 +16,6 @@ import {
 	createTimelineClipboard,
 	planKeyDrag,
 	planPasteTimelineClipboard,
-	selectableEntityForTimelineRow,
 	selectableTimelineKeysForRows
 } from '../../src/app/timeline-model.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
@@ -302,10 +301,7 @@ describe('UX P1-16 grouped timeline model', () => {
 		const malformedRows = buildGroupedTimelineRows(malformedProject, malformedClip, { mode: 'all-keyed' });
 		const malformedGroup = malformedRows.find((row) => row.id === `entity:${fixtureIds.asset}`);
 
-		expect(malformedGroup?.entityId).toBe(fixtureIds.asset);
-		if (malformedGroup) {
-			expect(selectableEntityForTimelineRow(malformedProject, malformedGroup)).toBeUndefined();
-		}
+		expect(malformedGroup).toBeUndefined();
 	});
 });
 
