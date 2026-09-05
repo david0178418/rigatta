@@ -40,6 +40,12 @@ Run the Chromium browser suite separately with:
 bun run test:e2e
 ```
 
+## Deployment
+
+Pushes to `master` are validated and deployed to GitHub Pages by the `Deploy to GitHub Pages` workflow. Before the first deployment, set the repository's Pages source to **GitHub Actions** under **Settings → Pages**.
+
+The deployed application is available at `https://david0178418.github.io/rigatta/`. The workflow obtains the site base path from GitHub Pages and passes it to the production build, so repository renames and custom domains do not require a hardcoded asset path.
+
 ## Documentation
 
 - [Product specification](PRODUCT.md) describes the implemented feature set, supported environment, limitations, and non-goals.

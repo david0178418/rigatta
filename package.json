@@ -6,7 +6,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "bun --hot --port 3000 index.html",
-		"build": "bun run typecheck && bun build ./index.html --outdir dist --minify",
+		"build": "bun run typecheck && bun run scripts/build.ts",
 		"check": "bun run lint && bun run test && bun run build",
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint . --ext .ts,.tsx",
