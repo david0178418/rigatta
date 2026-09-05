@@ -35,3 +35,10 @@ The timeline layout proof is `tests/e2e/timeline-layout-proof.spec.ts`; the
 viewport presentation evidence is in commit `f09f43d` and
 `tests/e2e/viewport-presets.spec.ts`. These are focused additions to the
 recorded clean-checkout gate, not a claim of a newly rerun full suite.
+
+R0 evidence: Implementation commit `73671f7` covers the verified work from
+`3cad3f8` through `73671f7`; `bun run check` passed with 352 unit tests plus
+lint/typecheck/build, `bun run test:e2e` passed 152 Chromium tests, and
+`git diff --check` passed. Visible review artifacts are
+`/tmp/bone-animation-v1-{1120,1440}-{authoring,visual-preview,gameplay-preview}.png`
+and `/tmp/bone-animation-timeline-*.png`.
