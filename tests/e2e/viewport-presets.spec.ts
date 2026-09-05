@@ -44,7 +44,7 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 };
 
 const viewportBoundsFor = async function viewportBoundsFor(page: Page): Promise<Bounds> {
@@ -520,12 +520,12 @@ test('isolates project presets and falls back from malformed preference storage'
 
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 	await expect(page.getByTestId('viewport-preset-control').getByRole('button', { name: 'Gameplay preview', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
 	await page.addInitScript((key) => localStorage.setItem(key, '{broken'), UI_PREFERENCES_STORAGE_KEY);
 	await page.reload();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 	await expect(page.getByTestId('viewport-preset-control').getByRole('button', { name: 'Authoring', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -535,7 +535,7 @@ test('restores a project preset after reload', async ({ page }) => {
 	await choosePreset(page, 'visual-preview', 'Visual preview');
 	await page.waitForTimeout(450);
 	await page.reload();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 	await expect(page.getByTestId('viewport-preset-control').getByRole('button', { name: 'Visual preview', exact: true })).toHaveAttribute('aria-pressed', 'true');
 	await expect(page.locator('.pixi-viewport')).toHaveAttribute('data-viewport-preset', 'visual-preview');
 });

@@ -1,8 +1,22 @@
 import { DEFAULT_LOCAL_TRANSFORM } from '../domain/coordinates.ts';
 import type { EntityId } from '../domain/ids.ts';
-import type { BoneTransformProperty, BoneTransformTrack, ImageAsset, NumberKey, Project } from '../domain/model.ts';
+import type {
+	Bone,
+	BoneTransformProperty,
+	BoneTransformTrack,
+	ImageAttachment,
+	ImageAsset,
+	NumberKey,
+	Project,
+	Slot
+} from '../domain/model.ts';
 import { createEmptyProject } from '../domain/model.ts';
-import { encodeRgbaPng } from '../export/png.ts';
+import {
+	ADVENTURER_SOURCE_ARCHIVE,
+	ADVENTURER_SOURCE_URL,
+	adventurerAssetData,
+	adventurerImageAssetFor
+} from './adventurer-asset-data.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 
 export const EXAMPLE_PROJECT_ID = '123e4567-e89b-42d3-a456-426614174100';
@@ -22,67 +36,168 @@ const exampleEntityId = function exampleEntityId(sequence: number): EntityId {
 };
 
 const EXAMPLE_HEAD_ASSET_ID = exampleEntityId(0x110);
-const EXAMPLE_LIMB_ASSET_ID = exampleEntityId(0x111);
-const EXAMPLE_FOOT_ASSET_ID = exampleEntityId(0x112);
-const EXAMPLE_HIPS_BONE_ID = exampleEntityId(0x120);
-const EXAMPLE_TORSO_BONE_ID = exampleEntityId(0x121);
-const EXAMPLE_HEAD_BONE_ID = exampleEntityId(0x122);
-const EXAMPLE_RIGHT_ARM_BONE_ID = exampleEntityId(0x123);
-const EXAMPLE_LEFT_FOREARM_BONE_ID = exampleEntityId(0x124);
-const EXAMPLE_RIGHT_FOREARM_BONE_ID = exampleEntityId(0x125);
-const EXAMPLE_LEFT_THIGH_BONE_ID = exampleEntityId(0x126);
-const EXAMPLE_RIGHT_THIGH_BONE_ID = exampleEntityId(0x127);
-const EXAMPLE_LEFT_SHIN_BONE_ID = exampleEntityId(0x128);
-const EXAMPLE_RIGHT_SHIN_BONE_ID = exampleEntityId(0x129);
-const EXAMPLE_LEFT_FOOT_BONE_ID = exampleEntityId(0x12a);
-const EXAMPLE_RIGHT_FOOT_BONE_ID = exampleEntityId(0x12b);
+const EXAMPLE_ARM_ASSET_ID = exampleEntityId(0x111);
+const EXAMPLE_HAND_ASSET_ID = exampleEntityId(0x112);
+const EXAMPLE_LEG_ASSET_ID = exampleEntityId(0x113);
+
+export const EXAMPLE_HIPS_BONE_ID = exampleEntityId(0x120);
+export const EXAMPLE_TORSO_BONE_ID = exampleEntityId(0x121);
+export const EXAMPLE_HEAD_BONE_ID = exampleEntityId(0x122);
+export const EXAMPLE_RIGHT_ARM_BONE_ID = EXAMPLE_ARM_BONE_ID;
+export const EXAMPLE_LEFT_ARM_BONE_ID = exampleEntityId(0x124);
+export const EXAMPLE_LEFT_HAND_BONE_ID = exampleEntityId(0x125);
+export const EXAMPLE_RIGHT_HAND_BONE_ID = exampleEntityId(0x126);
+export const EXAMPLE_LEFT_LEG_BONE_ID = exampleEntityId(0x127);
+export const EXAMPLE_RIGHT_LEG_BONE_ID = exampleEntityId(0x128);
+
+const EXAMPLE_HEAD_SLOT_ID = exampleEntityId(0x140);
+const EXAMPLE_LEFT_ARM_SLOT_ID = exampleEntityId(0x141);
+const EXAMPLE_RIGHT_ARM_SLOT_ID = exampleEntityId(0x142);
+const EXAMPLE_LEFT_HAND_SLOT_ID = exampleEntityId(0x143);
+const EXAMPLE_RIGHT_HAND_SLOT_ID = exampleEntityId(0x144);
+const EXAMPLE_LEFT_LEG_SLOT_ID = exampleEntityId(0x145);
+const EXAMPLE_RIGHT_LEG_SLOT_ID = exampleEntityId(0x146);
+
+const EXAMPLE_HEAD_IMAGE_ID = exampleEntityId(0x160);
+const EXAMPLE_LEFT_ARM_IMAGE_ID = exampleEntityId(0x161);
+const EXAMPLE_RIGHT_ARM_IMAGE_ID = exampleEntityId(0x162);
+const EXAMPLE_LEFT_HAND_IMAGE_ID = exampleEntityId(0x163);
+const EXAMPLE_RIGHT_HAND_IMAGE_ID = exampleEntityId(0x164);
+const EXAMPLE_LEFT_LEG_IMAGE_ID = exampleEntityId(0x165);
+const EXAMPLE_RIGHT_LEG_IMAGE_ID = exampleEntityId(0x166);
+
+export const EXAMPLE_HAND_GRIP_BONE_ID = EXAMPLE_RIGHT_HAND_BONE_ID;
 
 const imageAssets = [
-	{ id: EXAMPLE_ASSET_ID, name: 'robot-core.png', relativePath: 'example/robot-core.png', mimeType: 'image/png', width: 32, height: 32 },
-	{ id: EXAMPLE_HEAD_ASSET_ID, name: 'robot-head.png', relativePath: 'example/robot-head.png', mimeType: 'image/png', width: 34, height: 30 },
-	{ id: EXAMPLE_LIMB_ASSET_ID, name: 'robot-limb.png', relativePath: 'example/robot-limb.png', mimeType: 'image/png', width: 30, height: 12 },
-	{ id: EXAMPLE_FOOT_ASSET_ID, name: 'robot-foot.png', relativePath: 'example/robot-foot.png', mimeType: 'image/png', width: 24, height: 12 }
+	adventurerImageAssetFor('bodyFront', EXAMPLE_ASSET_ID, 'body_front.png', 'example/adventurer/body_front.png'),
+	adventurerImageAssetFor('head', EXAMPLE_HEAD_ASSET_ID, 'head.png', 'example/adventurer/head.png'),
+	adventurerImageAssetFor('arm', EXAMPLE_ARM_ASSET_ID, 'arm.png', 'example/adventurer/arm.png'),
+	adventurerImageAssetFor('hand', EXAMPLE_HAND_ASSET_ID, 'hand.png', 'example/adventurer/hand.png'),
+	adventurerImageAssetFor('leg', EXAMPLE_LEG_ASSET_ID, 'leg.png', 'example/adventurer/leg.png')
 ] as const satisfies readonly ImageAsset[];
 
-const imagePixels = function imagePixels(
-	width: number,
-	height: number,
-	fill: readonly [number, number, number],
-	accent: boolean
-): Uint8Array {
-	return Uint8Array.from(Array.from({ length: width * height }, (_, index) => {
-		const x = index % width;
-		const y = Math.floor(index / width);
-		const outline = x < 2 || y < 2 || x >= width - 2 || y >= height - 2;
-		const detail = accent && y >= Math.floor(height * 0.38) && y < Math.floor(height * 0.58)
-			&& (x < Math.floor(width * 0.32) || x >= Math.floor(width * 0.68));
-		const color = outline ? [24, 62, 72] : detail ? [245, 196, 67] : fill;
+const slots = [
+	{ id: EXAMPLE_SLOT_ID, name: 'body', boneId: EXAMPLE_TORSO_BONE_ID, setupAttachmentId: EXAMPLE_IMAGE_ID },
+	{ id: EXAMPLE_HEAD_SLOT_ID, name: 'head', boneId: EXAMPLE_HEAD_BONE_ID, setupAttachmentId: EXAMPLE_HEAD_IMAGE_ID },
+	{ id: EXAMPLE_LEFT_ARM_SLOT_ID, name: 'left arm', boneId: EXAMPLE_LEFT_ARM_BONE_ID, setupAttachmentId: EXAMPLE_LEFT_ARM_IMAGE_ID },
+	{ id: EXAMPLE_RIGHT_ARM_SLOT_ID, name: 'right arm', boneId: EXAMPLE_RIGHT_ARM_BONE_ID, setupAttachmentId: EXAMPLE_RIGHT_ARM_IMAGE_ID },
+	{ id: EXAMPLE_LEFT_HAND_SLOT_ID, name: 'left hand', boneId: EXAMPLE_LEFT_HAND_BONE_ID, setupAttachmentId: EXAMPLE_LEFT_HAND_IMAGE_ID },
+	{ id: EXAMPLE_RIGHT_HAND_SLOT_ID, name: 'right hand', boneId: EXAMPLE_RIGHT_HAND_BONE_ID, setupAttachmentId: EXAMPLE_RIGHT_HAND_IMAGE_ID },
+	{ id: EXAMPLE_LEFT_LEG_SLOT_ID, name: 'left leg', boneId: EXAMPLE_LEFT_LEG_BONE_ID, setupAttachmentId: EXAMPLE_LEFT_LEG_IMAGE_ID },
+	{ id: EXAMPLE_RIGHT_LEG_SLOT_ID, name: 'right leg', boneId: EXAMPLE_RIGHT_LEG_BONE_ID, setupAttachmentId: EXAMPLE_RIGHT_LEG_IMAGE_ID }
+] as const satisfies readonly Slot[];
 
-		return [...color, 255];
-	}).flat());
+const imageAttachmentFor = function imageAttachmentFor(
+	id: EntityId,
+	name: string,
+	slotId: EntityId,
+	assetId: EntityId,
+	transform: ImageAttachment['transform'],
+	pivotX: number,
+	pivotY: number
+): ImageAttachment {
+	return {
+		id,
+		kind: 'image',
+		name,
+		slotId,
+		assetId,
+		transform,
+		opacity: 1,
+		pivotX,
+		pivotY
+	};
 };
 
-const createExamplePng = function createExamplePng(
-	asset: ImageAsset,
-	fill: readonly [number, number, number],
-	accent = false
-): Uint8Array {
-	const encoded = encodeRgbaPng({
-		width: asset.width,
-		height: asset.height,
-		pixels: imagePixels(asset.width, asset.height, fill, accent)
-	});
+const imageAttachments = [
+	imageAttachmentFor(EXAMPLE_IMAGE_ID, 'body front', EXAMPLE_SLOT_ID, EXAMPLE_ASSET_ID, DEFAULT_LOCAL_TRANSFORM, 0.5, 1),
+	imageAttachmentFor(EXAMPLE_HEAD_IMAGE_ID, 'head', EXAMPLE_HEAD_SLOT_ID, EXAMPLE_HEAD_ASSET_ID, DEFAULT_LOCAL_TRANSFORM, 0.5, 1),
+	imageAttachmentFor(
+		EXAMPLE_LEFT_ARM_IMAGE_ID,
+		'left arm',
+		EXAMPLE_LEFT_ARM_SLOT_ID,
+		EXAMPLE_ARM_ASSET_ID,
+		{ ...DEFAULT_LOCAL_TRANSFORM, scaleX: -1 },
+		0.5,
+		0
+	),
+	imageAttachmentFor(EXAMPLE_RIGHT_ARM_IMAGE_ID, 'right arm', EXAMPLE_RIGHT_ARM_SLOT_ID, EXAMPLE_ARM_ASSET_ID, DEFAULT_LOCAL_TRANSFORM, 0.5, 0),
+	imageAttachmentFor(
+		EXAMPLE_LEFT_HAND_IMAGE_ID,
+		'left hand',
+		EXAMPLE_LEFT_HAND_SLOT_ID,
+		EXAMPLE_HAND_ASSET_ID,
+		{ ...DEFAULT_LOCAL_TRANSFORM, scaleX: -1 },
+		0.5,
+		0
+	),
+	imageAttachmentFor(EXAMPLE_RIGHT_HAND_IMAGE_ID, 'right hand', EXAMPLE_RIGHT_HAND_SLOT_ID, EXAMPLE_HAND_ASSET_ID, DEFAULT_LOCAL_TRANSFORM, 0.5, 0),
+	imageAttachmentFor(
+		EXAMPLE_LEFT_LEG_IMAGE_ID,
+		'left leg',
+		EXAMPLE_LEFT_LEG_SLOT_ID,
+		EXAMPLE_LEG_ASSET_ID,
+		{ ...DEFAULT_LOCAL_TRANSFORM, scaleX: -1 },
+		0.5,
+		0
+	),
+	imageAttachmentFor(EXAMPLE_RIGHT_LEG_IMAGE_ID, 'right leg', EXAMPLE_RIGHT_LEG_SLOT_ID, EXAMPLE_LEG_ASSET_ID, DEFAULT_LOCAL_TRANSFORM, 0.5, 0)
+];
 
-	if (!encoded.ok) {
-		throw new Error(encoded.error);
+const bones = [
+	{ id: EXAMPLE_ROOT_BONE_ID, name: 'root', parentId: null, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 128, y: 128 } },
+	{ id: EXAMPLE_HIPS_BONE_ID, name: 'hips', parentId: EXAMPLE_ROOT_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, y: 14 } },
+	{ id: EXAMPLE_TORSO_BONE_ID, name: 'torso', parentId: EXAMPLE_HIPS_BONE_ID, transform: DEFAULT_LOCAL_TRANSFORM },
+	{
+		id: EXAMPLE_HEAD_BONE_ID,
+		name: 'head',
+		parentId: EXAMPLE_TORSO_BONE_ID,
+		transform: { ...DEFAULT_LOCAL_TRANSFORM, x: -2.5, y: -23 }
+	},
+	{
+		id: EXAMPLE_LEFT_ARM_BONE_ID,
+		name: 'left arm',
+		parentId: EXAMPLE_TORSO_BONE_ID,
+		transform: { ...DEFAULT_LOCAL_TRANSFORM, x: -18, y: -27 }
+	},
+	{
+		id: EXAMPLE_RIGHT_ARM_BONE_ID,
+		name: 'right arm',
+		parentId: EXAMPLE_TORSO_BONE_ID,
+		transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 18, y: -27 }
+	},
+	{
+		id: EXAMPLE_LEFT_HAND_BONE_ID,
+		name: 'left hand',
+		parentId: EXAMPLE_LEFT_ARM_BONE_ID,
+		transform: { ...DEFAULT_LOCAL_TRANSFORM, x: -5, y: 33 }
+	},
+	{
+		id: EXAMPLE_RIGHT_HAND_BONE_ID,
+		name: 'right hand',
+		parentId: EXAMPLE_RIGHT_ARM_BONE_ID,
+		transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 5, y: 33 }
+	},
+	{
+		id: EXAMPLE_LEFT_LEG_BONE_ID,
+		name: 'left leg',
+		parentId: EXAMPLE_HIPS_BONE_ID,
+		transform: { ...DEFAULT_LOCAL_TRANSFORM, x: -11, y: -6 }
+	},
+	{
+		id: EXAMPLE_RIGHT_LEG_BONE_ID,
+		name: 'right leg',
+		parentId: EXAMPLE_HIPS_BONE_ID,
+		transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 11, y: -6 }
 	}
-
-	return encoded.value;
-};
+] as const satisfies readonly Bone[];
 
 const keyTimes = [0, 0.25, 0.5, 0.75, 1] as const;
 
-const createNumberKeys = function createNumberKeys(trackSequence: number, values: readonly number[]): readonly NumberKey[] {
+const createNumberKeys = function createNumberKeys(
+	trackSequence: number,
+	values: readonly number[]
+): readonly NumberKey[] {
 	return keyTimes.map((timeSeconds, index) => ({
 		id: exampleEntityId(0x300 + trackSequence * 8 + index),
 		timeSeconds,
@@ -107,94 +222,69 @@ const createTransformTrack = function createTransformTrack(
 	};
 };
 
-const slots = [
-	{ id: EXAMPLE_SLOT_ID, name: 'body', boneId: EXAMPLE_TORSO_BONE_ID, setupAttachmentId: EXAMPLE_IMAGE_ID },
-	{ id: exampleEntityId(0x140), name: 'head', boneId: EXAMPLE_HEAD_BONE_ID, setupAttachmentId: exampleEntityId(0x160) },
-	{ id: exampleEntityId(0x141), name: 'left upper arm', boneId: EXAMPLE_ARM_BONE_ID, setupAttachmentId: exampleEntityId(0x161) },
-	{ id: exampleEntityId(0x142), name: 'left forearm', boneId: EXAMPLE_LEFT_FOREARM_BONE_ID, setupAttachmentId: exampleEntityId(0x162) },
-	{ id: exampleEntityId(0x143), name: 'right upper arm', boneId: EXAMPLE_RIGHT_ARM_BONE_ID, setupAttachmentId: exampleEntityId(0x163) },
-	{ id: exampleEntityId(0x144), name: 'right forearm', boneId: EXAMPLE_RIGHT_FOREARM_BONE_ID, setupAttachmentId: exampleEntityId(0x164) },
-	{ id: exampleEntityId(0x145), name: 'left thigh', boneId: EXAMPLE_LEFT_THIGH_BONE_ID, setupAttachmentId: exampleEntityId(0x165) },
-	{ id: exampleEntityId(0x146), name: 'left shin', boneId: EXAMPLE_LEFT_SHIN_BONE_ID, setupAttachmentId: exampleEntityId(0x166) },
-	{ id: exampleEntityId(0x147), name: 'left foot', boneId: EXAMPLE_LEFT_FOOT_BONE_ID, setupAttachmentId: exampleEntityId(0x167) },
-	{ id: exampleEntityId(0x148), name: 'right thigh', boneId: EXAMPLE_RIGHT_THIGH_BONE_ID, setupAttachmentId: exampleEntityId(0x168) },
-	{ id: exampleEntityId(0x149), name: 'right shin', boneId: EXAMPLE_RIGHT_SHIN_BONE_ID, setupAttachmentId: exampleEntityId(0x169) },
-	{ id: exampleEntityId(0x14a), name: 'right foot', boneId: EXAMPLE_RIGHT_FOOT_BONE_ID, setupAttachmentId: exampleEntityId(0x16a) }
-] as const;
-
-const imageAttachments = slots.map((slot, index) => {
-	const isTorso = index === 0;
-	const isHead = index === 1;
-	const isFoot = slot.name.endsWith('foot');
-
-	return {
-		id: slot.setupAttachmentId,
-		kind: 'image' as const,
-		name: isTorso ? 'robot core' : slot.name,
-		slotId: slot.id,
-		assetId: isTorso ? EXAMPLE_ASSET_ID : isHead ? EXAMPLE_HEAD_ASSET_ID : isFoot ? EXAMPLE_FOOT_ASSET_ID : EXAMPLE_LIMB_ASSET_ID,
-		transform: DEFAULT_LOCAL_TRANSFORM,
-		opacity: 1,
-		pivotX: isTorso || isHead ? 0.5 : 0,
-		pivotY: 0.5
-	};
-});
+const clips = [{
+	id: EXAMPLE_CLIP_ID,
+	name: 'walk',
+	durationSeconds: 1,
+	fps: 12,
+	loop: true,
+	tracks: [
+		createTransformTrack(0, EXAMPLE_HIPS_BONE_ID, 'y', [0, -2, 0, -2, 0]),
+		createTransformTrack(1, EXAMPLE_TORSO_BONE_ID, 'rotation', [-0.035, 0.02, 0.035, 0.02, -0.035]),
+		createTransformTrack(2, EXAMPLE_HEAD_BONE_ID, 'rotation', [0.02, -0.01, -0.02, -0.01, 0.02]),
+		createTransformTrack(3, EXAMPLE_LEFT_ARM_BONE_ID, 'rotation', [0.42, 0.12, -0.32, -0.1, 0.42]),
+		createTransformTrack(4, EXAMPLE_RIGHT_ARM_BONE_ID, 'rotation', [-0.32, -0.1, 0.42, 0.12, -0.32]),
+		createTransformTrack(5, EXAMPLE_LEFT_LEG_BONE_ID, 'rotation', [-0.45, -0.12, 0.45, 0.16, -0.45]),
+		createTransformTrack(6, EXAMPLE_RIGHT_LEG_BONE_ID, 'rotation', [0.45, 0.16, -0.45, -0.12, 0.45])
+	],
+	events: [
+		{ id: EXAMPLE_EVENT_ID, timeSeconds: 0, name: 'left-footstep', payload: { foot: 'left', surface: 'ground' } },
+		{ id: exampleEntityId(0x180), timeSeconds: 0.5, name: 'right-footstep', payload: { foot: 'right', surface: 'ground' } }
+	]
+}] as const;
 
 export const exampleProject: Project = {
-	...createEmptyProject({ id: EXAMPLE_PROJECT_ID, name: 'Cutout Robot Example', logicalCanvas: { width: 256, height: 256 } }),
+	...createEmptyProject({
+		id: EXAMPLE_PROJECT_ID,
+		name: 'Cutout Adventurer Example',
+		logicalCanvas: { width: 256, height: 256 }
+	}),
 	assets: imageAssets,
-	bones: [
-		{ id: EXAMPLE_ROOT_BONE_ID, name: 'root', parentId: null, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 128, y: 128 } },
-		{ id: EXAMPLE_HIPS_BONE_ID, name: 'hips', parentId: EXAMPLE_ROOT_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, y: 26 } },
-		{ id: EXAMPLE_TORSO_BONE_ID, name: 'torso', parentId: EXAMPLE_HIPS_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, y: -32 } },
-		{ id: EXAMPLE_HEAD_BONE_ID, name: 'head', parentId: EXAMPLE_TORSO_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, y: -43 } },
-		{ id: EXAMPLE_ARM_BONE_ID, name: 'arm', parentId: EXAMPLE_ROOT_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 24 } },
-		{ id: EXAMPLE_LEFT_FOREARM_BONE_ID, name: 'left forearm', parentId: EXAMPLE_ARM_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 28 } },
-		{ id: EXAMPLE_RIGHT_ARM_BONE_ID, name: 'right upper arm', parentId: EXAMPLE_TORSO_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 18, y: -20, rotation: 1.39 } },
-		{ id: EXAMPLE_RIGHT_FOREARM_BONE_ID, name: 'right forearm', parentId: EXAMPLE_RIGHT_ARM_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 28 } },
-		{ id: EXAMPLE_LEFT_THIGH_BONE_ID, name: 'left thigh', parentId: EXAMPLE_HIPS_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: -10, rotation: 1.7 } },
-		{ id: EXAMPLE_LEFT_SHIN_BONE_ID, name: 'left shin', parentId: EXAMPLE_LEFT_THIGH_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 28 } },
-		{ id: EXAMPLE_LEFT_FOOT_BONE_ID, name: 'left foot', parentId: EXAMPLE_LEFT_SHIN_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 28, rotation: -1.7 } },
-		{ id: EXAMPLE_RIGHT_THIGH_BONE_ID, name: 'right thigh', parentId: EXAMPLE_HIPS_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 10, rotation: 1.44 } },
-		{ id: EXAMPLE_RIGHT_SHIN_BONE_ID, name: 'right shin', parentId: EXAMPLE_RIGHT_THIGH_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 28 } },
-		{ id: EXAMPLE_RIGHT_FOOT_BONE_ID, name: 'right foot', parentId: EXAMPLE_RIGHT_SHIN_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 28, rotation: -1.44 } }
-	],
-	boneOrder: [
-		EXAMPLE_ROOT_BONE_ID, EXAMPLE_HIPS_BONE_ID, EXAMPLE_TORSO_BONE_ID, EXAMPLE_HEAD_BONE_ID,
-		EXAMPLE_ARM_BONE_ID, EXAMPLE_LEFT_FOREARM_BONE_ID, EXAMPLE_RIGHT_ARM_BONE_ID, EXAMPLE_RIGHT_FOREARM_BONE_ID,
-		EXAMPLE_LEFT_THIGH_BONE_ID, EXAMPLE_LEFT_SHIN_BONE_ID, EXAMPLE_LEFT_FOOT_BONE_ID,
-		EXAMPLE_RIGHT_THIGH_BONE_ID, EXAMPLE_RIGHT_SHIN_BONE_ID, EXAMPLE_RIGHT_FOOT_BONE_ID
-	],
+	bones,
+	boneOrder: bones.map((bone) => bone.id),
 	slots,
 	attachments: [
-		...imageAttachments,
-		{ id: EXAMPLE_POINT_ID, kind: 'point', name: 'muzzle', boneId: EXAMPLE_ARM_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, x: 18 }, enabled: true },
-		{ id: EXAMPLE_RECTANGLE_ID, kind: 'rectangle', name: 'hurtbox', boneId: EXAMPLE_ROOT_BONE_ID, transform: { ...DEFAULT_LOCAL_TRANSFORM, y: 24 }, width: 48, height: 16, enabled: true }
+		{
+			id: EXAMPLE_POINT_ID,
+			kind: 'point',
+			name: 'hand-grip',
+			boneId: EXAMPLE_HAND_GRIP_BONE_ID,
+			transform: { ...DEFAULT_LOCAL_TRANSFORM, y: 7 },
+			enabled: true
+		},
+		{
+			id: EXAMPLE_RECTANGLE_ID,
+			kind: 'rectangle',
+			name: 'hurtbox',
+			boneId: EXAMPLE_ROOT_BONE_ID,
+			transform: { ...DEFAULT_LOCAL_TRANSFORM, y: -16 },
+			width: 60,
+			height: 100,
+			enabled: true
+		},
+		...imageAttachments
 	],
-	setupDrawOrder: slots.map((slot) => slot.id),
-	clips: [{
-		id: EXAMPLE_CLIP_ID,
-		name: 'walk',
-		durationSeconds: 1,
-		fps: 12,
-		loop: true,
-		tracks: [
-			createTransformTrack(0, EXAMPLE_HIPS_BONE_ID, 'y', [26, 22, 26, 22, 26]),
-			createTransformTrack(1, EXAMPLE_HIPS_BONE_ID, 'rotation', [-0.04, 0, 0.04, 0, -0.04]),
-			createTransformTrack(2, EXAMPLE_ARM_BONE_ID, 'rotation', [0.7, 1.3, 1.9, 1.3, 0.7]),
-			createTransformTrack(3, EXAMPLE_LEFT_FOREARM_BONE_ID, 'rotation', [0.3, 0.05, -0.15, 0.05, 0.3]),
-			createTransformTrack(4, EXAMPLE_RIGHT_ARM_BONE_ID, 'rotation', [2.05, 1.55, 1.2, 1.55, 2.05]),
-			createTransformTrack(5, EXAMPLE_RIGHT_FOREARM_BONE_ID, 'rotation', [-0.15, 0.05, 0.3, 0.05, -0.15]),
-			createTransformTrack(6, EXAMPLE_LEFT_THIGH_BONE_ID, 'rotation', [1.22, 1.55, 1.95, 1.6, 1.22]),
-			createTransformTrack(7, EXAMPLE_LEFT_SHIN_BONE_ID, 'rotation', [0.35, -0.1, -0.4, 0.2, 0.35]),
-			createTransformTrack(8, EXAMPLE_RIGHT_THIGH_BONE_ID, 'rotation', [1.95, 1.6, 1.22, 1.55, 1.95]),
-			createTransformTrack(9, EXAMPLE_RIGHT_SHIN_BONE_ID, 'rotation', [-0.4, 0.2, 0.35, -0.1, -0.4])
-		],
-		events: [
-			{ id: EXAMPLE_EVENT_ID, timeSeconds: 0, name: 'left-footstep', payload: { foot: 'left', surface: 'metal' } },
-			{ id: exampleEntityId(0x180), timeSeconds: 0.5, name: 'right-footstep', payload: { foot: 'right', surface: 'metal' } }
-		]
-	}],
+	setupDrawOrder: [
+		EXAMPLE_LEFT_LEG_SLOT_ID,
+		EXAMPLE_LEFT_ARM_SLOT_ID,
+		EXAMPLE_LEFT_HAND_SLOT_ID,
+		EXAMPLE_SLOT_ID,
+		EXAMPLE_HEAD_SLOT_ID,
+		EXAMPLE_RIGHT_LEG_SLOT_ID,
+		EXAMPLE_RIGHT_ARM_SLOT_ID,
+		EXAMPLE_RIGHT_HAND_SLOT_ID
+	],
+	clips,
 	exportSettings: { mode: 'grid', maxTextureSize: 2048, padding: 1, extrudeEdges: false }
 };
 
@@ -204,10 +294,11 @@ export type ExampleExportFixture = Readonly<{
 }>;
 
 const exampleAssetBytes = new Map<EntityId, Uint8Array>([
-	[EXAMPLE_ASSET_ID, createExamplePng(imageAssets[0], [54, 190, 164])],
-	[EXAMPLE_HEAD_ASSET_ID, createExamplePng(imageAssets[1], [84, 214, 189], true)],
-	[EXAMPLE_LIMB_ASSET_ID, createExamplePng(imageAssets[2], [70, 145, 184])],
-	[EXAMPLE_FOOT_ASSET_ID, createExamplePng(imageAssets[3], [245, 196, 67])]
+	[EXAMPLE_ASSET_ID, adventurerAssetData.bodyFront.bytes],
+	[EXAMPLE_HEAD_ASSET_ID, adventurerAssetData.head.bytes],
+	[EXAMPLE_ARM_ASSET_ID, adventurerAssetData.arm.bytes],
+	[EXAMPLE_HAND_ASSET_ID, adventurerAssetData.hand.bytes],
+	[EXAMPLE_LEG_ASSET_ID, adventurerAssetData.leg.bytes]
 ]);
 
 export const exampleExportFixture: ExampleExportFixture = { project: exampleProject, assets: exampleAssetBytes };
@@ -218,3 +309,9 @@ export const createExampleAssetBlobs = function createExampleAssetBlobs(): Proje
 		new Blob([assetBytes.slice().buffer], { type: 'image/png' })
 	] as const));
 };
+
+export const exampleAssetProvenance = {
+	sourceUrl: ADVENTURER_SOURCE_URL,
+	archiveName: ADVENTURER_SOURCE_ARCHIVE,
+	assetNames: imageAssets.map((asset) => asset.name)
+} as const;

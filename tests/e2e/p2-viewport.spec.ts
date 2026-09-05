@@ -66,7 +66,7 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 };
 
 const wideFixtureArchive = async function wideFixtureArchive(): Promise<Buffer> {
@@ -303,7 +303,7 @@ test('accepts a pasteboard asset drop and reports overflow without changing navi
 
 	const viewport = page.locator('.pixi-viewport');
 	const bounds = await viewportBoundsFor(page);
-	const asset = page.locator('.asset-row').filter({ hasText: 'robot-core.png' });
+	const asset = page.locator('.asset-row').filter({ hasText: 'body_front.png' });
 
 	await asset.dragTo(viewport, {
 		targetPosition: { x: 8, y: bounds.height / 2 }

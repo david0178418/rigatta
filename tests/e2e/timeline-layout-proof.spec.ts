@@ -32,10 +32,10 @@ const openTimelineOptions = async function openTimelineOptions(page: Page): Prom
 const loadAnimateState = async function loadAnimateState(page: Page, state: TimelineProofState): Promise<void> {
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 
 	if (state.selectBone) {
-		await page.getByRole('button', { name: 'arm', exact: true }).click();
+		await page.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row').click();
 	}
 
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();

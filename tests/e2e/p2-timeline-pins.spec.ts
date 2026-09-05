@@ -43,12 +43,20 @@ test('pins Auto rows, keeps them synchronized, ignores stale IDs, clears them, a
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
 	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
 	await root.getByRole('button', { name: 'Expand', exact: true }).click();
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
+	const hips = tree.getByRole('treeitem', { name: 'Bone: hips', exact: true });
+	if (await hips.getAttribute('aria-expanded') === 'false') {
+		await hips.getByRole('button', { name: 'Expand', exact: true }).click();
+	}
+	const torso = tree.getByRole('treeitem', { name: 'Bone: torso', exact: true });
+	if (await torso.getAttribute('aria-expanded') === 'false') {
+		await torso.getByRole('button', { name: 'Expand', exact: true }).click();
+	}
+	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
 	await arm.locator('.bone-row').click();
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 
@@ -58,8 +66,8 @@ test('pins Auto rows, keeps them synchronized, ignores stale IDs, clears them, a
 	await expect(armGroup).toBeVisible();
 	await expect(timeline.locator(`[data-entity-id="${STALE_TARGET_ID}"]`)).toHaveCount(0);
 
-	await timeline.getByRole('button', { name: 'Pin arm timeline rows', exact: true }).click();
-	await expect(timeline.getByRole('button', { name: 'Unpin arm timeline rows', exact: true })).toBeVisible();
+	await timeline.getByRole('button', { name: 'Pin right arm timeline rows', exact: true }).click();
+	await expect(timeline.getByRole('button', { name: 'Unpin right arm timeline rows', exact: true })).toBeVisible();
 	await expect.poll(() => storedPinnedIds(page)).toEqual([EXAMPLE_ARM_BONE_ID]);
 
 	await root.locator('.bone-row').click();
@@ -76,28 +84,28 @@ test('pins Auto rows, keeps them synchronized, ignores stale IDs, clears them, a
 	const rowMode = page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true });
 	await rowMode.selectOption('all-keyed');
 	await page.keyboard.press('Escape');
-	await expect(timeline.getByRole('button', { name: 'Pin arm timeline rows', exact: true })).toHaveCount(0);
+	await expect(timeline.getByRole('button', { name: 'Pin right arm timeline rows', exact: true })).toHaveCount(0);
 	await timelineOptionsTrigger.click();
 	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true }).selectOption('auto');
 	await page.keyboard.press('Escape');
-	await expect(timeline.getByRole('button', { name: 'Unpin arm timeline rows', exact: true })).toBeVisible();
+	await expect(timeline.getByRole('button', { name: 'Unpin right arm timeline rows', exact: true })).toBeVisible();
 
 	await timelineOptionsTrigger.click();
 	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByRole('button', { name: 'Clear pinned timeline rows', exact: true }).click();
 	await page.keyboard.press('Escape');
-	await expect(timeline.getByRole('button', { name: 'Pin arm timeline rows', exact: true })).toBeVisible();
-	await expect(timeline.getByRole('button', { name: 'Unpin arm timeline rows', exact: true })).toHaveCount(0);
+	await expect(timeline.getByRole('button', { name: 'Pin right arm timeline rows', exact: true })).toBeVisible();
+	await expect(timeline.getByRole('button', { name: 'Unpin right arm timeline rows', exact: true })).toHaveCount(0);
 	await expect.poll(() => storedPinnedIds(page)).toEqual([]);
 
-	await timeline.getByRole('button', { name: 'Pin arm timeline rows', exact: true }).click();
+	await timeline.getByRole('button', { name: 'Pin right arm timeline rows', exact: true }).click();
 	await expect.poll(() => storedPinnedIds(page)).toEqual([EXAMPLE_ARM_BONE_ID]);
 	await page.waitForTimeout(350);
 	await page.reload();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 	await expect.poll(() => storedPinnedIds(page)).toEqual([EXAMPLE_ARM_BONE_ID]);
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 
 	const reloadedTimeline = page.getByTestId('animate-timeline');
 	await expect(reloadedTimeline.locator(`[data-entity-id="${EXAMPLE_ARM_BONE_ID}"]`)).toBeVisible();
-	await expect(reloadedTimeline.getByRole('button', { name: 'Unpin arm timeline rows', exact: true })).toBeVisible();
+	await expect(reloadedTimeline.getByRole('button', { name: 'Unpin right arm timeline rows', exact: true })).toBeVisible();
 });

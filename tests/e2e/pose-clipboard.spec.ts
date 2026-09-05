@@ -20,7 +20,7 @@ const loadExampleAnimation = async function loadExampleAnimation(page: Page): Pr
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 	await expect(page.getByTestId('animate-timeline')).toBeVisible();
 };
@@ -48,7 +48,7 @@ const copyInterpolatedExamplePose = async function copyInterpolatedExamplePose(p
 	const copiedPoseImage = (await canvas.screenshot()).toString('base64');
 
 	await clickPoseAction(page, 'Copy pose');
-	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 14 bones and 14 attachments.');
+	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 10 bones and 10 attachments.');
 
 	return copiedPoseImage;
 };
@@ -89,7 +89,7 @@ test('copies an interpolated pose with all example entities through visible feed
 
 	await expect(notice).toHaveAttribute('role', 'status');
 	await expect(notice).toHaveAttribute('aria-live', 'polite');
-	await expect(notice).toHaveText('Copied pose: 14 bones and 14 attachments.');
+	await expect(notice).toHaveText('Copied pose: 10 bones and 10 attachments.');
 	const poseMenu = await openPoseMenu(page);
 	await expect(poseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true })).toBeEnabled();
 	await page.keyboard.press('Escape');
@@ -113,16 +113,16 @@ test('pastes into an empty same-project clip, keeps the destination frame, and u
 	const destinationBeforePasteImage = (await canvas.screenshot()).toString('base64');
 
 	await clickPoseAction(page, 'Paste pose');
-	await expect(poseNoticeFor(page)).toHaveText('Pasted pose: 196 properties across 14 bones and 14 attachments; 196 keys created and 0 updated.');
+	await expect(poseNoticeFor(page)).toHaveText('Pasted pose: 140 properties across 10 bones and 10 attachments; 140 keys created and 0 updated.');
 	await expect(poseNoticeFor(page)).toHaveAttribute('aria-live', 'polite');
 	await expect.poll(async () => (await canvas.screenshot()).toString('base64')).toBe(copiedPoseImage);
 	await expect(playhead).toHaveValue('4');
 	await expect(page.getByText('Frame 5 / 12', { exact: false })).toBeVisible();
-	await expect(page.getByText('196 matching tracks', { exact: true })).toBeVisible();
+	await expect(page.getByText('140 matching tracks', { exact: true })).toBeVisible();
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
-	await expect(page.getByText('Image transform · x · robot core', { exact: true })).toBeVisible();
+	await expect(page.getByText('Image transform · x · body front', { exact: true })).toBeVisible();
 	const destinationMarkers = page.getByRole('button', { name: 'Key frame 5', exact: true });
-	await expect(destinationMarkers).toHaveCount(196);
+	await expect(destinationMarkers).toHaveCount(140);
 	await expect(destinationMarkers.first()).toBeVisible();
 
 	await page.getByRole('button', { name: 'Undo', exact: true }).click();
@@ -136,9 +136,9 @@ test('pastes into an empty same-project clip, keeps the destination frame, and u
 
 	await page.getByRole('button', { name: 'Redo', exact: true }).click();
 	await expect.poll(async () => (await canvas.screenshot()).toString('base64')).toBe(copiedPoseImage);
-	await expect(page.getByText('196 matching tracks', { exact: true })).toBeVisible();
+	await expect(page.getByText('140 matching tracks', { exact: true })).toBeVisible();
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Key frame 5', exact: true })).toHaveCount(196);
+	await expect(page.getByRole('button', { name: 'Key frame 5', exact: true })).toHaveCount(140);
 	await expect(playhead).toHaveValue('4');
 });
 
@@ -149,7 +149,7 @@ test('routes shifted shortcuts to pose actions while unshifted shortcuts stay ti
 	const timeline = page.getByTestId('animate-timeline');
 	await timeline.focus();
 	await page.keyboard.press('Control+Shift+C');
-	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 14 bones and 14 attachments.');
+	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 10 bones and 10 attachments.');
 
 	await page.getByRole('button', { name: '+ Clip', exact: true }).click();
 	const destinationClip = page.getByRole('button', { name: 'clip 2', exact: true });
@@ -160,11 +160,11 @@ test('routes shifted shortcuts to pose actions while unshifted shortcuts stay ti
 	await expect(page.getByText('Frame 5 / 12', { exact: false })).toBeVisible();
 	await timeline.focus();
 	await page.keyboard.press('Control+Shift+V');
-	await expect(poseNoticeFor(page)).toHaveText('Pasted pose: 196 properties across 14 bones and 14 attachments; 196 keys created and 0 updated.');
+	await expect(poseNoticeFor(page)).toHaveText('Pasted pose: 140 properties across 10 bones and 10 attachments; 140 keys created and 0 updated.');
 	await expect(playhead).toHaveValue('4');
 	await expect(page.getByText('Frame 5 / 12', { exact: false })).toBeVisible();
 	await showAllKeyedTimelineRows(page);
-	await expect(page.getByText('196 matching tracks', { exact: true })).toBeVisible();
+	await expect(page.getByText('140 matching tracks', { exact: true })).toBeVisible();
 	await expect(page.getByText('Bone transform · x · root', { exact: true })).toBeVisible();
 });
 
@@ -214,7 +214,7 @@ test('ignores pose shortcuts in Setup mode and while a typing target has focus',
 
 	await page.getByTestId('animate-timeline').focus();
 	await page.keyboard.press('Control+Shift+C');
-	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 14 bones and 14 attachments.');
+	await expect(poseNoticeFor(page)).toHaveText('Copied pose: 10 bones and 10 attachments.');
 
 	await destinationClip.click();
 	await page.getByRole('button', { name: 'Timeline options', exact: true }).click();

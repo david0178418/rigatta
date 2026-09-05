@@ -125,12 +125,12 @@ test('restores matching-project presentation, isolates a new project, and falls 
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await expect(leftSplitter).toHaveAttribute('aria-valuenow', '312');
 	await expect(rightSplitter).toHaveAttribute('aria-valuenow', '304');
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example' })).toBeVisible();
 	await page.waitForTimeout(800);
 
 	await page.addInitScript((key) => localStorage.setItem(key, '{broken'), UI_PREFERENCES_STORAGE_KEY);
 	await page.reload();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example' })).toBeVisible();
 	await expect(page.getByRole('separator', { name: 'Resize left dock' })).toHaveAttribute('aria-valuenow', '248');
 	await expect(page.getByRole('separator', { name: 'Resize right dock' })).toHaveAttribute('aria-valuenow', '286');
 	await expect(page.getByRole('tab', { name: 'Rig' })).toHaveAttribute('aria-selected', 'true');

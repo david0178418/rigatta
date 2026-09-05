@@ -417,7 +417,7 @@ export const loadExample = async function loadExample(page: Page): Promise<void>
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 };
 
 export const importProjectFixture = async function importProjectFixture(page: Page, project: Project): Promise<void> {
@@ -558,7 +558,7 @@ export const inspectExportGroup = async function inspectExportGroup(
 		return [...previous, ...atlasFrameKeysForPage];
 	}, Promise.resolve<readonly string[]>([]));
 
-	expect(atlasFrameKeys).toEqual(allAnimationKeys);
+	expect([...atlasFrameKeys].toSorted()).toEqual([...allAnimationKeys].toSorted());
 	expect(atlasFrameKeys).toHaveLength(options.frameCount);
 
 	options.clipNames.forEach((clipName) => {

@@ -173,7 +173,7 @@ test('keeps untouched mixed direct fields blank without creating an edit', async
 test('shows setup and keyed gameplay state in Properties', async ({ page }) => {
 	await loadExample(page);
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	await tree.getByRole('treeitem', { name: 'Point attachment: muzzle', exact: true }).click();
+	await tree.getByRole('treeitem', { name: 'Point attachment: hand-grip', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Gameplay attachment properties' })).toBeVisible();
 	await expect(page.getByText('Setup enabled', { exact: true })).toBeVisible();
 
@@ -249,15 +249,15 @@ test('keeps draw-order and attachment-swap contexts in Properties with navigatio
 
 	await page.getByRole('combobox', { name: 'New track', exact: true }).selectOption({ label: 'body · Attachment' });
 	await page.getByRole('button', { name: 'Add track', exact: true }).click();
-	await page.getByRole('combobox', { name: 'Key attachment', exact: true }).selectOption({ label: 'robot core' });
+	await page.getByRole('combobox', { name: 'Key attachment', exact: true }).selectOption({ label: 'body front' });
 	await page.getByRole('button', { name: 'Add key', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Attachment swap properties' })).toBeVisible();
 	await expect(page.getByText('Setup value', { exact: true })).toBeVisible();
 	await expect(page.getByText('Current source', { exact: true })).toBeVisible();
 	await expect(page.getByText('Keyed value · frame 1', { exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Select current robot core', exact: true }).click();
+	await page.getByRole('button', { name: 'Select current body front', exact: true }).click();
 	await expect(page.getByRole('region', { name: 'Attachment swap properties' })).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'robot core', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'body front', exact: true })).toBeVisible();
 });
 
 test('shows focus-visible tooltips and restores Track details focus on Escape', async ({ page }) => {

@@ -69,23 +69,23 @@ test('searches Rig names and types with context markers and restores expansion a
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
 	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
+	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
 
 	await arm.focus();
 	await arm.press('ArrowLeft');
 	await expect(arm).toHaveAttribute('aria-expanded', 'false');
 
 	await page.getByLabel('Search rig').fill('point attachment');
-	const muzzle = tree.getByRole('treeitem', { name: 'Point attachment: muzzle', exact: true });
-	await expect(muzzle).toBeVisible();
-	await expect(muzzle).toHaveAttribute('data-filter-state', 'match');
+	const handGrip = tree.getByRole('treeitem', { name: 'Point attachment: hand-grip', exact: true });
+	await expect(handGrip).toBeVisible();
+	await expect(handGrip).toHaveAttribute('data-filter-state', 'match');
 	await expect(root).toHaveAttribute('data-filter-state', 'context');
-	await expect(tree.getByRole('treeitem', { name: 'Bone: arm', exact: true })).toHaveAttribute('data-expansion-state', 'filter-expanded');
+	await expect(tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true })).toHaveAttribute('data-expansion-state', 'filter-expanded');
 	await expect(tree.getByRole('status')).toContainText('context ancestor');
 
 	await page.getByLabel('Search rig').fill('');
 	await expect(arm).toHaveAttribute('aria-expanded', 'false');
-	await expect(muzzle).toHaveCount(0);
+	await expect(handGrip).toHaveCount(0);
 	await expect(arm).toBeFocused();
 
 	await page.getByLabel('Search rig').fill('slot');

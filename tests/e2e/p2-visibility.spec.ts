@@ -8,7 +8,7 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example' })).toBeVisible();
 	await expect(page.locator('canvas.pixi-canvas')).toBeVisible();
 };
 
@@ -27,7 +27,7 @@ test('hides a parent from authoring pixels and hit testing while preserving sele
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
 	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
+	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
 	await arm.locator('.bone-row').click();
 	await page.waitForTimeout(700);
 
@@ -35,7 +35,7 @@ test('hides a parent from authoring pixels and hit testing while preserving sele
 	await root.locator('.tree-visibility').click();
 	await expect(root.locator('.tree-visibility')).toHaveAttribute('aria-label', 'Show');
 	await expect(arm.locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
-	await expect(page.getByRole('heading', { name: 'arm', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'right arm', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
 	await expect.poll(() => canvasData(page)).not.toBe(beforeHidden);
 
@@ -49,7 +49,7 @@ test('hides a parent from authoring pixels and hit testing while preserving sele
 		canvasBounds.x + canvasBounds.width / 2,
 		canvasBounds.y + canvasBounds.height / 2
 	);
-	await expect(page.getByRole('heading', { name: 'arm', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('heading', { name: 'right arm', exact: true })).toHaveCount(0);
 	await expect(root.locator('.bone-row')).toHaveAttribute('aria-pressed', 'false');
 });
 
@@ -74,7 +74,7 @@ test('persists hidden IDs for the matching project and restores them after reloa
 	expect(examplePreferences?.hiddenEntityIds).toEqual([EXAMPLE_ROOT_BONE_ID]);
 
 	await page.reload();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example' })).toBeVisible();
 	await expect(page.getByRole('tree', { name: 'Rig hierarchy' }).getByRole('treeitem', { name: 'Bone: root', exact: true }).locator('.tree-visibility'))
 		.toHaveAttribute('aria-label', 'Show');
 });

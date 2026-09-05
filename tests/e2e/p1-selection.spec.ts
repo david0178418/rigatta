@@ -10,7 +10,7 @@ test('synchronizes Draw Order and timeline entity selection with the Rig tree', 
 	await loadExample(page);
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
+	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
 	const armId = await arm.getAttribute('data-rig-tree-id');
 
 	if (!armId) {
@@ -29,19 +29,20 @@ test('synchronizes Draw Order and timeline entity selection with the Rig tree', 
 	await page.getByRole('dialog', { name: 'Timeline options', exact: true }).getByLabel('Timeline rows', { exact: true }).selectOption('all-keyed');
 	await page.keyboard.press('Escape');
 	await page.getByRole('tab', { name: 'Draw Order', exact: true }).click();
-	const armTimelineRow = page.locator(`[data-entity-id="${armId}"]`).first().locator('.timeline-row-select');
+	const armTimelineGroup = page.locator(`[data-entity-id="${armId}"]`).first();
+	const armTimelineRow = armTimelineGroup.locator('.timeline-row-select');
 	await expect(armTimelineRow).toBeVisible();
 	await armTimelineRow.click();
 
 	await page.getByRole('tab', { name: 'Rig', exact: true }).click();
 	await expect(page.getByRole('tab', { name: 'Rig', exact: true })).toHaveAttribute('aria-selected', 'true');
-	await expect(tree.getByRole('treeitem', { name: 'Bone: arm', exact: true }).locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
-	await expect(page.getByRole('heading', { name: 'arm', exact: true })).toBeVisible();
-	const armTimelineKey = page.getByRole('button', { name: 'Key frame 1', exact: true }).first();
+	await expect(tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('heading', { name: 'right arm', exact: true })).toBeVisible();
+	const armTimelineKey = armTimelineGroup.getByRole('button', { name: 'right arm key at frame 1', exact: true }).first();
 	await armTimelineKey.click();
 	await expect(armTimelineKey).toHaveClass(/is-selected/);
 	await expect(page.getByRole('tab', { name: 'Rig', exact: true })).toHaveAttribute('aria-selected', 'true');
-	await expect(tree.getByRole('treeitem', { name: 'Bone: arm', exact: true }).locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
+	await expect(tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('reveals a canvas selection in the Rig tree and clears its filter', async ({ page }) => {
@@ -49,11 +50,11 @@ test('reveals a canvas selection in the Rig tree and clears its filter', async (
 	await loadExample(page);
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	const robotCore = tree.getByRole('treeitem', { name: 'Image attachment: robot core', exact: true });
+	const bodyFront = tree.getByRole('treeitem', { name: 'Image attachment: body front', exact: true });
 	const search = page.getByLabel('Search rig');
 
 	await search.fill('does-not-match');
-	await expect(robotCore).toHaveCount(0);
+	await expect(bodyFront).toHaveCount(0);
 	await page.getByRole('tab', { name: 'Draw Order', exact: true }).click();
 
 	const viewport = page.locator('.pixi-viewport');
@@ -67,16 +68,16 @@ test('reveals a canvas selection in the Rig tree and clears its filter', async (
 	await expect(page.getByRole('tab', { name: 'Rig', exact: true })).toHaveAttribute('aria-selected', 'true');
 	await expect(search).toHaveValue('');
 	await tree.getByRole('treeitem', { name: 'Slot: body', exact: true }).getByRole('button', { name: 'Expand', exact: true }).click();
-	await expect(robotCore.locator('.attachment-row')).toHaveAttribute('aria-pressed', 'true');
+	await expect(bodyFront.locator('.attachment-row')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('replays a mixed additive selection with both Rig and Assets revealed', async ({ page }) => {
 	await loadExample(page);
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
+	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
 	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
-	const asset = page.getByRole('button', { name: /robot-core\.png/ });
+	const asset = page.getByRole('button', { name: /body_front\.png/ });
 
 	await arm.locator('.bone-row').click();
 	await page.getByRole('tab', { name: 'Assets', exact: true }).click();
@@ -100,8 +101,8 @@ test('persists complete additive selection history across reload', async ({ page
 	await loadExample(page);
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
-	const asset = page.getByRole('button', { name: /robot-core\.png/ });
+	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
+	const asset = page.getByRole('button', { name: /body_front\.png/ });
 
 	await arm.locator('.bone-row').click();
 	await page.getByRole('tab', { name: 'Assets', exact: true }).click();
@@ -112,8 +113,8 @@ test('persists complete additive selection history across reload', async ({ page
 
 	await page.reload();
 	const reloadedTree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	const reloadedArm = reloadedTree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
-	const reloadedAsset = page.getByRole('button', { name: /robot-core\.png/ });
+	const reloadedArm = reloadedTree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
+	const reloadedAsset = page.getByRole('button', { name: /body_front\.png/ });
 
 	await expect(reloadedArm).toBeVisible();
 	await page.keyboard.press('PageUp');

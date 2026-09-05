@@ -404,5 +404,5 @@ test('supports keyboard operation of the empty-canvas example action', async ({ 
 		await exampleButton.focus();
 		await expect(exampleButton).toBeFocused();
 		await page.keyboard.press('Enter');
-		await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 });

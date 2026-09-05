@@ -8,7 +8,7 @@ test('persists inspector collapse state for the matching project only', async ({
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await page.getByRole('button', { name: 'arm', exact: true }).click();
+	await page.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row').click();
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
 	await page.getByRole('button', { name: 'Clip settings', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Collapse Clip' })).toBeVisible();
@@ -66,7 +66,7 @@ test('persists inspector collapse state for the matching project only', async ({
 	await page.waitForTimeout(400);
 
 	await page.reload();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Expand Entity properties' })).toBeVisible();
 	await expect(page.locator('#inspector-section-content-entity-properties')).toBeHidden();
 });

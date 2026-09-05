@@ -53,15 +53,15 @@ test('keeps asset density interactions, previews, and object URL lifetime bounde
 	await page.getByRole('tab', { name: 'Assets', exact: true }).click();
 
 	const browser = page.locator('.asset-browser');
-	const row = browser.locator('.asset-row').filter({ hasText: 'robot-core.png' });
+	const row = browser.locator('.asset-row').filter({ hasText: 'body_front.png' });
 	const preview = browser.getByRole('region', { name: 'Asset preview' });
 
 	await expect(row).toHaveCount(1);
 	await row.click();
 	await expect(row).toHaveAttribute('aria-pressed', 'true');
-	await expect(preview).toContainText('32 × 32 · PNG');
-	await expect(preview).toContainText('example/robot-core.png');
-	await expect(preview).toContainText('Used by body / robot core');
+	await expect(preview).toContainText('39 × 31 · PNG');
+	await expect(preview).toContainText('example/adventurer/body_front.png');
+	await expect(preview).toContainText('Used by body / body front');
 
 	await row.focus();
 	await expect(row).toBeFocused();
@@ -112,8 +112,8 @@ test('keeps asset density interactions, previews, and object URL lifetime bounde
 		await expect(row.locator('img.asset-thumbnail')).toHaveCount(0);
 	}, Promise.resolve());
 
-	await browser.getByLabel('Search images').fill('robot');
-	await expect(browser.locator('.asset-folder-row')).toContainText('example');
+	await browser.getByLabel('Search images').fill('adventurer');
+	await expect(browser.getByText('▾example', { exact: true })).toBeVisible();
 	await expect(row).toBeVisible();
 
 	const createdBeforeUnmount = await assetUrlEventCounts(page);

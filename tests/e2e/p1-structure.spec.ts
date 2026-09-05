@@ -12,15 +12,15 @@ test('characterizes selection in Setup and Animate modes', async ({ page }) => {
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 
-	const arm = page.getByRole('button', { name: 'arm', exact: true });
+	const arm = page.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row');
 	await arm.click();
 	await expect(arm).toHaveAttribute('aria-pressed', 'true');
-	await expect(page.getByRole('heading', { name: 'arm', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'right arm', exact: true })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Animate' }).click();
 	await expect(page.getByTestId('animate-timeline')).toBeVisible();
-	await expect(page.getByRole('button', { name: 'arm', exact: true })).toHaveAttribute('aria-pressed', 'true');
-	await expect(page.getByRole('heading', { name: 'arm', exact: true })).toBeVisible();
+	await expect(arm).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('heading', { name: 'right arm', exact: true })).toBeVisible();
 });
 
 test('characterizes bone reparenting and setup slot reordering by drag and drop', async ({ page }) => {
@@ -160,7 +160,10 @@ test('keeps the actual export overlay and panel contained at supported viewports
 		await page.setViewportSize(viewport);
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Animate' }).click();
-		await page.getByRole('button', { name: 'Create animation clip' }).click();
+		const createClip = page.getByRole('button', { name: 'Create animation clip' });
+		if (await createClip.count() > 0) {
+			await createClip.click();
+		}
 		await page.getByRole('button', { name: 'Export', exact: true }).click();
 
 		const overlay = page.locator('.export-panel-overlay');

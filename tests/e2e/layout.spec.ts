@@ -14,7 +14,7 @@ test('keeps the desktop editor usable at supported viewport sizes', async ({ pag
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Project', exact: true }).click();
 		await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-		await page.getByRole('button', { name: 'arm', exact: true }).click();
+		await page.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row').click();
 
 		await expect(page.getByRole('button', { name: 'Setup' })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Animate' })).toBeVisible();
@@ -74,7 +74,7 @@ test('runs the P0 editor workflow at every supported viewport size', async ({ pa
 			await page.goto('/');
 			await page.getByRole('button', { name: 'Project', exact: true }).click();
 			await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-			await page.getByRole('button', { name: 'arm', exact: true }).click();
+			await page.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row').click();
 			await page.getByRole('button', { name: 'Rotate', exact: true }).click();
 			await expect(page.getByRole('button', { name: 'Rotate', exact: true })).toHaveAttribute('aria-pressed', 'true');
 			const rotation = page.getByLabel('Rotation (deg)', { exact: true });

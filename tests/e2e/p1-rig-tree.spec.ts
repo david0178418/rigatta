@@ -133,7 +133,7 @@ test('renders typed SVG icons and durable accessible row states', async ({ page 
 
 	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
 	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: arm', exact: true });
+	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
 	const body = tree.getByRole('treeitem', { name: 'Slot: body', exact: true });
 
 	const expandIfNeeded = async function expandIfNeeded(item: ReturnType<typeof tree.getByRole>): Promise<void> {
@@ -159,14 +159,14 @@ test('renders typed SVG icons and durable accessible row states', async ({ page 
 	expect(await tree.locator('svg.rig-control-icon').count()).toBeGreaterThan(8);
 
 	const armRow = arm.locator('.bone-row');
-	await expect(armRow).toHaveAttribute('title', 'Bone: arm · Child of bone root');
+	await expect(armRow).toHaveAttribute('title', 'Bone: right arm · Child of bone torso');
 	const armDescriptionId = await arm.getAttribute('aria-describedby');
 
 	if (!armDescriptionId) {
-		throw new Error('The arm tree item description ID is unavailable.');
+		throw new Error('The right arm tree item description ID is unavailable.');
 	}
 
-	await expect(page.locator(`#${armDescriptionId}`)).toContainText('Child of bone root');
+	await expect(page.locator(`#${armDescriptionId}`)).toContainText('Child of bone torso');
 	const activeAttachment = tree.locator('.attachment-row.is-active-attachment');
 	await expect(activeAttachment).toHaveCount(1);
 	await expect(activeAttachment).toHaveAttribute('title', /active setup attachment/);
@@ -178,11 +178,11 @@ test('renders typed SVG icons and durable accessible row states', async ({ page 
 	await expect(arm).toBeFocused();
 	await expect(arm).toHaveCSS('outline-style', 'solid');
 
-	const muzzle = tree.getByRole('treeitem', { name: 'Point attachment: muzzle', exact: true }).locator('.attachment-row');
+	const handGrip = tree.getByRole('treeitem', { name: 'Point attachment: hand-grip', exact: true }).locator('.attachment-row');
 	await armRow.click();
-	await muzzle.click({ modifiers: ['Control'] });
+	await handGrip.click({ modifiers: ['Control'] });
 	await expect(armRow).toHaveClass(/is-multi-selected/);
-	await expect(muzzle).toHaveClass(/is-multi-selected/);
+	await expect(handGrip).toHaveClass(/is-multi-selected/);
 	await expect(arm).toHaveAttribute('data-selection-state', 'multi-selected');
 });
 

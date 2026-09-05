@@ -24,7 +24,7 @@ test('downloads and validates the built-in example as combined grid output', asy
 	const result = await exportZip(page, dialog);
 
 	await waitForExportStatus(page, 'completed');
-	expect(result.download.suggestedFilename()).toBe('Cutout-Robot-Example.zip');
+	expect(result.download.suggestedFilename()).toBe('Cutout-Adventurer-Example.zip');
 	await inspectExportGroup(page, result.entries, {
 		directory: '',
 		clipNames: ['walk'],
@@ -143,7 +143,7 @@ test('shows render failure recovery without a partial download', async ({ page }
 
 	await waitForExportStatus(page, 'completed');
 	expect(downloads).toHaveLength(1);
-	expect(retry.download.suggestedFilename()).toBe('Cutout-Robot-Example.zip');
+	expect(retry.download.suggestedFilename()).toBe('Cutout-Adventurer-Example.zip');
 });
 
 test('shows composition failure without creating a partial download', async ({ page }) => {
@@ -191,5 +191,5 @@ test('shows download failure and completes a later retry exactly once', async ({
 
 	await waitForExportStatus(page, 'completed');
 	expect(downloads).toHaveLength(1);
-	expect(retry.download.suggestedFilename()).toBe('Cutout-Robot-Example.zip');
+	expect(retry.download.suggestedFilename()).toBe('Cutout-Adventurer-Example.zip');
 });

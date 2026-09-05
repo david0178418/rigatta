@@ -10,7 +10,7 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 };
 
 const addTwoSlots = async function addTwoSlots(page: Page): Promise<void> {
@@ -104,7 +104,7 @@ test('recovers committed work after reload and restores an imported archive', as
 	await loadExample(page);
 	const archiveBytes = await archiveFromDownload(page);
 	const archiveText = projectJsonFromArchive(archiveBytes);
-	await expect(archiveText).toContain('"name": "Cutout Robot Example"');
+	await expect(archiveText).toContain('"name": "Cutout Adventurer Example"');
 	await expect(page.getByRole('button', { name: 'Project', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	page.once('dialog', (dialog) => void dialog.accept());
@@ -114,7 +114,7 @@ test('recovers committed work after reload and restores an imported archive', as
 	const archiveInput = page.locator('input[type="file"]');
 	page.once('dialog', (dialog) => void dialog.accept());
 	await archiveInput.setInputFiles({ name: 'sample.rigatta', mimeType: 'application/zip', buffer: archiveBytes });
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 });
 
 test('applies one shared edit, undoes it once, and keeps presentation state out of archives', async ({ page }) => {
@@ -206,7 +206,7 @@ test('falls back to safe defaults after malformed preference storage', async ({ 
 	await page.setViewportSize({ width: 1120, height: 720 });
 	await page.addInitScript((key) => localStorage.setItem(key, '{broken'), UI_PREFERENCES_STORAGE_KEY);
 	await loadExample(page);
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 	await expect(page.getByRole('separator', { name: 'Resize left dock' })).toHaveAttribute('aria-valuenow', '248');
 	await expect(page.getByRole('separator', { name: 'Resize right dock' })).toHaveAttribute('aria-valuenow', '286');
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();

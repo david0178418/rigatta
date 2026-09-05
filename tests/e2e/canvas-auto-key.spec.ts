@@ -10,7 +10,7 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 };
 
 const openExampleAnimation = async function openExampleAnimation(page: Page): Promise<void> {
@@ -114,11 +114,11 @@ test('canvas bone translation auto-keys changed axes at multiple frames', async 
 
 test('canvas image translation creates one track with keys at two frames', async ({ page }) => {
 	await openExampleAnimation(page);
-	await selectRigNode(page, 'Image attachment: robot core');
+	await selectRigNode(page, 'Image attachment: body front');
 
 	await dragLogical(page, { x: 128, y: 128 }, { x: 144, y: 128 });
 
-	await expect(page.getByText('Image transform · x · robot core', { exact: true })).toHaveCount(1);
+	await expect(page.getByText('Image transform · x · body front', { exact: true })).toHaveCount(1);
 	await expect(page.getByRole('button', { name: 'Key frame 1', exact: true })).toHaveCount(2);
 	const firstFrameImage = (await page.locator('canvas.pixi-canvas').screenshot()).toString('base64');
 
@@ -129,16 +129,16 @@ test('canvas image translation creates one track with keys at two frames', async
 	await expect.poll(async () => (await page.locator('canvas.pixi-canvas').screenshot()).toString('base64')).not.toBe(firstFrameImage);
 });
 
-test('inspector rotation seeds the setup value and interpolates the head pose', async ({ page }) => {
+test('inspector rotation seeds the setup value and interpolates an unkeyed bone pose', async ({ page }) => {
 	await openExampleAnimation(page);
-	await selectRigNode(page, 'Bone: head');
+	await selectRigNode(page, 'Bone: hips');
 	const rotation = page.getByLabel('Rotation (deg)', { exact: true });
 
 	await page.getByLabel('Playhead', { exact: true }).fill('4');
 	await rotation.fill('30');
 	await rotation.press('Enter');
 
-	const rotationRow = page.locator('[data-track-id]').filter({ hasText: 'Bone transform · rotation · head' });
+	const rotationRow = page.locator('[data-track-id]').filter({ hasText: 'Bone transform · rotation · hips' });
 
 	await expect(rotationRow).toHaveCount(1);
 	await expect(rotationRow.getByRole('button', { name: 'Key frame 1', exact: true })).toHaveCount(1);
@@ -225,10 +225,10 @@ test('canvas rectangle resize auto-keys width instead of attachment scale', asyn
 	await selectRigNode(page, 'Rectangle attachment: hurtbox');
 	await page.getByRole('button', { name: 'Scale', exact: true }).click();
 
-	await dragLogical(page, { x: 152, y: 152 }, { x: 168, y: 152 });
+	await dragLogical(page, { x: 158, y: 112 }, { x: 174, y: 112 });
 
 	await expect(page.getByText('Rectangle size · width · hurtbox', { exact: true })).toBeVisible();
 	await expect(page.getByText('Image transform · scaleX · hurtbox', { exact: true })).toHaveCount(0);
-	await expect(page.locator('input[name="width"]')).toHaveValue('80');
+	await expect(page.locator('input[name="width"]')).toHaveValue('92');
 	await expect(page.getByRole('button', { name: 'Key frame 1', exact: true })).toHaveCount(1);
 });
