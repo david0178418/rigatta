@@ -34,7 +34,7 @@ bulk/folder import handoff, failure summaries, accessibility, undo, and reload.
 The timeline layout proof is `tests/e2e/timeline-layout-proof.spec.ts`; the
 viewport presentation evidence is in commit `f09f43d` and
 `tests/e2e/viewport-presets.spec.ts`. These are focused additions to the
-recorded clean-checkout gate, not a claim of a newly rerun full suite.
+recorded clean-checkout gate; see the final R0 evidence below.
 
 R0 evidence: Implementation commit `73671f7` covers the verified work from
 `3cad3f8` through `73671f7`; `bun run check` passed with 352 unit tests plus
