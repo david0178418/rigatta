@@ -220,7 +220,7 @@ describe('export orchestration', () => {
 			'animations.json',
 			'atlas-0.json',
 			'atlas-0.png',
-			'boneanim-metadata.json'
+			'rigatta-metadata.json'
 		]);
 		expect(progress.map(({ completed }) => completed)).toEqual([0, 1, 2, 2, 2]);
 		expect(progress.every((value, index) => index === 0 || value.completed >= progress[index - 1]?.completed)).toBe(true);
@@ -228,7 +228,7 @@ describe('export orchestration', () => {
 		expect(first.disposals).toHaveLength(1);
 
 		const atlas = result.value.files.find((file) => file.path === 'atlas-0.json');
-		const metadata = result.value.files.find((file) => file.path === 'boneanim-metadata.json');
+		const metadata = result.value.files.find((file) => file.path === 'rigatta-metadata.json');
 
 		if (!atlas || !metadata) {
 			throw new Error('The combined grid JSON files are unavailable.');
@@ -256,11 +256,11 @@ describe('export orchestration', () => {
 			'idle/animations.json',
 			'idle/atlas-0.json',
 			'idle/atlas-0.png',
-			'idle/boneanim-metadata.json',
+			'idle/rigatta-metadata.json',
 			'walk/animations.json',
 			'walk/atlas-0.json',
 			'walk/atlas-0.png',
-			'walk/boneanim-metadata.json'
+			'walk/rigatta-metadata.json'
 		]);
 
 		const walkAtlas = result.value.files.find((file) => file.path === 'walk/atlas-0.json');
@@ -291,7 +291,7 @@ describe('export orchestration', () => {
 			[...Array(12).keys()].map((index) => index / 12)
 		);
 		expect(result.value.frameCount).toBe(12);
-		expect(result.value.files.some((file) => file.path === 'boneanim-metadata.json')).toBe(true);
+		expect(result.value.files.some((file) => file.path === 'rigatta-metadata.json')).toBe(true);
 	});
 
 	test('returns typed transparent and oversized-frame errors without packaging', async () => {

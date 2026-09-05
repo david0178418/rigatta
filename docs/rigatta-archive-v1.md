@@ -1,6 +1,6 @@
-# `.boneanim` archive version 1
+# `.rigatta` archive version 1
 
-The `.boneanim` extension identifies a ZIP archive. The archive is
+The `.rigatta` extension identifies a ZIP archive. The archive is
 self-contained: project metadata references copied image files inside the
 archive and never the user's original import directory.
 
@@ -23,7 +23,7 @@ asset MIME type (`png`, `jpg`, or `webp`).
 
 ```json
 {
-  "format": "boneanim",
+  "format": "rigatta",
   "archiveVersion": 1,
   "projectSchemaVersion": 1,
   "projectId": "00000000-0000-4000-8000-000000000001",
@@ -47,9 +47,9 @@ checking.
 
 ## Import and export rules
 
-- The editor's `Project` menu uses `Import .boneanim` and `Export project
+- The editor's `Project` menu uses `Import .rigatta` and `Export project
   archive` for this format. The toolbar `Export` action is reserved for
-  generated sprite-sheet output and does not produce a `.boneanim` archive.
+  generated sprite-sheet output and does not produce a `.rigatta` archive.
 - Export writes deterministic JSON encoding and stable asset ordering by ID.
 - Import first checks ZIP paths, manifest shape, archive version, project
   schema, asset hashes, and image signatures. No active project state changes

@@ -207,7 +207,7 @@ test('keeps a visible non-color-only drag target state during browser dragover',
 		}
 
 		const dataTransfer = new DataTransfer();
-		dataTransfer.setData('application/x-bone-animation-bone', source);
+		dataTransfer.setData('application/x-rigatta-bone', source);
 		sourceRow.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer }));
 		const bounds = targetRow.getBoundingClientRect();
 		targetRow.dispatchEvent(new DragEvent('dragover', {

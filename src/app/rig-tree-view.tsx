@@ -17,9 +17,9 @@ import type { SlotDropZone } from './slot-dnd.ts';
 import { isSelected, type Selection } from './selection.ts';
 import { Tooltip } from './ui-primitives.tsx';
 
-const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
-const SLOT_DRAG_MIME = 'application/x-bone-animation-slot';
-const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
+const BONE_DRAG_MIME = 'application/x-rigatta-bone';
+const SLOT_DRAG_MIME = 'application/x-rigatta-slot';
+const ASSET_DRAG_MIME = 'application/x-rigatta-asset';
 
 export type RigTreeViewProps = Readonly<{
 	project: Project;

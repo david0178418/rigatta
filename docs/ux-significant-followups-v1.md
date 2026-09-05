@@ -77,7 +77,7 @@ may proceed independently. `UX-R0` is last.
 - Project mutations must continue through typed commands and bounded history.
 - Export selection, progress, cancellation, viewport presentation, timeline
   presentation, transient notices, and external drag state are UI-only state.
-  They must not enter `Project`, `.boneanim` archives, pose evaluation, sampled
+  They must not enter `Project`, `.rigatta` archives, pose evaluation, sampled
   frames, sprite-sheet metadata, or project undo/redo.
 - A cancelled or failed export must not download a partial package.
 - Export rendering must omit grid, bones, selection guides, transform handles,
@@ -102,7 +102,7 @@ may proceed independently. `UX-R0` is last.
 ### Export
 
 - `Export` remains the primary top-toolbar action and means sprite-sheet export,
-  not editable `.boneanim` archive export.
+  not editable `.rigatta` archive export.
 - The existing combined/per-clip and clip-selection controls remain.
 - A successful export downloads a ZIP package even when the package contains a
   single atlas page. This provides one deterministic browser workflow for grid,
@@ -210,7 +210,7 @@ may proceed independently. `UX-R0` is last.
 
 - [x] **UX-F0-04** Compose complete grid output through the orchestrator.
   Depends on UX-F0-03. Produce PNG atlas pages, Pixi atlas JSON, ordered
-  `animations.json`, and frame-aligned `boneanim-metadata.json` for combined and
+  `animations.json`, and frame-aligned `rigatta-metadata.json` for combined and
   per-clip selection. Preserve full logical-canvas cells and deterministic frame
   keys. Add tests using actual rendered example frames rather than only
   synthetic RGBA fixtures.
@@ -449,7 +449,7 @@ may proceed independently. `UX-R0` is last.
   inspect the Pixi canvas rather than relying on DOM assertions alone.
 
 - [x] **UX-R0-03** Audit serialization and history boundaries. Depends on
-  UX-R0-01. Compare `.boneanim` archives, sampled poses, sprite-sheet files,
+  UX-R0-01. Compare `.rigatta` archives, sampled poses, sprite-sheet files,
   project history, and autosave records before and after changing viewport
   presets, timeline modes, open menus, export state, and transient drop state.
   Only intended import/placement commands may change project data.
@@ -486,4 +486,4 @@ Complete this section only after every checked task has current evidence.
 - `bun run check`: passed, 352 unit tests plus lint/typecheck/build
 - `bun run test:e2e`: passed, 152 Chromium tests
 - `git diff --check`: passed
-- Visible review artifacts: `/tmp/bone-animation-v1-{1120,1440}-{authoring,visual-preview,gameplay-preview}.png`, `/tmp/bone-animation-timeline-*.png`
+- Visible review artifacts: `/tmp/rigatta-v1-{1120,1440}-{authoring,visual-preview,gameplay-preview}.png`, `/tmp/rigatta-timeline-*.png`

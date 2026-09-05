@@ -38,7 +38,7 @@ elements.
 
    `bunx playwright test tests/e2e/viewport-presets.spec.ts --project=chromium --workers=1`
 
-   The proof writes inspectable screenshots to `/tmp/bone-animation-v1-<width>-<preset>.png`.
+   The proof writes inspectable screenshots to `/tmp/rigatta-v1-<width>-<preset>.png`.
    The committed viewport evidence is `f09f43d`.
 
 ## Focused export and import evidence
@@ -88,7 +88,7 @@ validated with the same project and image rules.
    settings.
 2. Use `Open recent` to select a stable project or a recovery snapshot. The
    current authored project remains active if replacement is declined.
-3. Use `Import .boneanim` to choose a self-contained archive. Archive
+3. Use `Import .rigatta` to choose a self-contained archive. Archive
    validation completes before replacement confirmation, and invalid archives
    leave the current project untouched.
 4. Use `Export project archive` to download editable project JSON and source

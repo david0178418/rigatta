@@ -1,5 +1,6 @@
 import { useRef, useState, type ChangeEvent, type ReactElement } from 'react';
 import type { EntityId } from '../domain/ids.ts';
+import { ARCHIVE_FORMAT } from '../domain/schema.ts';
 import type { RecentProject } from '../persistence/repository.ts';
 import { Dialog, MenuButton, type MenuItem } from './ui-primitives.tsx';
 
@@ -53,7 +54,7 @@ export const ProjectMenu = function ProjectMenu({
 			onRecentOpenChange(true);
 			onOpenRecent();
 		} },
-		{ id: 'import', label: 'Import .boneanim', description: 'Replace the current project after validation', onSelect: () => fileInputRef.current?.click() },
+		{ id: 'import', label: `Import .${ARCHIVE_FORMAT}`, description: 'Replace the current project after validation', onSelect: () => fileInputRef.current?.click() },
 		{ id: 'archive', label: 'Export project archive', description: 'Save editable project data and image assets', onSelect: onExportArchive },
 		{ id: 'example', label: 'Load example', description: 'Replace with the bundled sample', onSelect: onLoadExample },
 		{ id: 'settings', label: 'Project settings', description: 'Name and fixed logical canvas', onSelect: (): void => {
@@ -66,7 +67,7 @@ export const ProjectMenu = function ProjectMenu({
 	return (
 		<>
 			<MenuButton label="Project" items={items} />
-			<input ref={fileInputRef} accept=".boneanim,application/zip" className="sr-only" type="file" onChange={(event) => void importArchive(event)} />
+			<input ref={fileInputRef} accept={`.${ARCHIVE_FORMAT},application/zip`} className="sr-only" type="file" onChange={(event) => void importArchive(event)} />
 			{recentOpen && (
 				<Dialog label="Open recent projects" onClose={() => onRecentOpenChange(false)}>
 					{recentProjectsLoading && <p className="muted-copy" role="status">Loading recent projects…</p>}

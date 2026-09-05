@@ -109,7 +109,7 @@ const isViewportControlTarget = function isViewportControlTarget(target: EventTa
 type CanvasDropMode = 'single-image' | 'bulk-import' | 'internal-asset';
 
 const canvasDropModeFor = function canvasDropModeFor(dataTransfer: DataTransfer): CanvasDropMode | undefined {
-	if (dataTransfer.types.includes('application/x-bone-animation-asset')) {
+	if (dataTransfer.types.includes('application/x-rigatta-asset')) {
 		return 'internal-asset';
 	}
 	if (!dataTransfer.types.includes('Files')) {
@@ -747,7 +747,7 @@ export const ViewportCanvas = function ViewportCanvas({
 			stage,
 			snapToGrid ?? DEFAULT_GRID_SETTINGS.snap
 		);
-		const assetId = event.dataTransfer.getData('application/x-bone-animation-asset');
+		const assetId = event.dataTransfer.getData('application/x-rigatta-asset');
 
 		if (nextDropMode === 'internal-asset' && assetId && onAssetDrop) {
 			onAssetDrop(assetId, point);

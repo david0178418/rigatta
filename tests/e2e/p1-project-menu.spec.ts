@@ -17,7 +17,7 @@ test('organizes project lifecycle actions and fixed project settings in the Proj
 
 	await expect(menu.getByRole('menuitem', { name: 'New project', exact: true })).toBeVisible();
 	await expect(menu.getByRole('menuitem', { name: 'Open recent', exact: true })).toBeVisible();
-	await expect(menu.getByRole('menuitem', { name: 'Import .boneanim', exact: true })).toBeVisible();
+	await expect(menu.getByRole('menuitem', { name: 'Import .rigatta', exact: true })).toBeVisible();
 	await expect(menu.getByRole('menuitem', { name: 'Export project archive', exact: true })).toBeVisible();
 	await expect(menu.getByRole('menuitem', { name: 'Load example', exact: true })).toBeVisible();
 	await expect(menu.getByRole('menuitem', { name: 'Project settings', exact: true })).toBeVisible();
@@ -76,14 +76,14 @@ test('exports a project archive and validates it before replacement', async ({ p
 		throw new Error('The project archive download path is unavailable.');
 	}
 
-	expect(download.suggestedFilename()).toBe('Cutout-Robot-Example.boneanim');
+	expect(download.suggestedFilename()).toBe('Cutout-Robot-Example.rigatta');
 	const archiveInput = page.locator('input[type="file"]');
 
 	page.once('dialog', (dialog) => void dialog.accept());
 	await archiveInput.setInputFiles(archivePath);
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
 
-	await archiveInput.setInputFiles({ name: 'invalid.boneanim', mimeType: 'application/zip', buffer: Buffer.from('not a zip archive') });
-	await expect(page.getByText(/Could not read \.boneanim archive/)).toBeVisible();
+	await archiveInput.setInputFiles({ name: 'invalid.rigatta', mimeType: 'application/zip', buffer: Buffer.from('not a zip archive') });
+	await expect(page.getByText(/Could not read \.rigatta archive/)).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
 });

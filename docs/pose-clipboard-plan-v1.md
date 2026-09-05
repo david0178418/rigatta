@@ -26,7 +26,7 @@ This is distinct from the existing timeline key clipboard:
   transform values on keys already present at the destination frame.
 
 The interaction follows the useful part of Spriter Pro's full-frame copy
-workflow while retaining Bone Animation's typed tracks and immutable command
+workflow while retaining Rigatta's typed tracks and immutable command
 history.
 
 ## Resolved version-1 scope

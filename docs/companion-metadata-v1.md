@@ -1,6 +1,6 @@
 # Companion animation metadata v1
 
-`createCompanionMetadata` builds the `boneanim-metadata.json` document from
+`createCompanionMetadata` builds the `rigatta-metadata.json` document from
 sampled clip frames. Each frame carries its deterministic index, time, frame
 key, atlas page, events, point records, and rectangle records. Point and
 rectangle maps use stable attachment IDs; rectangle records retain four

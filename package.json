@@ -1,6 +1,6 @@
 {
-	"name": "bone-animation",
-	"description": "Desktop-oriented cutout animation editor for PixiJS sprite-sheet export.",
+	"name": "rigatta",
+	"description": "Rigatta is a desktop-oriented cutout animation editor for PixiJS sprite-sheet export.",
 	"private": true,
 	"version": "0.0.0",
 	"type": "module",

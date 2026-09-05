@@ -16,6 +16,7 @@ import {
 } from '../domain/history.ts';
 import type { ProjectCommand } from '../domain/commands.ts';
 import { createEmptyProject, type Attachment, type BoneTransformProperty, type Clip, type Project, type Track } from '../domain/model.ts';
+import { APP_NAME, ARCHIVE_FORMAT } from '../domain/schema.ts';
 import { evaluatePose, type PoseValueOverride } from '../domain/pose.ts';
 import { validateProject, type ValidationDiagnostic } from '../domain/validation.ts';
 import { canvasWarningsForSetup, type CanvasWarning } from '../domain/canvas-warnings.ts';
@@ -75,9 +76,9 @@ import { WorkspaceDocks, type WorkspaceDocksProps } from './workspace-docks.tsx'
 type EditorMode = 'setup' | 'animate';
 type SelectionOrigin = 'rig' | 'draw-order' | 'canvas' | 'timeline' | 'asset' | 'command' | 'history';
 
-const BONE_DRAG_MIME = 'application/x-bone-animation-bone';
+const BONE_DRAG_MIME = 'application/x-rigatta-bone';
 const ASSET_DRAG_MIME = INTERNAL_ASSET_DRAG_MIME;
-const SLOT_DRAG_MIME = 'application/x-bone-animation-slot';
+const SLOT_DRAG_MIME = 'application/x-rigatta-slot';
 
 const modeLabels: Record<EditorMode, string> = {
 	setup: 'Setup',
@@ -355,8 +356,8 @@ const StartupStateView = function StartupStateView({
 	return (
 		<main className="startup-view" aria-live="polite">
 			<div className="startup-card">
-				<span className="brand-mark" aria-hidden="true">BA</span>
-				<p className="eyebrow">Bone Animation Utility</p>
+				<span className="brand-mark" aria-hidden="true">R</span>
+				<p className="eyebrow">{APP_NAME}</p>
 				<h1>{title}</h1>
 				<p>{message}</p>
 			</div>
@@ -1001,7 +1002,7 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		const link = document.createElement('a');
 
 		link.href = url;
-		link.download = `${project.name.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || 'project'}.boneanim`;
+		link.download = `${project.name.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || 'project'}.${ARCHIVE_FORMAT}`;
 		link.click();
 		URL.revokeObjectURL(url);
 	};
@@ -3308,9 +3309,9 @@ const EditorShell = function EditorShell({ startup }: Readonly<{ startup: ReadyS
 		<div className="app-shell" style={shellStyle}>
 			<header className="topbar">
 				<div className="brand-lockup">
-					<span className="brand-mark" aria-hidden="true">BA</span>
+					<span className="brand-mark" aria-hidden="true">R</span>
 					<div>
-						<p className="eyebrow">Bone Animation Utility</p>
+						<p className="eyebrow">{APP_NAME}</p>
 						<div className="project-title-row"><h1>{project.name}</h1><span className="autosave-status" aria-live="polite">{autosaveStatus === 'saving' || autosaveStatus === 'scheduled' ? 'Saving...' : autosaveStatus === 'saved' ? 'Saved locally' : autosaveStatus === 'error' ? 'Save failed' : ''}</span></div>
 					</div>
 				</div>

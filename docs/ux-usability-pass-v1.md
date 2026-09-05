@@ -149,7 +149,7 @@ Recommended behavior:
 - Keep the project name at the upper left, but add a compact persistence state:
   `Saving...`, `Saved locally`, or `Save failed`.
 - Replace the permanent `Load example` button with a **Project** menu containing
-  New, Open recent, Import `.boneanim`, Export project archive, Load example,
+  New, Open recent, Import `.rigatta`, Export project archive, Load example,
   and project settings. This consolidates recovery and portability actions.
 - Keep sprite-sheet **Export** as the distinct high-emphasis action at the upper
   right. Label archive export differently so the two outputs cannot be confused.

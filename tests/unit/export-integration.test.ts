@@ -101,7 +101,7 @@ describe('export integration matrix', () => {
 			{ path: 'atlas-0.png', bytes: png.value },
 			{ path: 'atlas-0.json', bytes: strToU8(JSON.stringify(atlas.value)) },
 			{ path: 'animations.json', bytes: strToU8(JSON.stringify(animations.value)) },
-			{ path: 'boneanim-metadata.json', bytes: strToU8(JSON.stringify(metadata.value)) }
+			{ path: 'rigatta-metadata.json', bytes: strToU8(JSON.stringify(metadata.value)) }
 		]);
 
 		if (!archive.ok) {
@@ -112,7 +112,7 @@ describe('export integration matrix', () => {
 			'animations.json',
 			'atlas-0.json',
 			'atlas-0.png',
-			'boneanim-metadata.json'
+			'rigatta-metadata.json'
 		]);
 		expect(atlas.value.frames[frameKeys[0] ?? '']?.trimmed).toBe(false);
 		expect(metadata.value.clips.walk?.frames).toHaveLength(sampled.frames.length);

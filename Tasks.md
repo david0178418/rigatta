@@ -6,7 +6,7 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 
 - [x] **P0-01** Define the coordinate system, canvas origin, angle units, and affine transform order.
 - [x] **P0-02** Define project schema version 1 and stable entity ID rules. Depends on P0-01.
-- [x] **P0-03** Define the `.boneanim` manifest and archive layout. Depends on P0-02.
+- [x] **P0-03** Define the `.rigatta` manifest and archive layout. Depends on P0-02.
 - [x] **P0-04** Define standard PixiJS atlas output and companion gameplay metadata schemas. Depends on P0-01.
 - [x] **P0-05** Prototype PixiJS fixed-canvas rendering and PNG extraction. Depends on P0-01.
 - [x] **P0-06** Prototype alpha trimming and verify `sourceSize` and `spriteSourceSize` alignment by reloading the atlas in PixiJS. Depends on P0-04 and P0-05.
@@ -58,8 +58,8 @@ Tasks are ordered by dependency. A task is complete only when its implementation
 - [x] **P3-07** Implement debounced autosave after committed commands.
 - [x] **P3-08** Add storage persistence requests, quota reporting, and failure handling.
 - [x] **P3-09** Implement recent-project listing and crash recovery.
-- [x] **P3-10** Implement `.boneanim` export. Depends on P0-09 and P3-06.
-- [x] **P3-11** Implement validate-before-replace `.boneanim` import.
+- [x] **P3-10** Implement `.rigatta` export. Depends on P0-09 and P3-06.
+- [x] **P3-11** Implement validate-before-replace `.rigatta` import.
 - [x] **P3-12** Add repository, autosave, and archive round-trip tests.
 
 ## Phase 4: Setup mode

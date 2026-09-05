@@ -9,7 +9,7 @@ import { isSelected, type Selection } from './selection.ts';
 import type { AssetDensity } from './ui-preferences.ts';
 import { Tooltip } from './ui-primitives.tsx';
 
-const ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
+const ASSET_DRAG_MIME = 'application/x-rigatta-asset';
 
 const assetForEntry = function assetForEntry(entry: AssetLibraryEntry): ImageAsset | undefined {
 	return entry.kind === 'asset' ? entry.asset : undefined;

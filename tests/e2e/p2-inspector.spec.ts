@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const UI_PREFERENCES_STORAGE_KEY = 'bone-animation.ui-preferences.v2';
+const UI_PREFERENCES_STORAGE_KEY = 'rigatta.ui-preferences.v2';
 const EXAMPLE_PROJECT_ID = '123e4567-e89b-42d3-a456-426614174100';
 
 test('persists inspector collapse state for the matching project only', async ({ page }) => {

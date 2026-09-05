@@ -94,9 +94,9 @@ const importWideFixture = async function importWideFixture(page: Page): Promise<
 
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Import .boneanim', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Import .rigatta', exact: true }).click();
 	await page.locator('input[type="file"]').setInputFiles({
-		name: 'wide-canvas-fixture.boneanim',
+		name: 'wide-canvas-fixture.rigatta',
 		mimeType: 'application/zip',
 		buffer: archive
 	});
@@ -175,7 +175,7 @@ test('makes the whole stage interactive and preserves gesture precedence on the 
 	await page.mouse.move(anchor.x, anchor.y);
 	await expect(readout).toHaveText(coordinateBeforeZoom);
 
-	await page.screenshot({ path: '/tmp/bone-animation-p2-pasteboard-1280x800.png' });
+	await page.screenshot({ path: '/tmp/rigatta-p2-pasteboard-1280x800.png' });
 });
 
 test('matches the usable stage and device-pixel backing dimensions at supported sizes', async ({ page }) => {
@@ -220,7 +220,7 @@ test('matches the usable stage and device-pixel backing dimensions at supported 
 		expect(metrics.width).toBe(Math.round(metrics.cssWidth * metrics.resolution));
 		expect(metrics.height).toBe(Math.round(metrics.cssHeight * metrics.resolution));
 		expect(metrics.transform).toBe('none');
-		await page.screenshot({ path: `/tmp/bone-animation-p2-stage-${supportedViewport.width}x${supportedViewport.height}.png` });
+		await page.screenshot({ path: `/tmp/rigatta-p2-stage-${supportedViewport.width}x${supportedViewport.height}.png` });
 	}, Promise.resolve());
 });
 
@@ -252,7 +252,7 @@ test('displays a non-square logical canvas without stretching and separates Fit 
 	await page.getByRole('button', { name: 'Fit canvas', exact: true }).click();
 	await expect(viewport).toHaveAttribute('data-camera-mode', 'fit');
 	await expect.poll(async () => (await cameraFor(page)).scale).toBeCloseTo(expectedFitScale);
-	await page.screenshot({ path: '/tmp/bone-animation-p2-nonsquare-1440x900.png' });
+	await page.screenshot({ path: '/tmp/rigatta-p2-nonsquare-1440x900.png' });
 });
 
 test('refits in Fit mode and preserves the centered world point after manual resize', async ({ page }) => {

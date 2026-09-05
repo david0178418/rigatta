@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { strToU8, unzipSync, zipSync } from 'fflate';
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { exportProjectArchive, importProjectArchive } from '../../src/persistence/archive.ts';
 import { createRigProject, fixtureIds } from '../fixtures.ts';
 
@@ -9,7 +9,7 @@ const sourceBytes = Uint8Array.from([
 	0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x40
 ]);
 
-describe('boneanim archives', () => {
+describe('rigatta archives', () => {
 	test('round trips project metadata and asset bytes', async () => {
 		const project = createRigProject();
 		const exported = await exportProjectArchive(project, new Map([[fixtureIds.asset, sourceBytes]]));
@@ -18,6 +18,14 @@ describe('boneanim archives', () => {
 		if (!exported.ok) {
 			return;
 		}
+
+		const manifestBytes = unzipSync(exported.value)['manifest.json'];
+
+		if (!manifestBytes) {
+			throw new Error('Exported archive is missing manifest.json');
+		}
+
+		expect(JSON.parse(strFromU8(manifestBytes))).toEqual(expect.objectContaining({ format: 'rigatta' }));
 
 		const imported = await importProjectArchive(exported.value);
 

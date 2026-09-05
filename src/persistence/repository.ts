@@ -5,9 +5,9 @@ import { isSupportedImageMimeType } from '../domain/schema.ts';
 import { validateImageBytes } from '../assets/images.ts';
 import { parseProject } from './project-schema.ts';
 import {
-	openBoneAnimationDatabase,
+	openRigattaDatabase,
 	type AssetRecord,
-	type BoneAnimationDatabase,
+	type RigattaDatabase,
 	PROJECT_DATABASE_NAME,
 	type ProjectRecord,
 	type SnapshotKind
@@ -253,7 +253,7 @@ const prepareAssetRecords = async function prepareAssetRecords(
 };
 
 const loadAssetBlobs = async function loadAssetBlobs(
-	database: IDBPDatabase<BoneAnimationDatabase>,
+	database: IDBPDatabase<RigattaDatabase>,
 	project: Project,
 	kind: SnapshotKind
 ): Promise<PersistenceResult<ProjectAssetBlobs>> {
@@ -306,7 +306,7 @@ const loadAssetBlobs = async function loadAssetBlobs(
 };
 
 const loadSnapshot = async function loadSnapshot(
-	database: IDBPDatabase<BoneAnimationDatabase>,
+	database: IDBPDatabase<RigattaDatabase>,
 	value: unknown,
 	kind: SnapshotKind
 ): Promise<PersistenceResult<ProjectSnapshot | null>> {
@@ -369,7 +369,7 @@ const normalizeLimit = function normalizeLimit(limit: number | undefined): numbe
 };
 
 const createRepository = function createRepository(
-	database: IDBPDatabase<BoneAnimationDatabase>,
+	database: IDBPDatabase<RigattaDatabase>,
 	now: () => number
 ): ProjectRepository {
 	const saveProject = async function saveProject(
@@ -689,7 +689,7 @@ export const openProjectRepository = async function openProjectRepository(
 	}
 
 	try {
-		const database = await openBoneAnimationDatabase(options.databaseName ?? PROJECT_DATABASE_NAME);
+		const database = await openRigattaDatabase(options.databaseName ?? PROJECT_DATABASE_NAME);
 		const defaultNow = function defaultNow(): number {
 			return Date.now();
 		};

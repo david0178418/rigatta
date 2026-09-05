@@ -425,9 +425,9 @@ export const importProjectFixture = async function importProjectFixture(page: Pa
 
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Import .boneanim', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Import .rigatta', exact: true }).click();
 	await page.locator('input[type="file"]').setInputFiles({
-		name: 'export-proof-fixture.boneanim',
+		name: 'export-proof-fixture.rigatta',
 		mimeType: 'application/zip',
 		buffer: archive
 	});
@@ -498,7 +498,7 @@ export const inspectExportGroup = async function inspectExportGroup(
 	const prefix = options.directory.length > 0 ? `${options.directory}/` : '';
 	const groupPaths = Object.keys(entries).filter((path) => path.startsWith(prefix));
 	const animations = jsonObjectFor(entries, safePath(options.directory, 'animations.json'));
-	const metadata = jsonObjectFor(entries, safePath(options.directory, 'boneanim-metadata.json'));
+	const metadata = jsonObjectFor(entries, safePath(options.directory, 'rigatta-metadata.json'));
 	const animationMap = objectProperty(animations, 'animations');
 	const metadataMap = objectProperty(metadata, 'clips');
 

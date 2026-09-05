@@ -388,12 +388,12 @@ test('proves all viewport presets against clean export pixels at supported sizes
 
 		await choosePreset(page, 'authoring', 'Authoring');
 		await page.mouse.move(8, 8);
-		await page.locator('canvas.editor-pixi-canvas').screenshot({ path: `/tmp/bone-animation-v1-${supportedViewport.width}-authoring.png` });
+		await page.locator('canvas.editor-pixi-canvas').screenshot({ path: `/tmp/rigatta-v1-${supportedViewport.width}-authoring.png` });
 		const authoring = await overlayCountsFor(page);
 
 		await choosePreset(page, 'visual-preview', 'Visual preview');
 		await expect(root).toHaveAttribute('aria-pressed', 'true');
-		await page.locator('canvas.editor-pixi-canvas').screenshot({ path: `/tmp/bone-animation-v1-${supportedViewport.width}-visual-preview.png` });
+		await page.locator('canvas.editor-pixi-canvas').screenshot({ path: `/tmp/rigatta-v1-${supportedViewport.width}-visual-preview.png` });
 		const visual = await overlayCountsFor(page);
 		const pixels = await visualPixelEvidenceFor(page, exportCapture, { width: 256, height: 256 });
 
@@ -404,7 +404,7 @@ test('proves all viewport presets against clean export pixels at supported sizes
 		await expect(root).toHaveAttribute('aria-pressed', 'true');
 
 		await choosePreset(page, 'gameplay-preview', 'Gameplay preview');
-		await page.locator('canvas.editor-pixi-canvas').screenshot({ path: `/tmp/bone-animation-v1-${supportedViewport.width}-gameplay-preview.png` });
+		await page.locator('canvas.editor-pixi-canvas').screenshot({ path: `/tmp/rigatta-v1-${supportedViewport.width}-gameplay-preview.png` });
 		const gameplay = await overlayCountsFor(page);
 
 		expect(pixels.atlasWidth).toBeGreaterThan(256);

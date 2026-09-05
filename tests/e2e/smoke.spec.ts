@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('opens the empty editor shell', async ({ page }) => {
 	await page.goto('/');
 
-	await expect(page).toHaveTitle('Bone Animation Utility');
+	await expect(page).toHaveTitle('Rigatta');
 	await expect(page.getByRole('heading', { name: 'Untitled project' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Animate' })).toBeVisible();
 	const emptyCanvas = page.getByRole('region', { name: /Empty 1024 by 1024 canvas/ });

@@ -3,7 +3,7 @@ import { isSupportedImageMimeType, type SupportedImageMimeType } from '../domain
 import { mimeTypeFromFileName } from './images.ts';
 import type { DirectoryHandle } from './import.ts';
 
-export const INTERNAL_ASSET_DRAG_MIME = 'application/x-bone-animation-asset';
+export const INTERNAL_ASSET_DRAG_MIME = 'application/x-rigatta-asset';
 
 export type CurrentDropSource =
 	| 'os-single-file'

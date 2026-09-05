@@ -1,4 +1,4 @@
-# Bone Animation Utility
+# Rigatta
 
 ## Product goal
 

@@ -4,7 +4,7 @@ The release gate was run from a disposable clone of the repository on
 2026-09-01:
 
 ```sh
-clean_checkout_dir=$(mktemp -d /tmp/bone-animation-clean.XXXXXX)
+clean_checkout_dir=$(mktemp -d /tmp/rigatta-clean.XXXXXX)
 git clone --no-local /home/davidg/Projects/bone-animation "$clean_checkout_dir"
 cd "$clean_checkout_dir"
 bun install --frozen-lockfile
@@ -40,5 +40,5 @@ R0 evidence: Implementation commit `73671f7` covers the verified work from
 `3cad3f8` through `73671f7`; `bun run check` passed with 352 unit tests plus
 lint/typecheck/build, `bun run test:e2e` passed 152 Chromium tests, and
 `git diff --check` passed. Visible review artifacts are
-`/tmp/bone-animation-v1-{1120,1440}-{authoring,visual-preview,gameplay-preview}.png`
-and `/tmp/bone-animation-timeline-*.png`.
+`/tmp/rigatta-v1-{1120,1440}-{authoring,visual-preview,gameplay-preview}.png`
+and `/tmp/rigatta-timeline-*.png`.

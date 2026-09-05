@@ -60,12 +60,12 @@ evidence to
 these six paths during a run:
 
 ```text
-/tmp/bone-animation-timeline-no-selection-1120x720.png
-/tmp/bone-animation-timeline-selected-bone-1120x720.png
-/tmp/bone-animation-timeline-all-keyed-1120x720.png
-/tmp/bone-animation-timeline-no-selection-1440x900.png
-/tmp/bone-animation-timeline-selected-bone-1440x900.png
-/tmp/bone-animation-timeline-all-keyed-1440x900.png
+/tmp/rigatta-timeline-no-selection-1120x720.png
+/tmp/rigatta-timeline-selected-bone-1120x720.png
+/tmp/rigatta-timeline-all-keyed-1120x720.png
+/tmp/rigatta-timeline-no-selection-1440x900.png
+/tmp/rigatta-timeline-selected-bone-1440x900.png
+/tmp/rigatta-timeline-all-keyed-1440x900.png
 ```
 
 The broader shortcut contract remains in

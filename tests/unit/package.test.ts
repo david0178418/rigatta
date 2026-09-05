@@ -5,7 +5,7 @@ import { createExportZip, safeExportFilenameFor, safeExportPathSegment } from '.
 const files = [
 	{ path: 'animations.json', bytes: Uint8Array.from([2]) },
 	{ path: 'atlas-0.png', bytes: Uint8Array.from([1]) },
-	{ path: 'boneanim-metadata.json', bytes: Uint8Array.from([3]) }
+	{ path: 'rigatta-metadata.json', bytes: Uint8Array.from([3]) }
 ] as const;
 
 describe('export ZIP packaging', () => {
@@ -18,7 +18,7 @@ describe('export ZIP packaging', () => {
 		}
 
 		expect(first.value).toEqual(second.value);
-		expect(Object.keys(unzipSync(first.value))).toEqual(['animations.json', 'atlas-0.png', 'boneanim-metadata.json']);
+		expect(Object.keys(unzipSync(first.value))).toEqual(['animations.json', 'atlas-0.png', 'rigatta-metadata.json']);
 	});
 
 	test('rejects duplicate and unsafe paths', () => {

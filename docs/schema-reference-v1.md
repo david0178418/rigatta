@@ -2,7 +2,7 @@
 
 This document is the release index for the executable version 1 schemas. The
 project schema is persisted in IndexedDB and `project.json` inside a
-`.boneanim` archive. Export documents are generated outputs and are never
+`.rigatta` archive. Export documents are generated outputs and are never
 stored as project state.
 
 ## Project document
@@ -127,7 +127,7 @@ type SpritesheetFrame = {
 type Spritesheet = {
   frames: Record<string, SpritesheetFrame>;
   meta: {
-    app: 'Bone Animation Utility';
+    app: 'Rigatta';
     format: 'RGBA8888';
     image: string;
     size: { w: number; h: number };
@@ -154,7 +154,7 @@ and grid/packed behavior is covered by
 
 ## Companion gameplay metadata
 
-`boneanim-metadata.json` has schema version `1`, the logical canvas, and one
+`rigatta-metadata.json` has schema version `1`, the logical canvas, and one
 record per sampled frame for each selected clip:
 
 ```ts
@@ -193,12 +193,12 @@ corresponding Pixi frame without using array position as an entity reference.
 
 ## Archive and packaging
 
-The self-contained `.boneanim` archive contains `manifest.json`,
+The self-contained `.rigatta` archive contains `manifest.json`,
 `project.json`, and `assets/<asset-id>.<extension>`. Exported sprite output is
 packaged separately as atlas PNG/JSON pages, `animations.json`, and
-`boneanim-metadata.json`. ZIP paths, JSON, atlas ordering, packing tie-breaks,
+`rigatta-metadata.json`. ZIP paths, JSON, atlas ordering, packing tie-breaks,
 and timestamps are deterministic. See
-[`boneanim-archive-v1.md`](boneanim-archive-v1.md) and
+[`rigatta-archive-v1.md`](rigatta-archive-v1.md) and
 [`export-zip-v1.md`](export-zip-v1.md) for the file-level contracts.
 
 All project and export inputs are validated before replacement, rendering, or

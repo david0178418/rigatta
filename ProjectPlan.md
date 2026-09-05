@@ -53,7 +53,7 @@ All saved-state mutations pass through typed commands and pure reducers. Undo/re
 
 IndexedDB stores project metadata separately from image blobs. Autosave follows committed commands and is debounced. The application requests persistent browser storage when available and reports storage failures rather than silently losing work.
 
-The project archive uses a custom `.boneanim` extension over ZIP:
+The project archive uses a custom `.rigatta` extension over ZIP:
 
 ```text
 manifest.json
@@ -103,7 +103,7 @@ Exit gate: fixture clips evaluate deterministically without React or PixiJS.
 
 ### Phase 3: assets and persistence
 
-Implement recursive image import, asset decoding, IndexedDB storage, autosave, recent-project recovery, and `.boneanim` archive import/export.
+Implement recursive image import, asset decoding, IndexedDB storage, autosave, recent-project recovery, and `.rigatta` archive import/export.
 
 Exit gate: an exported project can be removed locally, reimported, and recovered with equivalent data and images.
 

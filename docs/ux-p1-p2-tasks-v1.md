@@ -157,7 +157,7 @@ This plan may reorganize application UI state and React components, but it must
 not change the project schema or exported animation meaning unless a task
 explicitly identifies a required domain command. UI preferences, collapsed
 nodes, hidden editor items, dock dimensions, timeline pins, and selection history
-must not enter `.boneanim` archives or sprite-sheet exports.
+must not enter `.rigatta` archives or sprite-sheet exports.
 
 The following remain out of scope: IK, constraints, mesh deformation, weights,
 skins/character maps, onion skinning, audio, multiple rigs, automatically sized
@@ -385,7 +385,7 @@ type assertions to bypass validation.
   failure state.
 
 - [x] **UX-P1-25** Add the Project menu. Depends on UX-P1-04 and UX-P1-24.
-  Provide New, Open recent, Import `.boneanim`, Export project archive, Load
+  Provide New, Open recent, Import `.rigatta`, Export project archive, Load
   example, and Project settings. Reuse existing repository/archive services,
   validate imports before replacing the active project, distinguish archive
   export from sprite-sheet Export, and retain confirmation rules for replacement.
@@ -435,7 +435,7 @@ Using a new project at 1120 x 720:
 6. Drag one pose, marquee both poses, copy/paste them at the playhead, nudge the
    pasted keys, and undo each operation.
 7. Play the clip and confirm the save state reaches `Saved locally`.
-8. Export and re-import a `.boneanim` archive from the Project menu, then open
+8. Export and re-import a `.rigatta` archive from the Project menu, then open
    sprite-sheet Export and confirm the two workflows are unmistakable.
 
 P1 is complete when this workflow succeeds without `Apply values`, `Add track`,

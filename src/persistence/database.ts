@@ -3,7 +3,7 @@ import type { EntityId } from '../domain/ids.ts';
 import type { Project } from '../domain/model.ts';
 import type { SupportedImageMimeType } from '../domain/schema.ts';
 
-export const PROJECT_DATABASE_NAME = 'bone-animation-projects';
+export const PROJECT_DATABASE_NAME = 'rigatta-projects';
 export const PROJECT_DATABASE_VERSION = 1;
 
 export type SnapshotKind = 'project' | 'recovery';
@@ -30,7 +30,7 @@ export type AssetRecord = Readonly<{
 	blob: Blob;
 }>;
 
-export interface BoneAnimationDatabase extends DBSchema {
+export interface RigattaDatabase extends DBSchema {
 	projects: {
 		key: EntityId;
 		value: ProjectRecord;
@@ -55,10 +55,10 @@ export interface BoneAnimationDatabase extends DBSchema {
 }
 
 const migrateDatabase = function migrateDatabase(
-	database: IDBPDatabase<BoneAnimationDatabase>,
+	database: IDBPDatabase<RigattaDatabase>,
 	oldVersion: number,
 	_newVersion: number | null,
-	transaction: IDBPTransaction<BoneAnimationDatabase, StoreNames<BoneAnimationDatabase>[], 'versionchange'>
+	transaction: IDBPTransaction<RigattaDatabase, StoreNames<RigattaDatabase>[], 'versionchange'>
 ): void {
 	if (oldVersion < 1 && !database.objectStoreNames.contains('projects')) {
 		database.createObjectStore('projects', { keyPath: 'id' });
@@ -85,14 +85,14 @@ const migrateDatabase = function migrateDatabase(
 	}
 };
 
-export const openBoneAnimationDatabase = async function openBoneAnimationDatabase(
+export const openRigattaDatabase = async function openRigattaDatabase(
 	databaseName: string = PROJECT_DATABASE_NAME
-): Promise<IDBPDatabase<BoneAnimationDatabase>> {
+): Promise<IDBPDatabase<RigattaDatabase>> {
 	if (typeof globalThis.indexedDB === 'undefined') {
 		throw new Error('IndexedDB is not available in this browser.');
 	}
 
-	return openDB<BoneAnimationDatabase>(databaseName, PROJECT_DATABASE_VERSION, {
+	return openDB<RigattaDatabase>(databaseName, PROJECT_DATABASE_VERSION, {
 		upgrade: migrateDatabase
 	});
 };

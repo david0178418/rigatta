@@ -12,7 +12,7 @@ An export is either a directory-equivalent set of files or a ZIP download:
 atlas-0.png
 atlas-0.json
 animations.json
-boneanim-metadata.json
+rigatta-metadata.json
 ```
 
 Additional pages use `atlas-1.png`, `atlas-1.json`, and so on. Per-clip output
@@ -36,7 +36,7 @@ Each page uses the TexturePacker-compatible PixiJS shape:
     }
   },
   "meta": {
-    "app": "Bone Animation Utility",
+    "app": "Rigatta",
     "version": "1",
     "image": "atlas-0.png",
     "format": "RGBA8888",
@@ -74,7 +74,7 @@ clips in combined output and are local to the export, not to the project.
 
 ## Companion metadata
 
-`boneanim-metadata.json` has one sampled record per exported frame:
+`rigatta-metadata.json` has one sampled record per exported frame:
 
 ```json
 {

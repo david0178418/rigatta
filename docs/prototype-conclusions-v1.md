@@ -11,7 +11,7 @@ The first-release technical choices are:
   fixed-size transparent canvas and can expose PNG extraction without leaking
   Pixi objects into the domain.
 - Store project metadata and source image blobs in separate IndexedDB stores,
-  and package validated metadata plus bytes in `.boneanim` ZIP archives.
+  and package validated metadata plus bytes in `.rigatta` ZIP archives.
 - Import only validated PNG, JPEG, and WebP bytes, preserving normalized safe
   relative paths. Directory picker and recursive drop are both supported.
 - For packed Pixi output, trim rendered RGBA frames while retaining the full

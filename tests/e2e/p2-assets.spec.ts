@@ -98,7 +98,7 @@ test('keeps asset density interactions, previews, and object URL lifetime bounde
 			return types;
 		});
 
-		expect(dragTypes).toContain('application/x-bone-animation-asset');
+		expect(dragTypes).toContain('application/x-rigatta-asset');
 
 		if (density === 'thumbnail') {
 			const thumbnail = row.locator('img.asset-thumbnail');

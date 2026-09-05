@@ -6,7 +6,7 @@ import type { SelectableEntity, Selection } from './selection.ts';
 import { SELECTION_HISTORY_LIMIT } from './selection-history.ts';
 import { DEFAULT_VIEWPORT_PRESET, isViewportPreset, type ViewportPreset } from './viewport-presentation.ts';
 
-export const UI_PREFERENCES_STORAGE_KEY = 'bone-animation.ui-preferences.v2';
+export const UI_PREFERENCES_STORAGE_KEY = 'rigatta.ui-preferences.v2';
 export const UI_PREFERENCES_VERSION = 2 as const;
 export const LEGACY_UI_PREFERENCES_VERSION = 0 as const;
 

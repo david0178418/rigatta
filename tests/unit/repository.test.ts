@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { deleteDB } from 'idb';
 import 'fake-indexeddb/auto';
 import { fixtureIds, createRigProject } from '../fixtures.ts';
-import { openBoneAnimationDatabase } from '../../src/persistence/database.ts';
+import { openRigattaDatabase } from '../../src/persistence/database.ts';
 import { openProjectRepository, type ProjectRepository } from '../../src/persistence/repository.ts';
 
 const imageBytes = Uint8Array.from([
@@ -25,7 +25,7 @@ const blobsForProject = function blobsForProject(): ReadonlyMap<typeof fixtureId
 const withRepository = async function withRepository<TValue>(
 	callback: (repository: ProjectRepository) => Promise<TValue>
 ): Promise<TValue> {
-	const databaseName = `bone-animation-test-${crypto.randomUUID()}`;
+	const databaseName = `rigatta-test-${crypto.randomUUID()}`;
 	const opened = await openProjectRepository({ databaseName, now: () => 100 });
 
 	if (!opened.ok) {
@@ -42,8 +42,8 @@ const withRepository = async function withRepository<TValue>(
 
 describe('IndexedDB project repository', () => {
 	test('creates the versioned stores and indexes through the migration', async () => {
-		const databaseName = `bone-animation-migration-${crypto.randomUUID()}`;
-		const database = await openBoneAnimationDatabase(databaseName);
+		const databaseName = `rigatta-migration-${crypto.randomUUID()}`;
+		const database = await openRigattaDatabase(databaseName);
 
 		expect(database.objectStoreNames.contains('projects')).toBe(true);
 		expect(database.objectStoreNames.contains('assets')).toBe(true);

@@ -1,3 +1,6 @@
+export const APP_NAME = 'Rigatta' as const;
+export const ARCHIVE_FORMAT = 'rigatta' as const;
+export const COMPANION_METADATA_FILENAME = 'rigatta-metadata.json' as const;
 export const PROJECT_SCHEMA_VERSION = 1 as const;
 export const ARCHIVE_VERSION = 1 as const;
 export const EXPORT_METADATA_SCHEMA_VERSION = 1 as const;

@@ -25,7 +25,7 @@ const projectAssets = function projectAssets(): ReadonlyMap<typeof fixtureIds.as
 const withDatabase = async function withDatabase<TValue>(
 	callback: (databaseName: string) => Promise<TValue>
 ): Promise<TValue> {
-	const databaseName = `bone-animation-startup-${crypto.randomUUID()}`;
+	const databaseName = `rigatta-startup-${crypto.randomUUID()}`;
 
 	try {
 		return await callback(databaseName);

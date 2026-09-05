@@ -9,6 +9,7 @@ import {
 	type EvaluatedPose
 } from '../domain/pose.ts';
 import type { Clip, Project } from '../domain/model.ts';
+import { COMPANION_METADATA_FILENAME } from '../domain/schema.ts';
 import { validateProject } from '../domain/validation.ts';
 import type { ProjectAssetBlobs } from '../persistence/repository.ts';
 import {
@@ -544,7 +545,7 @@ const finishGroup = function finishGroup(
 	const files = sortExportFiles([
 		...pageFiles.value,
 		{ path: pathFor(group.directory, 'animations.json'), bytes: strToU8(JSON.stringify(animationData.value)) },
-		{ path: pathFor(group.directory, 'boneanim-metadata.json'), bytes: strToU8(JSON.stringify(metadata.value)) }
+		{ path: pathFor(group.directory, COMPANION_METADATA_FILENAME), bytes: strToU8(JSON.stringify(metadata.value)) }
 	]);
 
 	return exportSuccess({ directory: group.directory, files, frameCount: group.frames.length, pageCount: pages.length });

@@ -211,7 +211,7 @@ test('gates contained timeline rows across supported desktop sizes at the defaul
 			expect(metrics.visibleDataRowsAfter, `visible timeline rows after scrolling at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThanOrEqual(3);
 			expect(metrics.keyedDataRows, `keyed timeline rows at ${viewport.width}x${viewport.height} ${state.id}`).toBeGreaterThan(0);
 			expect(metrics.dataRows).toBeGreaterThanOrEqual(metrics.visibleDataRowsAfter);
-			await page.screenshot({ path: `/tmp/bone-animation-timeline-${state.id}-${viewport.width}x${viewport.height}.png`, fullPage: false });
+			await page.screenshot({ path: `/tmp/rigatta-timeline-${state.id}-${viewport.width}x${viewport.height}.png`, fullPage: false });
 		}, Promise.resolve());
 	}, Promise.resolve());
 });

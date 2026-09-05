@@ -1,7 +1,7 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import * as v from 'valibot';
 import { ENTITY_ID_PATTERN, type EntityId } from '../domain/ids.ts';
-import { IMAGE_EXTENSION_BY_MIME_TYPE, PROJECT_SCHEMA_VERSION, ARCHIVE_VERSION, type SupportedImageMimeType } from '../domain/schema.ts';
+import { ARCHIVE_FORMAT, IMAGE_EXTENSION_BY_MIME_TYPE, PROJECT_SCHEMA_VERSION, ARCHIVE_VERSION, type SupportedImageMimeType } from '../domain/schema.ts';
 import type { ImageAsset, Project } from '../domain/model.ts';
 import { validateImageBytes } from '../assets/images.ts';
 import { parseProject } from './project-schema.ts';
@@ -15,7 +15,7 @@ export type ArchiveManifestAsset = Readonly<{
 }>;
 
 export type ArchiveManifest = Readonly<{
-	format: 'boneanim';
+	format: typeof ARCHIVE_FORMAT;
 	archiveVersion: typeof ARCHIVE_VERSION;
 	projectSchemaVersion: typeof PROJECT_SCHEMA_VERSION;
 	projectId: EntityId;
@@ -38,7 +38,7 @@ export type ArchiveImport = Readonly<{
 }>;
 
 const manifestSchema = v.object({
-	format: v.literal('boneanim'),
+	format: v.literal(ARCHIVE_FORMAT),
 	archiveVersion: v.literal(1),
 	projectSchemaVersion: v.literal(1),
 	projectId: v.pipe(v.string(), v.regex(ENTITY_ID_PATTERN)),
@@ -157,7 +157,7 @@ const decodeArchive = function decodeArchive(
 		return archiveSuccess(unzipSync(archiveBytes));
 	} catch (error: unknown) {
 		const message = error instanceof Error ? error.message : 'Unknown ZIP decode failure.';
-		return archiveFailure('invalid-archive', `Could not read .boneanim archive: ${message}`);
+		return archiveFailure('invalid-archive', `Could not read .${ARCHIVE_FORMAT} archive: ${message}`);
 	}
 };
 
@@ -189,7 +189,7 @@ export const exportProjectArchive = async function exportProjectArchive(
 		sha256: await sha256(bytes ?? new Uint8Array())
 	})));
 const manifest: ArchiveManifest = {
-		format: 'boneanim',
+		format: ARCHIVE_FORMAT,
 		archiveVersion: ARCHIVE_VERSION,
 		projectSchemaVersion: project.schemaVersion,
 		projectId: project.id,

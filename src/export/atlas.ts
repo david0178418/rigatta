@@ -1,4 +1,5 @@
 import type { SpritesheetData, SpritesheetFrameData } from 'pixi.js';
+import { APP_NAME } from '../domain/schema.ts';
 import type { FrameBounds, FrameSize, TrimmedRgbaFrame } from './trim.ts';
 import type { GridLayout } from './grid.ts';
 import type { PackedAtlasPage, PackedFrameInput } from './packed-atlas.ts';
@@ -106,7 +107,7 @@ export const createPixiAtlasData = function createPixiAtlasData(
 	return success({
 		frames: { [frameKey]: frame.value },
 		meta: {
-			app: 'Bone Animation Utility',
+			app: APP_NAME,
 			format: 'RGBA8888',
 			image: imageFilename,
 			size: atlasSize,
@@ -154,7 +155,7 @@ export const createPixiGridAtlasData = function createPixiGridAtlasData(
 	return success({
 		frames,
 		meta: {
-			app: 'Bone Animation Utility',
+			app: APP_NAME,
 			format: 'RGBA8888',
 			image: imageFilename,
 			size: { w: layout.width, h: layout.height },
@@ -199,7 +200,7 @@ export const createPixiPackedAtlasData = function createPixiPackedAtlasData(
 	return success({
 		frames: frameEntries.value,
 		meta: {
-			app: 'Bone Animation Utility',
+			app: APP_NAME,
 			format: 'RGBA8888',
 			image: imageFilename,
 			size: { w: page.size.width, h: page.size.height },

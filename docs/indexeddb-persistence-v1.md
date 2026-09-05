@@ -1,7 +1,7 @@
 # IndexedDB persistence v1
 
 The editor stores project metadata and image bytes in separate IndexedDB object
-stores. The database name is `bone-animation-projects`, and the current schema
+stores. The database name is `rigatta-projects`, and the current schema
 version is `1`.
 
 ## Stores
@@ -18,7 +18,7 @@ asset records, and clears the matching recovery snapshot in one transaction.
 Autosave writes the recovery snapshot without changing the stable project.
 
 Workspace presentation preferences are stored separately in the versioned
-`bone-animation.ui-preferences.v2` local-storage record. Project-scoped layout,
+`rigatta.ui-preferences.v2` local-storage record. Project-scoped layout,
 including the Animate timeline height, dock tabs, disclosures, density, pins,
 hidden editor IDs, Rig expansion, and selection history is keyed by `Project.id`.
 It is restored for the matching project only and never participates in an

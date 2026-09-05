@@ -113,7 +113,7 @@ test('recovers committed work after reload and restores an imported archive', as
 
 	const archiveInput = page.locator('input[type="file"]');
 	page.once('dialog', (dialog) => void dialog.accept());
-	await archiveInput.setInputFiles({ name: 'sample.boneanim', mimeType: 'application/zip', buffer: archiveBytes });
+	await archiveInput.setInputFiles({ name: 'sample.rigatta', mimeType: 'application/zip', buffer: archiveBytes });
 	await expect(page.getByRole('heading', { name: 'Cutout Robot Example', exact: true })).toBeVisible();
 });
 

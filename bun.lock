@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "bone-animation",
+      "name": "rigatta",
       "dependencies": {
         "fflate": "^0.8.2",
         "idb": "^8.0.2",

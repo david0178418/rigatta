@@ -1,7 +1,7 @@
 # Export selection v1
 
 The Export panel is editor-session state. It does not modify the project
-document or become part of `.boneanim` persistence.
+document or become part of `.rigatta` persistence.
 
 The panel offers two output groupings:
 
