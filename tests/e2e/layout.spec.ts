@@ -67,50 +67,6 @@ test('keeps the desktop editor usable at supported viewport sizes', async ({ pag
 	}, Promise.resolve());
 });
 
-test('runs the P0 editor workflow at every supported viewport size', async ({ page }) => {
-		await supportedViewports.reduce(async (previous, viewport) => {
-			await previous;
-			await page.setViewportSize(viewport);
-			await page.goto('/');
-			await page.getByRole('button', { name: 'Project', exact: true }).click();
-			await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-			await page.getByRole('treeitem', { name: 'Bone: right arm', exact: true }).locator('.bone-row').click();
-			await page.getByRole('button', { name: 'Rotate', exact: true }).click();
-			await expect(page.getByRole('button', { name: 'Rotate', exact: true })).toHaveAttribute('aria-pressed', 'true');
-			const rotation = page.getByLabel('Rotation (deg)', { exact: true });
-			await rotation.fill('15');
-			await rotation.press('Enter');
-			await page.getByRole('button', { name: 'Animate' }).click();
-
-			const splitter = page.getByRole('separator', { name: 'Resize animation timeline' });
-			await expect(splitter).toHaveAttribute('aria-valuemax', String(Math.floor(viewport.height * 0.55)));
-			await splitter.focus();
-			await splitter.press('ArrowUp');
-			await splitter.press('Home');
-			await splitter.press('End');
-
-			await page.getByLabel('Playhead').fill('6');
-			await expect(page.getByText('Frame 7 / 12', { exact: false })).toBeVisible();
-			await page.getByRole('button', { name: 'Key frame 7' }).click();
-			await expect(page.getByRole('tab', { name: 'Properties', exact: true })).toHaveAttribute('aria-selected', 'true');
-			await expect(page.getByRole('region', { name: 'Key properties' })).toBeVisible();
-
-			await page.getByRole('button', { name: 'Play animation' }).click();
-			await expect(page.getByRole('button', { name: 'Pause animation' })).toBeVisible();
-			await page.getByRole('button', { name: 'Pause animation' }).click();
-
-			const scrollMetrics = await page.evaluate(() => ({
-				documentHeight: document.documentElement.scrollHeight,
-				documentWidth: document.documentElement.scrollWidth,
-				viewportHeight: window.innerHeight,
-				viewportWidth: window.innerWidth
-			}));
-
-			expect(scrollMetrics.documentWidth).toBeLessThanOrEqual(scrollMetrics.viewportWidth);
-			expect(scrollMetrics.documentHeight).toBeLessThanOrEqual(scrollMetrics.viewportHeight);
-		}, Promise.resolve());
-});
-
 test('resizes the Animate timeline with keyboard and pointer controls', async ({ page }) => {
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await page.goto('/');

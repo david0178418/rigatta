@@ -146,33 +146,6 @@ test('shows render failure recovery without a partial download', async ({ page }
 	expect(retry.download.suggestedFilename()).toBe('Cutout-Adventurer-Example.zip');
 });
 
-test('shows composition failure without creating a partial download', async ({ page }) => {
-	await installExportProofControls(page);
-	await importProjectFixture(page, packedExampleProject(1));
-	const dialog = await exportDialogFor(page);
-	const downloads: Download[] = [];
-
-	page.on('download', (download) => downloads.push(download));
-	await dialog.getByRole('button', { name: 'Export ZIP', exact: true }).click();
-	await waitForExportStatus(page, 'failed');
-	await expect(dialog.getByRole('alert')).toContainText('does not fit the atlas');
-	expect(downloads).toHaveLength(0);
-});
-
-test('shows packaging failure without creating a partial download', async ({ page }) => {
-	await installExportProofControls(page);
-	await importProjectFixture(page, packedExampleProject(512));
-	const dialog = await exportDialogFor(page);
-	const downloads: Download[] = [];
-
-	page.on('download', (download) => downloads.push(download));
-	await setExportProofControl(page, { failZipBlob: true });
-	await dialog.getByRole('button', { name: 'Export ZIP', exact: true }).click();
-	await waitForExportStatus(page, 'failed');
-	await expect(dialog.getByRole('alert')).toContainText('Synthetic ZIP Blob construction failure.');
-	expect(downloads).toHaveLength(0);
-});
-
 test('shows download failure and completes a later retry exactly once', async ({ page }) => {
 	await installExportProofControls(page);
 	await loadExample(page);

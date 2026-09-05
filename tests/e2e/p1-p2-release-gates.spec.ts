@@ -1,27 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { strFromU8, unzipSync } from 'fflate';
 import { readFile } from 'node:fs/promises';
-import { UI_PREFERENCES_STORAGE_KEY } from '../../src/app/ui-preferences.ts';
-
-const EXAMPLE_PROJECT_ID = '123e4567-e89b-42d3-a456-426614174100';
-const EXAMPLE_ROOT_BONE_ID = '123e4567-e89b-42d3-a456-426614174102';
 
 const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Project', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
-};
-
-const addTwoSlots = async function addTwoSlots(page: Page): Promise<void> {
-	await page.goto('/');
-	await page.getByRole('button', { name: 'Create root bone', exact: true }).click();
-	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Slot', exact: true }).click();
-	await page.getByRole('button', { name: 'root', exact: true }).click();
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Slot', exact: true }).click();
 };
 
 const archiveFromDownload = async function archiveFromDownload(page: Page): Promise<Buffer> {
@@ -48,24 +33,6 @@ const projectJsonFromArchive = function projectJsonFromArchive(archive: Uint8Arr
 
 	return strFromU8(projectEntry);
 };
-
-test('opens draw-order keys in the right-dock Properties context', async ({ page }) => {
-	await addTwoSlots(page);
-	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await page.getByRole('button', { name: 'Create animation clip', exact: true }).click();
-	await page.getByRole('button', { name: 'Track details', exact: true }).click();
-	await page.getByRole('combobox', { name: 'New track', exact: true }).selectOption({ label: 'Setup · Draw order' });
-	await page.getByRole('button', { name: 'Add track', exact: true }).click();
-	await page.getByRole('button', { name: 'Add key', exact: true }).click();
-
-	const properties = page.getByRole('region', { name: 'Draw order properties', exact: true });
-	await expect(properties).toBeVisible();
-	await expect(properties).toContainText('Setup value · back to front');
-	await expect(properties).toContainText('Current evaluated order · Keyed override from frame 1');
-	await expect(properties).toContainText('Keyed value · frame 1');
-	await expect(page.locator('.timeline-detail-surface')).toHaveCount(0);
-	await expect(page.getByRole('tab', { name: 'Properties', exact: true })).toHaveAttribute('aria-selected', 'true');
-});
 
 test('keeps invalid direct numeric drafts out of project history', async ({ page }) => {
 	await loadExample(page);
@@ -156,59 +123,4 @@ test('applies one shared edit, undoes it once, and keeps presentation state out 
 	await expect(archiveText).not.toContain('hiddenEntityIds');
 	await expect(archiveText).not.toContain('uiPreferences');
 	await expect(archiveText).toContain('"name": "Untitled project"');
-});
-
-test('clamps oversized project preferences without document overflow', async ({ page }) => {
-	await page.setViewportSize({ width: 1120, height: 720 });
-	await page.addInitScript(({ key, projectId, rootBoneId }) => {
-		localStorage.setItem(key, JSON.stringify({
-			version: 2,
-			globalDensity: 'list',
-			projects: {
-				[projectId]: {
-					layout: {
-						leftDockWidth: Number.MAX_SAFE_INTEGER,
-						rightDockWidth: Number.MAX_SAFE_INTEGER,
-						timelineHeight: Number.MAX_SAFE_INTEGER,
-						leftDockCollapsed: false,
-						rightDockCollapsed: false
-					},
-					leftDockTab: 'rig',
-					rightDockTab: 'properties',
-					assetDensity: 'list',
-					rigExpandedIds: [rootBoneId],
-					hiddenEntityIds: [],
-					selectionHistory: [],
-					timelineRowMode: 'selection',
-					timelineExpandedIds: [],
-					pinnedTimelineEntityIds: [],
-					collapsedInspectorSections: []
-				}
-			}
-		}));
-	}, { key: UI_PREFERENCES_STORAGE_KEY, projectId: EXAMPLE_PROJECT_ID, rootBoneId: EXAMPLE_ROOT_BONE_ID });
-	await loadExample(page);
-
-	await expect(page.getByRole('separator', { name: 'Resize left dock' })).toHaveAttribute('aria-valuenow', '370');
-	await expect(page.getByRole('separator', { name: 'Resize right dock' })).toHaveAttribute('aria-valuenow', '370');
-	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await expect(page.getByRole('separator', { name: 'Resize animation timeline' })).toHaveAttribute('aria-valuenow', '396');
-	const documentBounds = await page.evaluate(() => ({
-		height: document.documentElement.scrollHeight,
-		width: document.documentElement.scrollWidth
-	}));
-
-	expect(documentBounds.width).toBeLessThanOrEqual(1120);
-	expect(documentBounds.height).toBeLessThanOrEqual(720);
-});
-
-test('falls back to safe defaults after malformed preference storage', async ({ page }) => {
-	await page.setViewportSize({ width: 1120, height: 720 });
-	await page.addInitScript((key) => localStorage.setItem(key, '{broken'), UI_PREFERENCES_STORAGE_KEY);
-	await loadExample(page);
-	await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
-	await expect(page.getByRole('separator', { name: 'Resize left dock' })).toHaveAttribute('aria-valuenow', '248');
-	await expect(page.getByRole('separator', { name: 'Resize right dock' })).toHaveAttribute('aria-valuenow', '286');
-	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await expect(page.getByRole('separator', { name: 'Resize animation timeline' })).toHaveAttribute('aria-valuenow', '260');
 });

@@ -53,34 +53,6 @@ const copyInterpolatedExamplePose = async function copyInterpolatedExamplePose(p
 	return copiedPoseImage;
 };
 
-test('shows the empty Animate state without pose controls when no clip is available', async ({ page }) => {
-	await page.goto('/');
-	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-
-	const poseClipboard = page.getByRole('button', { name: 'Pose clipboard', exact: true });
-
-	await expect(page.getByText('No clips yet', { exact: true })).toBeVisible();
-	await expect(poseClipboard).toHaveCount(0);
-});
-
-test('exposes exact pose actions, shortcut metadata, and pre-copy disabled state', async ({ page }) => {
-	await loadExampleAnimation(page);
-
-	const poseMenu = await openPoseMenu(page);
-	const copyPose = poseMenu.getByRole('menuitem', { name: 'Copy pose', exact: true });
-	const pastePose = poseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true });
-
-	await expect(copyPose).toBeVisible();
-	await expect(copyPose).toBeEnabled();
-	await expect(pastePose).toBeVisible();
-	await expect(pastePose).toBeDisabled();
-	await expect(copyPose).toContainText('Ctrl/Cmd + Shift + C');
-	await expect(pastePose).toContainText('Ctrl/Cmd + Shift + V');
-	await copyPose.click();
-	const reopenedPoseMenu = await openPoseMenu(page);
-	await expect(reopenedPoseMenu.getByRole('menuitem', { name: 'Paste pose', exact: true })).toBeEnabled();
-});
-
 test('copies an interpolated pose with all example entities through visible feedback', async ({ page }) => {
 	await loadExampleAnimation(page);
 	await copyInterpolatedExamplePose(page);

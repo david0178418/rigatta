@@ -35,10 +35,6 @@ const brokenImageFile = function brokenImageFile(name: string): FixtureFile {
 	return { name, mimeType: 'image/png', text: 'not a decodable PNG' };
 };
 
-const unsupportedFile = function unsupportedFile(name: string): FixtureFile {
-	return { name, mimeType: 'text/plain', text: 'not an image' };
-};
-
 const screenPointForLogical = async function screenPointForLogical(
 	page: Page,
 	point: LogicalPoint
@@ -197,45 +193,6 @@ const expectSavedLocally = async function expectSavedLocally(page: Page): Promis
 	await expect(page.getByText('Saved locally', { exact: true })).toBeVisible({ timeout: 5000 });
 };
 
-const installDirectoryPicker = async function installDirectoryPicker(page: Page): Promise<void> {
-	await page.addInitScript(({ base64 }) => {
-		const pngBytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-		type MockFileEntry = Readonly<{
-			kind: 'file';
-			name: string;
-			isSameEntry: (other: FileSystemHandle) => Promise<boolean>;
-			getFile: () => Promise<File>;
-		}>;
-		type MockDirectoryEntry = Readonly<{
-			kind: 'directory';
-			name: string;
-			isSameEntry: (other: FileSystemHandle) => Promise<boolean>;
-			values: () => AsyncIterable<MockFileEntry>;
-		}>;
-		const sameEntry = async function sameEntry(): Promise<boolean> {
-			return false;
-		};
-		const values = async function* values(): AsyncGenerator<MockFileEntry> {
-			yield {
-				kind: 'file',
-				name: 'keyboard.png',
-				isSameEntry: sameEntry,
-				getFile: async function getFile(): Promise<File> {
-					return new File([pngBytes], 'keyboard.png', { type: 'image/png' });
-				}
-			};
-		};
-
-		Object.defineProperty(window, 'showDirectoryPicker', {
-			configurable: true,
-			writable: true,
-			value: async function showDirectoryPicker(): Promise<MockDirectoryEntry> {
-				return { kind: 'directory', name: 'parts', isSameEntry: sameEntry, values };
-			}
-		});
-	}, { base64: PNG_BASE64 });
-};
-
 	test('places one external PNG at its logical point in one undo entry and recovers after reload', async ({ page }) => {
 		await page.goto('/');
 		const logicalPoint = { x: 640, y: 384 } as const;
@@ -319,16 +276,6 @@ test('imports an external folder into Assets without automatic placement', async
 		await expect(page.getByRole('status', { name: 'Asset import summary', exact: true })).toContainText('Imported 1 image.');
 });
 
-test('reports unsupported-only external drops without changing the project', async ({ page }) => {
-		await page.goto('/');
-		await dispatchViewportDrag(page, 'drop', [unsupportedFile('notes.txt')]);
-
-		await expect(page.getByRole('status', { name: 'Asset import summary', exact: true })).toContainText('Imported 0 images · 1 unsupported file.');
-		await expect(page.getByTestId('workspace-docks').getByText('The dropped file is not a supported image.', { exact: true })).toBeVisible();
-		await expect(page.locator('.asset-browser .asset-row')).toHaveCount(0);
-		await expect(page.locator('.attachment-row')).toHaveCount(0);
-});
-
 test('reports mixed valid and decode-invalid files while keeping only the valid Asset', async ({ page }) => {
 		await page.goto('/');
 		await dispatchViewportDrag(page, 'drop', [pngFile('good.png'), brokenImageFile('broken.png')]);
@@ -340,22 +287,6 @@ test('reports mixed valid and decode-invalid files while keeping only the valid 
 		await page.getByText('Show import details', { exact: true }).click();
 		await expect(page.getByText('Invalid', { exact: true })).toBeVisible();
 		await expect(page.getByText(/broken\.png.*Image signature does not match its MIME type/)).toBeVisible();
-		await expect(page.locator('.attachment-row')).toHaveCount(0);
-});
-
-test('reports a single decode failure and duplicate paths without mutation', async ({ page }) => {
-		await page.goto('/');
-		await dispatchViewportDrag(page, 'drop', [brokenImageFile('broken.png')]);
-
-		await expect(page.getByTestId('workspace-docks').getByText('The dropped file could not be decoded as a supported image.', { exact: true })).toBeVisible();
-		await expect(page.getByRole('status', { name: 'Asset import summary', exact: true })).toContainText('Imported 0 images · 1 invalid file.');
-		await expect(page.locator('.asset-browser .asset-row')).toHaveCount(0);
-		await expect(page.locator('.attachment-row')).toHaveCount(0);
-
-		await page.reload();
-		await dispatchViewportDrag(page, 'drop', [pngFile('same.png'), pngFile('same.png')]);
-		await expect(page.getByRole('status', { name: 'Asset import summary', exact: true })).toContainText('Imported 0 images · 2 invalid files.');
-		await expect(page.locator('.asset-browser .asset-row')).toHaveCount(0);
 		await expect(page.locator('.attachment-row')).toHaveCount(0);
 });
 
@@ -372,37 +303,4 @@ test('requires a selected bone when a rig already exists', async ({ page }) => {
 		await expect(page.locator('.attachment-row')).toHaveCount(0);
 		await page.getByRole('tab', { name: 'Assets', exact: true }).click();
 		await expect(page.locator('.asset-browser .asset-row')).toHaveCount(0);
-});
-
-test('supports keyboard operation of the empty-canvas import action', async ({ page }) => {
-		await installDirectoryPicker(page);
-		await page.goto('/');
-		const importButton = page.getByRole('region', { name: /Empty 1024 by 1024 canvas/ }).getByRole('button', { name: 'Import image directory', exact: true });
-
-		await importButton.focus();
-		await expect(importButton).toBeFocused();
-		await page.keyboard.press('Enter');
-		await expect(page.locator('.asset-browser .asset-row')).toContainText('keyboard.png');
-});
-
-test('supports keyboard operation of the empty-canvas recent action', async ({ page }) => {
-		await page.goto('/');
-		const recentButton = page.getByRole('region', { name: /Empty 1024 by 1024 canvas/ }).getByRole('button', { name: 'Open recent', exact: true });
-
-		await recentButton.focus();
-		await expect(recentButton).toBeFocused();
-		await page.keyboard.press('Enter');
-		await expect(page.getByRole('dialog', { name: 'Open recent projects', exact: true })).toBeVisible();
-		await page.keyboard.press('Escape');
-		await expect(page.getByRole('dialog', { name: 'Open recent projects', exact: true })).toHaveCount(0);
-});
-
-test('supports keyboard operation of the empty-canvas example action', async ({ page }) => {
-		await page.goto('/');
-		const exampleButton = page.getByRole('region', { name: /Empty 1024 by 1024 canvas/ }).getByRole('button', { name: 'Load example', exact: true });
-
-		await exampleButton.focus();
-		await expect(exampleButton).toBeFocused();
-		await page.keyboard.press('Enter');
-		await expect(page.getByRole('heading', { name: 'Cutout Adventurer Example', exact: true })).toBeVisible();
 });

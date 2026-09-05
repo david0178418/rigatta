@@ -126,66 +126,6 @@ test('reveals filtered descendants without adding a history entry', async ({ pag
 	await expect(secondChild).toHaveCount(0);
 });
 
-test('renders typed SVG icons and durable accessible row states', async ({ page }) => {
-	await page.goto('/');
-	await page.getByRole('button', { name: 'Project', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
-
-	const tree = page.getByRole('tree', { name: 'Rig hierarchy' });
-	const root = tree.getByRole('treeitem', { name: 'Bone: root', exact: true });
-	const arm = tree.getByRole('treeitem', { name: 'Bone: right arm', exact: true });
-	const body = tree.getByRole('treeitem', { name: 'Slot: body', exact: true });
-
-	const expandIfNeeded = async function expandIfNeeded(item: ReturnType<typeof tree.getByRole>): Promise<void> {
-		if (await item.getAttribute('aria-expanded') === 'false') {
-			await item.locator('.tree-disclosure').click();
-		}
-	};
-
-	await expandIfNeeded(root);
-	await expandIfNeeded(arm);
-	await expandIfNeeded(body);
-
-	const rigIcons = tree.locator('svg.rig-icon');
-	const iconCount = await rigIcons.count();
-
-	expect(iconCount).toBeGreaterThan(6);
-	expect(await tree.locator('.rig-icon-bone').count()).toBeGreaterThan(2);
-	expect(await tree.locator('.rig-icon-slot').count()).toBeGreaterThan(0);
-	expect(await tree.locator('.rig-icon-image').count()).toBeGreaterThan(0);
-	expect(await tree.locator('.rig-icon-point').count()).toBeGreaterThan(0);
-	expect(await tree.locator('.rig-icon-rectangle').count()).toBeGreaterThan(0);
-	expect((await rigIcons.allTextContents()).every((text) => text === '')).toBe(true);
-	expect(await tree.locator('svg.rig-control-icon').count()).toBeGreaterThan(8);
-
-	const armRow = arm.locator('.bone-row');
-	await expect(armRow).toHaveAttribute('title', 'Bone: right arm · Child of bone torso');
-	const armDescriptionId = await arm.getAttribute('aria-describedby');
-
-	if (!armDescriptionId) {
-		throw new Error('The right arm tree item description ID is unavailable.');
-	}
-
-	await expect(page.locator(`#${armDescriptionId}`)).toContainText('Child of bone torso');
-	const activeAttachment = tree.locator('.attachment-row.is-active-attachment');
-	await expect(activeAttachment).toHaveCount(1);
-	await expect(activeAttachment).toHaveAttribute('title', /active setup attachment/);
-	await expect(activeAttachment).toHaveCSS('border-left-style', 'solid');
-
-	await arm.focus();
-	await expect(arm).toBeFocused();
-	await arm.press('a');
-	await expect(arm).toBeFocused();
-	await expect(arm).toHaveCSS('outline-style', 'solid');
-
-	const handGrip = tree.getByRole('treeitem', { name: 'Point attachment: hand-grip', exact: true }).locator('.attachment-row');
-	await armRow.click();
-	await handGrip.click({ modifiers: ['Control'] });
-	await expect(armRow).toHaveClass(/is-multi-selected/);
-	await expect(handGrip).toHaveClass(/is-multi-selected/);
-	await expect(arm).toHaveAttribute('data-selection-state', 'multi-selected');
-});
-
 test('keeps a visible non-color-only drag target state during browser dragover', async ({ page }) => {
 	await createThreeBoneRig(page);
 

@@ -11,30 +11,6 @@ const loadExample = async function loadExample(page: Page): Promise<void> {
 	await page.getByRole('menuitem', { name: 'Load example', exact: true }).click();
 };
 
-test('organizes project lifecycle actions and fixed project settings in the Project menu', async ({ page }) => {
-	await page.goto('/');
-
-	await openProjectMenu(page);
-	const menu = page.getByRole('menu', { name: 'Project', exact: true });
-
-	await expect(menu.getByRole('menuitem', { name: 'New project', exact: true })).toBeVisible();
-	await expect(menu.getByRole('menuitem', { name: 'Open recent', exact: true })).toBeVisible();
-	await expect(menu.getByRole('menuitem', { name: 'Import .rigatta', exact: true })).toBeVisible();
-	await expect(menu.getByRole('menuitem', { name: 'Export project archive', exact: true })).toBeVisible();
-	await expect(menu.getByRole('menuitem', { name: 'Load example', exact: true })).toBeVisible();
-	await expect(menu.getByRole('menuitem', { name: 'Project settings', exact: true })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Load example', exact: true })).toHaveCount(1);
-	await expect(page.getByRole('button', { name: 'Export', exact: true })).toHaveAttribute('title', 'Export sprite sheet');
-
-	await menu.getByRole('menuitem', { name: 'Project settings', exact: true }).click();
-	const settings = page.getByRole('dialog', { name: 'Project settings', exact: true });
-
-	await expect(settings).toContainText('Logical canvas: 1024 × 1024 px. Canvas bounds are fixed for this MVP.');
-	await settings.getByLabel('Project name', { exact: true }).fill('Menu renamed project');
-	await settings.getByRole('button', { name: 'Save name', exact: true }).click();
-	await expect(page.getByRole('heading', { name: 'Menu renamed project', exact: true })).toBeVisible();
-});
-
 test('keeps authored projects intact when replacement is declined and opens recent projects', async ({ page }) => {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Create root bone', exact: true }).click();

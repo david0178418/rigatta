@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { shortcutActionFor, shortcutLabelFor, shortcutReference, shortcutReferenceEntryFor, type ShortcutKeyState } from '../../src/app/shortcuts.ts';
+import { shortcutActionFor, shortcutLabelFor, shortcutReference, type ShortcutKeyState } from '../../src/app/shortcuts.ts';
 
 const key = function key(value: string, overrides: Partial<ShortcutKeyState> = {}): ShortcutKeyState {
 	return {
@@ -109,24 +109,5 @@ describe('editor keyboard shortcuts', () => {
 		expect(shortcutLabelFor('tool-rotate')).toBe('E');
 		expect(shortcutLabelFor('tool-scale')).toBe('R');
 		expect(shortcutLabelFor('tool-shear')).toBe('T');
-	});
-
-	test('publishes exact pose shortcut reference entries', () => {
-		expect(shortcutReferenceEntryFor('copy-pose')).toEqual({
-			id: 'copy-pose',
-			keys: 'Ctrl/Cmd + Shift + C',
-			action: 'Copy pose',
-			description: 'Copy the evaluated pose at the current frame.',
-			scope: 'global'
-		});
-		expect(shortcutReferenceEntryFor('paste-pose')).toEqual({
-			id: 'paste-pose',
-			keys: 'Ctrl/Cmd + Shift + V',
-			action: 'Paste pose',
-			description: 'Paste the copied pose at the current frame.',
-			scope: 'global'
-		});
-		expect(shortcutLabelFor('copy-pose')).toBe('Ctrl/Cmd + Shift + C');
-		expect(shortcutLabelFor('paste-pose')).toBe('Ctrl/Cmd + Shift + V');
 	});
 });

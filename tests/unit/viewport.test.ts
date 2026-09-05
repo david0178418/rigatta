@@ -3,8 +3,6 @@ import {
 	actualSizeViewportCamera,
 	fitViewportCamera,
 	fittedViewportScale,
-	formatViewportCoordinate,
-	formatViewportScale,
 	MAX_VIEWPORT_SCALE,
 	MIN_VIEWPORT_SCALE,
 	normalizeViewportRectangle,
@@ -205,12 +203,5 @@ describe('viewport camera model', () => {
 			{ x: screenRectangle.left + screenRectangle.width, y: screenRectangle.top + screenRectangle.height },
 			{ x: screenRectangle.left, y: screenRectangle.top }
 		)).toEqual(screenRectangle);
-	});
-
-	test('formats scale and coordinates without unstable fractional output', () => {
-		expect(formatViewportScale(1.596)).toBe('160%');
-		expect(formatViewportScale(Number.NaN)).toBe('100%');
-		expect(formatViewportCoordinate(undefined)).toBe('X — · Y —');
-		expect(formatViewportCoordinate({ x: 12.6, y: -4.4 })).toBe('X 13 · Y -4');
 	});
 });

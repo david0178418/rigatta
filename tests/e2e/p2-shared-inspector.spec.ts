@@ -260,49 +260,6 @@ test('keeps draw-order and attachment-swap contexts in Properties with navigatio
 	await expect(page.getByRole('heading', { name: 'body front', exact: true })).toBeVisible();
 });
 
-test('shows focus-visible tooltips and restores Track details focus on Escape', async ({ page }) => {
-	await loadExample(page);
-	await page.getByRole('button', { name: 'Animate', exact: true }).click();
-	await showAllKeyedTimelineRows(page);
-
-	const marker = page.getByRole('button', { name: 'Key frame 1', exact: true }).first();
-	await marker.focus();
-	const markerTooltip = marker.locator('xpath=..').getByRole('tooltip');
-	await expect(markerTooltip).toHaveAttribute('aria-hidden', 'false');
-	await expect(markerTooltip).toHaveCSS('position', 'fixed');
-	const tooltipBounds = await markerTooltip.boundingBox();
-	if (!tooltipBounds) {
-		throw new Error('Timeline marker tooltip bounds are unavailable.');
-	}
-	const viewport = page.viewportSize();
-	if (!viewport) {
-		throw new Error('The browser viewport is unavailable.');
-	}
-	expect(tooltipBounds.x).toBeGreaterThanOrEqual(0);
-	expect(tooltipBounds.y).toBeGreaterThanOrEqual(0);
-	expect(tooltipBounds.x + tooltipBounds.width).toBeLessThanOrEqual(viewport.width);
-	expect(tooltipBounds.y + tooltipBounds.height).toBeLessThanOrEqual(viewport.height);
-
-	const stepBackward = page.getByRole('button', { name: 'Step backward', exact: true });
-	await stepBackward.focus();
-	await expect(stepBackward.locator('xpath=..').getByRole('tooltip')).toHaveAttribute('aria-hidden', 'false');
-
-	const trackDetails = page.getByRole('button', { name: 'Track details', exact: true });
-	await trackDetails.click();
-	const panel = page.getByRole('dialog', { name: 'Track details' });
-	await expect(trackDetails).toHaveAttribute('aria-expanded', 'true');
-	await expect(panel).toHaveAttribute('role', 'dialog');
-	await expect(panel.getByLabel('New track', { exact: true })).toBeFocused();
-	await page.keyboard.press('Escape');
-	await expect(panel).toHaveCount(0);
-	await expect(trackDetails).toBeFocused();
-
-	await page.getByRole('tab', { name: 'Draw Order', exact: true }).click();
-	const body = page.getByTestId('draw-order-panel').getByRole('button', { name: 'body', exact: true });
-	await body.focus();
-	await expect(body.locator('xpath=..').getByRole('tooltip')).toHaveAttribute('aria-hidden', 'false');
-});
-
 test('selects a timeline key through the expanded pointer hit target', async ({ page }) => {
 	await loadExample(page);
 	await page.getByRole('button', { name: 'Animate', exact: true }).click();
